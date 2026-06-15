@@ -1,0 +1,143 @@
+edition = "2023";
+
+package gophkeeper.v1;
+
+option go_package = "zerogravity-82/goph-keeper/internal/pb;pb";
+
+import "google/protobuf/timestamp.proto";
+
+enum RecordType {
+  RECORD_TYPE_UNSPECIFIED = 0;
+  RECORD_TYPE_CREDENTIAL = 1;
+  RECORD_TYPE_TEXT = 2;
+  RECORD_TYPE_CARD = 3;
+  RECORD_TYPE_BINARY = 4;
+}
+
+enum UploadMode {
+  UPLOAD_MODE_UNSPECIFIED = 0;
+  UPLOAD_MODE_SINGLE_PART = 1;
+  UPLOAD_MODE_MULTIPART = 2;
+}
+
+enum UploadStatus {
+  UPLOAD_STATUS_UNSPECIFIED = 0;
+  UPLOAD_STATUS_PENDING = 1;
+  UPLOAD_STATUS_UPLOADED = 2;
+  UPLOAD_STATUS_FAILED = 3;
+}
+
+message Record {
+  string record_id = 1;
+  RecordType type = 2;
+  string title = 3;
+  string description = 4;
+  bytes encrypted_dek = 5;
+  bytes encrypted_payload = 6;
+  int64 version = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp deleted_at = 10;
+  RecordFile file = 11;
+}
+
+message RecordFile {
+  UploadStatus upload_status = 1;
+}
+
+message RecordListItem {
+  string record_id = 1;
+  RecordType type = 2;
+  string title = 3;
+  string description = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  RecordFile file = 7;
+}
+
+message CreateRecordRequest {
+  RecordType type = 1;
+  string title = 2;
+  string description = 3;
+  bytes encrypted_dek = 4;
+  bytes encrypted_payload = 5;
+}
+
+message CreateRecordResponse {
+  string record_id = 1;
+  int64 version = 2;
+}
+
+message ListRecordsRequest {}
+
+message ListRecordsResponse {
+  repeated RecordListItem items = 1;
+}
+
+message GetRecordRequest {
+  string record_id = 1;
+}
+
+message GetRecordResponse {
+  Record record = 1;
+}
+
+message UpdateRecordRequest {
+  string record_id = 1;
+  string title = 2;
+  string description = 3;
+  bytes encrypted_dek = 4;
+  bytes encrypted_payload = 5;
+  int64 expected_version = 6;
+}
+
+message UpdateRecordResponse {
+  string record_id = 1;
+  int64 version = 2;
+}
+
+message DeleteRecordRequest {
+  string record_id = 1;
+}
+
+message DeleteRecordResponse {
+  string record_id = 1;
+}
+
+message UploadFileRequest {
+  oneof payload {
+    UploadFileMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+message UploadFileMetadata {
+  string record_id = 1;
+  int64 encrypted_size = 2;
+  UploadMode upload_mode = 3;
+}
+
+message UploadFileResponse {
+  string record_id = 1;
+  UploadStatus upload_status = 2;
+  int64 version = 3;
+}
+
+message DownloadFileRequest {
+  string record_id = 1;
+}
+
+message DownloadFileResponse {
+  bytes chunk = 1;
+}
+
+service Records {
+  rpc CreateRecord(CreateRecordRequest) returns (CreateRecordResponse);
+  rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
+  rpc GetRecord(GetRecordRequest) returns (GetRecordResponse);
+  rpc UpdateRecord(UpdateRecordRequest) returns (UpdateRecordResponse);
+  rpc DeleteRecord(DeleteRecordRequest) returns (DeleteRecordResponse);
+
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+  rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
+}
