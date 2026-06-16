@@ -12,6 +12,6 @@ type User struct {
 	Login         string
 	PasswordHash  string
 	MasterKeySalt []byte
-	CreatedAt     time.Time
+	RegisteredAt  time.Time
 	UpdatedAt     time.Time
 }
