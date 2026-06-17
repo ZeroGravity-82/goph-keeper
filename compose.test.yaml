@@ -1,0 +1,16 @@
+services:
+  postgresql-test:
+    image: postgres:15
+    ports:
+      - '15432:5432'
+    environment:
+      - POSTGRES_DB=gophkeeper_test
+      - POSTGRES_USER=gophkeeper
+      - POSTGRES_PASSWORD=userpassword
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gophkeeper -d gophkeeper_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
