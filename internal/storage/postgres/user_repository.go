@@ -19,9 +19,7 @@ type UserRepository struct {
 
 // NewUserRepository создает UserRepository на основе подключения к БД.
 func NewUserRepository(db *sqlx.DB) *UserRepository {
-	return &UserRepository{
-		db: db,
-	}
+	return &UserRepository{db: db}
 }
 
 // Create сохраняет нового пользователя в БД.
@@ -30,7 +28,8 @@ func (r *UserRepository) Create(ctx context.Context, u model.User) error {
 INSERT INTO app_user (id, login, password_hash, master_key_salt, registered_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 `
-	_, err := r.db.ExecContext(ctx, q, u.ID, u.Login, u.PasswordHash, u.MasterKeySalt, u.RegisteredAt, u.UpdatedAt)
+	exec := executorFromContext(ctx, r.db)
+	_, err := exec.ExecContext(ctx, q, u.ID, u.Login, u.PasswordHash, u.MasterKeySalt, u.RegisteredAt, u.UpdatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return model.ErrLoginAlreadyTaken
@@ -50,7 +49,8 @@ FROM app_user
 WHERE login = $1
 `
 	var u dto.User
-	if err := r.db.GetContext(ctx, &u, q, login); err != nil {
+	exec := executorFromContext(ctx, r.db)
+	if err := exec.GetContext(ctx, &u, q, login); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.User{}, model.ErrUserNotFound
 		}

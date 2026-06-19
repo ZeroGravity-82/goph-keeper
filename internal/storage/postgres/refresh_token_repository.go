@@ -30,7 +30,8 @@ func (r *RefreshTokenRepository) Create(ctx context.Context, token model.Refresh
 INSERT INTO refresh_token (id, app_user_id, token_hash, issued_at, expires_at, revoked_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 `
-	_, err := r.db.ExecContext(
+	exec := executorFromContext(ctx, r.db)
+	_, err := exec.ExecContext(
 		ctx,
 		q,
 		token.ID,
@@ -61,7 +62,8 @@ FROM refresh_token
 WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > $2
 `
 	var token dto.RefreshToken
-	if err := r.db.GetContext(ctx, &token, q, tokenHash, now); err != nil {
+	exec := executorFromContext(ctx, r.db)
+	if err := exec.GetContext(ctx, &token, q, tokenHash, now); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.RefreshToken{}, model.ErrRefreshTokenNotFound
 		}
@@ -79,7 +81,8 @@ UPDATE refresh_token
 SET revoked_at = $2
 WHERE id = $1
 `
-	res, err := r.db.ExecContext(ctx, q, tokenID, revokedAt)
+	exec := executorFromContext(ctx, r.db)
+	res, err := exec.ExecContext(ctx, q, tokenID, revokedAt)
 	if err != nil {
 		return fmt.Errorf("failed to revoke refresh token: %w", err)
 	}
