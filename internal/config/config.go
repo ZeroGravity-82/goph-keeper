@@ -15,6 +15,11 @@ import (
 	"github.com/spf13/pflag"
 )
 
+var (
+	// ErrHelp возвращается, когда пользователь запросил справку по флагам командной строки.
+	ErrHelp = pflag.ErrHelp
+)
+
 const (
 	envPrefix = "GOPHKEEPER_"
 

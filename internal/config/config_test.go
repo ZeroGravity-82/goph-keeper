@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestLoad_HelpReturnsErrHelp проверяет, что запрос справки возвращает специальную ошибку.
+func TestLoad_HelpReturnsErrHelp(t *testing.T) {
+	// Arrange
+	setArgs(t, "server", "-h")
+	unsetConfigEnv(t)
+
+	// Act
+	_, err := Load()
+
+	// Assert
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrHelp))
+}
 
 // TestLoad_RequiresDatabaseURI проверяет обязательность строки подключения к БД.
 func TestLoad_RequiresDatabaseURI(t *testing.T) {
