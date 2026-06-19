@@ -1,0 +1,5 @@
+database_uri: postgres://gophkeeper:gophkeeper@localhost:5432/gophkeeper?sslmode=disable
+logging:
+  format: text
+  level: debug
+  add_source: true
