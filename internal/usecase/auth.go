@@ -29,7 +29,7 @@ type RegisterOutput struct {
 }
 
 type userRepository interface {
-	Create(ctx context.Context, u model.User) (model.User, error)
+	Create(ctx context.Context, u model.User) error
 	GetByLogin(ctx context.Context, login string) (model.User, error)
 }
 
@@ -130,8 +130,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 		return RegisterOutput{}, fmt.Errorf("failed to issue tokens: %w", err)
 	}
 	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		_, err = uc.userRepo.Create(ctx, u)
-		if err != nil {
+		if err = uc.userRepo.Create(ctx, u); err != nil {
 			return fmt.Errorf("failed to create user: %w", err)
 		}
 		if err = uc.refreshTokenRepo.Create(ctx, rt); err != nil {
