@@ -1,4 +1,4 @@
-database_uri: postgres://gophkeeper:gophkeeper@localhost:5432/gophkeeper?sslmode=disable
+database_uri: postgres://gophkeeper:userpassword@localhost:5432/gophkeeper?sslmode=disable
 logging:
   format: text
   level: debug
