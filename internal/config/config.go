@@ -22,6 +22,7 @@ var (
 
 const (
 	envPrefix = "GOPHKEEPER_"
+	keyDelim  = "."
 
 	defaultLoggingLevel     = "info"
 	defaultLoggingFormat    = "json"
@@ -50,7 +51,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	k := koanf.New(".")
+	k := koanf.New(keyDelim)
 	if err = loadDefaults(k); err != nil {
 		return Config{}, err
 	}
@@ -59,10 +60,10 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("failed to load config file %q: %w", configPath, err)
 		}
 	}
-	if err = k.Load(posflag.ProviderWithFlag(flags, ".", k, mapFlag(flags)), nil); err != nil {
+	if err = k.Load(posflag.ProviderWithFlag(flags, keyDelim, k, mapFlag(flags)), nil); err != nil {
 		return Config{}, fmt.Errorf("failed to load CLI flags: %w", err)
 	}
-	if err = k.Load(env.Provider(envPrefix, ".", mapEnvKey), nil); err != nil {
+	if err = k.Load(env.Provider(envPrefix, keyDelim, mapEnvKey), nil); err != nil {
 		return Config{}, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
@@ -97,14 +98,18 @@ func parseFlags(args []string) (*pflag.FlagSet, string, error) {
 
 func loadDefaults(k *koanf.Koanf) error {
 	defaults := map[string]any{
-		"logging.format":     defaultLoggingFormat,
-		"logging.level":      defaultLoggingLevel,
-		"logging.add_source": defaultLoggingAddSource,
+		configKey("logging", "format"):     defaultLoggingFormat,
+		configKey("logging", "level"):      defaultLoggingLevel,
+		configKey("logging", "add_source"): defaultLoggingAddSource,
 	}
-	if err := k.Load(confmap.Provider(defaults, "."), nil); err != nil {
+	if err := k.Load(confmap.Provider(defaults, keyDelim), nil); err != nil {
 		return fmt.Errorf("failed to load default config: %w", err)
 	}
 	return nil
+}
+
+func configKey(parts ...string) string {
+	return strings.Join(parts, keyDelim)
 }
 
 func mapFlag(flags *pflag.FlagSet) func(*pflag.Flag) (string, interface{}) {
@@ -118,7 +123,7 @@ func mapEnvKey(key string) string {
 	key = strings.TrimPrefix(key, envPrefix)
 	key = strings.ToLower(key)
 	if strings.HasPrefix(key, "logging_") {
-		return "logging." + strings.TrimPrefix(key, "logging_")
+		return configKey("logging", strings.TrimPrefix(key, "logging_"))
 	}
 	return key
 }
