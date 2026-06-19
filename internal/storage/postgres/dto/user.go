@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// User - представление model.User в базе данных.
+// User описывает строку таблицы app_user, представляющую model.User в базе данных.
 type User struct {
 	ID            uuid.UUID `db:"id"`
 	Login         string    `db:"login"`

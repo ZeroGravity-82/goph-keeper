@@ -44,4 +44,4 @@ db-test-down: ## Остановить и удалить контейнер с Po
 # --- Интеграционные тесты ---
 
 test-integration: db-test-up ## Запустить интеграционные тесты PostgreSQL
-	TEST_DATABASE_URI='$(TEST_DATABASE_URI)' go test -tags=integration ./internal/repository/postgresql
+	TEST_DATABASE_URI='$(TEST_DATABASE_URI)' go test -tags=integration ./internal/storage/postgres
