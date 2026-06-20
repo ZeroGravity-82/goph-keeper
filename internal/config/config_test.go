@@ -67,6 +67,9 @@ func TestLoad_LoadsDefaults(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
+	assert.Equal(t, "localhost:3201", cfg.GRPCServerAddr)
+	assert.Equal(t, "certs/server.crt", cfg.TLSCertPath)
+	assert.Equal(t, "certs/server.key", cfg.TLSKeyPath)
 	assert.Equal(t, "json", cfg.Logging.Format)
 	assert.Equal(t, "info", cfg.Logging.Level)
 	assert.Equal(t, false, cfg.Logging.AddSource)
@@ -79,6 +82,9 @@ func TestLoad_Priority(t *testing.T) {
 	configPath := writeTempConfig(t, `
 database_uri: postgres://file-db
 jwt_secret: file-secret
+grpc_address: localhost:3202
+tls_cert: certs/file-server.crt
+tls_key: certs/file-server.key
 logging:
   format: json
   level: warn
@@ -89,11 +95,16 @@ logging:
 		"--config", configPath,
 		"--database-uri", "postgres://flag-db",
 		"--jwt-secret", "flag-secret",
+		"--grpc-address", "127.0.0.1:3203",
+		"--tls-cert", "certs/flag-server.crt",
+		"--tls-key", "certs/flag-server.key",
 		"--logging.level", "debug",
 		"--logging.add-source",
 	)
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "env-secret")
+	t.Setenv("GOPHKEEPER_GRPC_ADDRESS", "127.0.0.1:3204")
+	t.Setenv("GOPHKEEPER_TLS_CERT", "certs/env-server.crt")
 	t.Setenv("GOPHKEEPER_LOGGING_LEVEL", "error")
 
 	// Act
@@ -103,6 +114,9 @@ logging:
 	require.NoError(t, err)
 	assert.Equal(t, "postgres://flag-db", cfg.DatabaseURI)
 	assert.Equal(t, "env-secret", cfg.JWTSecret)
+	assert.Equal(t, "127.0.0.1:3204", cfg.GRPCServerAddr)
+	assert.Equal(t, "certs/env-server.crt", cfg.TLSCertPath)
+	assert.Equal(t, "certs/flag-server.key", cfg.TLSKeyPath)
 	assert.Equal(t, "json", cfg.Logging.Format)
 	assert.Equal(t, "error", cfg.Logging.Level)
 	assert.True(t, cfg.Logging.AddSource)
@@ -148,6 +162,9 @@ func unsetConfigEnv(t *testing.T) {
 	for _, key := range []string{
 		"GOPHKEEPER_DATABASE_URI",
 		"GOPHKEEPER_JWT_SECRET",
+		"GOPHKEEPER_GRPC_ADDRESS",
+		"GOPHKEEPER_TLS_CERT",
+		"GOPHKEEPER_TLS_KEY",
 		"GOPHKEEPER_LOGGING_FORMAT",
 		"GOPHKEEPER_LOGGING_LEVEL",
 		"GOPHKEEPER_LOGGING_ADD_SOURCE",

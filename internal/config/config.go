@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -27,6 +28,10 @@ const (
 	defaultLoggingLevel     = "info"
 	defaultLoggingFormat    = "json"
 	defaultLoggingAddSource = false
+	defaultGRPCServerAddr   = "localhost:3201"
+	defaultTLSCertPath      = "certs/server.crt"
+	defaultTLSKeyPath       = "certs/server.key"
+	defaultCACertPath       = "certs/ca.crt"
 )
 
 // Logging описывает настройки логирования сервиса.
@@ -42,11 +47,26 @@ type Logging struct {
 	AddSource bool   `koanf:"add_source"`
 }
 
-// Config содержит параметры конфигурации сервиса.
+// Config описывает конфигурацию сервиса.
+//
+// GRPCServerAddr - адрес gRPC-сервера в формате host:port.
+//
+// TLSCertPath - путь к TLS-сертификату gRPC-сервера.
+//
+// TLSKeyPath - путь к приватному TLS-ключу gRPC-сервера.
+//
+// DatabaseURI - строка подключения к базе данных.
+//
+// JWTSecret - секрет для подписи JWT.
+//
+// Logging - настройки логирования сервиса.
 type Config struct {
-	DatabaseURI string  `koanf:"database_uri"`
-	JWTSecret   string  `koanf:"jwt_secret"`
-	Logging     Logging `koanf:"logging"`
+	GRPCServerAddr string  `koanf:"grpc_address"`
+	TLSCertPath    string  `koanf:"tls_cert"`
+	TLSKeyPath     string  `koanf:"tls_key"`
+	DatabaseURI    string  `koanf:"database_uri"`
+	JWTSecret      string  `koanf:"jwt_secret"`
+	Logging        Logging `koanf:"logging"`
 }
 
 // Load читает конфигурацию с учетом приоритета "дефолтное значение < значение из конфигурационного файла < флаг
@@ -86,6 +106,10 @@ func Load() (Config, error) {
 func parseFlags(args []string) (*pflag.FlagSet, string, error) {
 	flags := pflag.NewFlagSet("gophkeeper-server", pflag.ContinueOnError)
 	flags.StringP("config", "c", "", "path to config file")
+	var grpcServerAddrFlag string
+	flags.Func("grpc-address", grpcServerAddrUsage(), grpcServerAddrFlagParser(&grpcServerAddrFlag))
+	flags.String("tls-cert", "", "TLS certificate path for gRPC server")
+	flags.String("tls-key", "", "TLS private key path for gRPC server")
 	flags.String("database-uri", "", "database connection URI")
 	flags.String("jwt-secret", "", "JWT signing secret")
 	flags.String("logging.format", "", "log format: text or json")
@@ -102,11 +126,40 @@ func parseFlags(args []string) (*pflag.FlagSet, string, error) {
 	return flags, configPath, nil
 }
 
+func grpcServerAddrUsage() string {
+	return fmt.Sprintf(`gRPC server address (default "%s")`, defaultGRPCServerAddr)
+}
+
+func grpcServerAddrFlagParser(grpcServerAddr *string) func(string) error {
+	return func(flagValue string) error {
+		if flagValue == "" {
+			*grpcServerAddr = flagValue
+			return nil
+		}
+		if err := validateServerAddr(flagValue); err != nil {
+			return err
+		}
+		*grpcServerAddr = flagValue
+		return nil
+	}
+}
+
+func validateServerAddr(v string) error {
+	host, port, err := net.SplitHostPort(v)
+	if host == "" || port == "" || err != nil {
+		return errors.New("server address must be in the format host:port (without specifying a scheme)")
+	}
+	return nil
+}
+
 func loadDefaults(k *koanf.Koanf) error {
 	defaults := map[string]any{
 		configKey("logging", "format"):     defaultLoggingFormat,
 		configKey("logging", "level"):      defaultLoggingLevel,
 		configKey("logging", "add_source"): defaultLoggingAddSource,
+		configKey("grpc_address"):          defaultGRPCServerAddr,
+		configKey("tls_cert"):              defaultTLSCertPath,
+		configKey("tls_key"):               defaultTLSKeyPath,
 	}
 	if err := k.Load(confmap.Provider(defaults, keyDelim), nil); err != nil {
 		return fmt.Errorf("failed to load default config: %w", err)

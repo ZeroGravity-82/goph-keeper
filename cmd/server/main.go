@@ -44,7 +44,11 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("app init error: %w", err)
 	}
-	defer application.Close()
+	defer func() {
+		if err := application.Close(); err != nil {
+			logger.Error("failed to close application", slog.Any("err", err))
+		}
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -1,0 +1,91 @@
+package grpcserver
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+)
+
+const (
+	shutdownTimeout = 10 * time.Second
+)
+
+// GRPCServer описывает gRPC-сервер.
+type GRPCServer struct {
+	addr   string
+	creds  credentials.TransportCredentials
+	logger *slog.Logger
+}
+
+// NewGRPCServer создает новый GRPCServer.
+func NewGRPCServer(
+	addr string,
+	creds credentials.TransportCredentials,
+	logger *slog.Logger,
+) *GRPCServer {
+	return &GRPCServer{
+		addr:   addr,
+		creds:  creds,
+		logger: logger,
+	}
+}
+
+// Run запускает gRPC-сервер и блокируется, пока не отменен контекст или сервер не остановится с ошибкой.
+func (s *GRPCServer) Run(ctx context.Context) error {
+	listen, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return fmt.Errorf("grpc server error: %w", err)
+	}
+	srv := grpc.NewServer(grpc.Creds(s.creds))
+
+	errCh := make(chan error, 1)
+	go func() {
+		s.logger.Info("starting grpc server", slog.String("address", s.addr))
+		errCh <- srv.Serve(listen)
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		err := s.shutdown(shutdownCtx, srv)
+		if err == nil {
+			s.logger.Info("grpc server stopped with graceful shutdown")
+			return nil
+		}
+		return fmt.Errorf("grpc server stopped with error: %w", err)
+	case err := <-errCh:
+		if err == nil || errors.Is(err, grpc.ErrServerStopped) {
+			s.logger.Info("grpc server stopped")
+			return nil
+		}
+		return fmt.Errorf("grpc server error: %w", err)
+	}
+}
+
+// shutdown выполняет graceful shutdown gRPC-сервера и принудительно останавливает его,
+// если переданный контекст завершился раньше, чем GracefulStop.
+func (s *GRPCServer) shutdown(ctx context.Context, srv *grpc.Server) error {
+	doneCh := make(chan struct{})
+
+	go func() {
+		srv.GracefulStop()
+		close(doneCh)
+	}()
+
+	select {
+	case <-ctx.Done():
+		srv.Stop()
+		<-doneCh
+		return fmt.Errorf("graceful shutdown timeout: %w", ctx.Err())
+	case <-doneCh:
+		return nil
+	}
+}
