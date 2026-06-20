@@ -30,6 +30,12 @@ const (
 )
 
 // Logging описывает настройки логирования сервиса.
+//
+// Format - формат логов: text или json.
+//
+// Level - минимальный уровень логирования: debug, info, warn или error.
+//
+// AddSource - признак необходимости добавлять в лог место вызова.
 type Logging struct {
 	Format    string `koanf:"format"`
 	Level     string `koanf:"level"`
