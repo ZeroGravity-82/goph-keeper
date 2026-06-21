@@ -210,34 +210,37 @@ GOPHKEEPER_JWT_SECRET=dev-only-secret go run ./cmd/server -c config/local.yaml
 ## Структура папок
 
 ```text
-api/                           # исходные .proto-контракты gRPC API
-certs/                         # TLS-сертификаты для локального запуска и разработки
-cmd/client/                    # точка входа CLI-клиента
-cmd/server/                    # точка входа серверного приложения
-internal/app/client/           # сборка зависимостей CLI-клиента
-internal/app/server/           # сборка зависимостей сервера
-internal/auth/                 # аутентификация, хеширование паролей, JWT
-internal/buildinfo/            # версия и дата сборки клиентского бинарного файла
-internal/config/               # конфигурация клиента и сервера
-internal/crypto/               # клиентское шифрование, вычисление ключей, работа с KEK/DEK
-internal/domain/model/         # доменная модель - сущности и объекты-значения
-internal/logging/              # настройка логирования
-internal/pb/                   # сгенерированный код из .proto-файлов
-internal/storage/postgres/     # реализация хранения данных в PostgreSQL
-internal/transport/grpcclient/ # gRPC-клиент для обращения CLI к серверу
-internal/transport/grpcserver/ # gRPC-сервер, обработчики и преобразования транспортного уровня (DTO)
-internal/usecase/              # сценарии использования приложения и минимальные интерфейсы их зависимостей
-migrations/                    # SQL-миграции базы данных
-test/                          # интеграционные и сквозные тесты
+api/                                   # исходные .proto-контракты gRPC API
+certs/                                 # TLS-сертификаты для локального запуска и разработки
+cmd/client/                            # точка входа CLI-клиента
+cmd/server/                            # точка входа серверного приложения
+internal/app/client/                   # сборка зависимостей CLI-клиента
+internal/app/server/                   # сборка зависимостей сервера
+internal/auth/                         # аутентификация, хеширование паролей, JWT
+internal/buildinfo/                    # версия и дата сборки клиентского бинарного файла
+internal/config/                       # конфигурация клиента и сервера
+internal/crypto/                       # клиентское шифрование, вычисление ключей, работа с KEK/DEK
+internal/domain/model/                 # доменные модели, типы и ошибки
+internal/logging/                      # настройка логирования
+internal/pb/                           # сгенерированный код из .proto-файлов
+internal/storage/postgres/             # реализация хранения данных в PostgreSQL
+internal/transport/grpcclient/         # gRPC-клиент для обращения CLI к серверу
+internal/transport/grpcserver/         # gRPC-сервер и обработчики транспортного уровня
+internal/transport/grpcserver/service/ # реализации gRPC-сервисов приложения
+internal/usecase/                      # сценарии использования приложения и минимальные интерфейсы их зависимостей
+migrations/                            # SQL-миграции базы данных
 ```
 
-Unit-тесты размещаются рядом с тестируемыми пакетами. Папка `test/` используется только для тестов, которым требуется несколько компонентов системы одновременно.
+Unit-тесты и интеграционные тесты размещаются рядом с тестируемыми пакетами. Интеграционные тесты, которым нужен PostgreSQL, включаются build tag `integration` и запускаются через `make test-integration`.
 
 ## Планируемый стек
 
 - Go;
 - gRPC для взаимодействия клиента и сервера;
+- Protocol Buffers edition 2023 с opaque Go API для транспортных контрактов;
 - PostgreSQL;
+- `goose` для SQL-миграций;
+- `koanf` для конфигурации;
 - S3-совместимое объектное хранилище, например MinIO;
 - AES-256-GCM для симметричного шифрования данных;
 - Argon2id для вычисления `KEK` из мастер-ключа;
