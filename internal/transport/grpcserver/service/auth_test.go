@@ -27,7 +27,7 @@ func (s *authUseCaseStub) Register(_ context.Context, in usecase.RegisterInput) 
 	return s.registerOutput, s.registerErr
 }
 
-// TestAuthService_Register_OK проверяет успешную регистрацию через gRPC-хэндлер.
+// TestAuthService_Register_OK проверяет успешную регистрацию через gRPC-обработчик.
 func TestAuthService_Register_OK(t *testing.T) {
 	// Arrange
 	uc := &authUseCaseStub{registerOutput: usecase.RegisterOutput{
