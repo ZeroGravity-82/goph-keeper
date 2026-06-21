@@ -19,14 +19,17 @@ func TestTransactor_WithinTransaction_Commit(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	tr := NewTransactor(db)
-	userRepo := NewUserRepository(db)
-	tokenRepo := NewRefreshTokenRepository(db)
+	tr, err := NewTransactor(db)
+	require.NoError(t, err)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
 	user := newTestUser(t, "tx-commit-user")
 	token := newTestRefreshToken(t, user.ID, "tx-commit-token", time.Now().UTC())
 
 	// Act
-	err := tr.WithinTransaction(ctx, func(ctx context.Context) error {
+	err = tr.WithinTransaction(ctx, func(ctx context.Context) error {
 		if err := userRepo.Create(ctx, user); err != nil {
 			return err
 		}
@@ -53,15 +56,18 @@ func TestTransactor_WithinTransaction_Rollback(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	tr := NewTransactor(db)
-	userRepo := NewUserRepository(db)
-	tokenRepo := NewRefreshTokenRepository(db)
+	tr, err := NewTransactor(db)
+	require.NoError(t, err)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
 	user := newTestUser(t, "tx-rollback-user")
 	token := newTestRefreshToken(t, user.ID, "tx-rollback-token", time.Now().UTC())
 	wantErr := errors.New("fail transaction")
 
 	// Act
-	err := tr.WithinTransaction(ctx, func(ctx context.Context) error {
+	err = tr.WithinTransaction(ctx, func(ctx context.Context) error {
 		if err := userRepo.Create(ctx, user); err != nil {
 			return err
 		}

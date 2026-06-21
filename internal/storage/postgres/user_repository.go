@@ -18,8 +18,11 @@ type UserRepository struct {
 }
 
 // NewUserRepository создает UserRepository на основе подключения к БД.
-func NewUserRepository(db *sqlx.DB) *UserRepository {
-	return &UserRepository{db: db}
+func NewUserRepository(db *sqlx.DB) (*UserRepository, error) {
+	if db == nil {
+		return nil, errors.New("database connection is not provided")
+	}
+	return &UserRepository{db: db}, nil
 }
 
 // Create сохраняет нового пользователя в БД.

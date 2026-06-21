@@ -25,11 +25,12 @@ func TestUserRepository_CreateAndGetByLogin(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	repo := NewUserRepository(db)
+	repo, err := NewUserRepository(db)
+	require.NoError(t, err)
 	u := newTestUser(t, "alice")
 
 	// Act
-	err := repo.Create(ctx, u)
+	err = repo.Create(ctx, u)
 
 	// Assert
 	require.NoError(t, err)
@@ -49,10 +50,11 @@ func TestUserRepository_GetByLogin_NotFound(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	repo := NewUserRepository(db)
+	repo, err := NewUserRepository(db)
+	require.NoError(t, err)
 
 	// Act
-	_, err := repo.GetByLogin(ctx, "missing-user")
+	_, err = repo.GetByLogin(ctx, "missing-user")
 
 	// Assert
 	require.Error(t, err)
@@ -64,14 +66,15 @@ func TestUserRepository_Create_DuplicateLogin(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	repo := NewUserRepository(db)
+	repo, err := NewUserRepository(db)
+	require.NoError(t, err)
 	u1 := newTestUser(t, "duplicate")
 	u2 := newTestUser(t, "duplicate")
 
 	require.NoError(t, repo.Create(ctx, u1))
 
 	// Act
-	err := repo.Create(ctx, u2)
+	err = repo.Create(ctx, u2)
 
 	// Assert
 	require.Error(t, err)

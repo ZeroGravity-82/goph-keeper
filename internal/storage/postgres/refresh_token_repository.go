@@ -20,8 +20,11 @@ type RefreshTokenRepository struct {
 }
 
 // NewRefreshTokenRepository создает RefreshTokenRepository на основе подключения к БД.
-func NewRefreshTokenRepository(db *sqlx.DB) *RefreshTokenRepository {
-	return &RefreshTokenRepository{db: db}
+func NewRefreshTokenRepository(db *sqlx.DB) (*RefreshTokenRepository, error) {
+	if db == nil {
+		return nil, errors.New("database connection is not provided")
+	}
+	return &RefreshTokenRepository{db: db}, nil
 }
 
 // Create сохраняет refresh-токен в БД.

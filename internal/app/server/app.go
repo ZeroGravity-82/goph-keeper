@@ -72,10 +72,22 @@ func buildAuthUseCase(db *sqlx.DB, jwtSecret string) (*usecase.AuthUseCase, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to create JWT manager: %w", err)
 	}
+	userRepo, err := postgres.NewUserRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user repository: %w", err)
+	}
+	refreshTokenRepo, err := postgres.NewRefreshTokenRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create refresh token repository: %w", err)
+	}
+	transactor, err := postgres.NewTransactor(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transactor: %w", err)
+	}
 	authUC, err := usecase.NewAuthUseCase(
-		postgres.NewUserRepository(db),
-		postgres.NewRefreshTokenRepository(db),
-		postgres.NewTransactor(db),
+		userRepo,
+		refreshTokenRepo,
+		transactor,
 		jwtManager,
 		refreshTokenTTL,
 	)

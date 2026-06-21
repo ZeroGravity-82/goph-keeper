@@ -20,15 +20,17 @@ func TestRefreshTokenRepository_CreateAndFindActiveByHash(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	userRepo := NewUserRepository(db)
-	tokenRepo := NewRefreshTokenRepository(db)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
 	user := newTestUser(t, "refresh-user")
 	token := newTestRefreshToken(t, user.ID, "active-token-hash", time.Now().UTC())
 
 	require.NoError(t, userRepo.Create(ctx, user))
 
 	// Act
-	err := tokenRepo.Create(ctx, token)
+	err = tokenRepo.Create(ctx, token)
 
 	// Assert
 	require.NoError(t, err)
@@ -48,10 +50,11 @@ func TestRefreshTokenRepository_FindActiveByHash_NotFound(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	tokenRepo := NewRefreshTokenRepository(db)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
 
 	// Act
-	_, err := tokenRepo.FindActiveByHash(ctx, "missing-token-hash", time.Now().UTC())
+	_, err = tokenRepo.FindActiveByHash(ctx, "missing-token-hash", time.Now().UTC())
 
 	// Assert
 	require.Error(t, err)
@@ -63,8 +66,10 @@ func TestRefreshTokenRepository_FindActiveByHash_Expired(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	userRepo := NewUserRepository(db)
-	tokenRepo := NewRefreshTokenRepository(db)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
 	user := newTestUser(t, "expired-token-user")
 	now := time.Now().UTC()
 	token := newTestRefreshToken(t, user.ID, "expired-token-hash", now.Add(-2*time.Hour))
@@ -74,7 +79,7 @@ func TestRefreshTokenRepository_FindActiveByHash_Expired(t *testing.T) {
 	require.NoError(t, tokenRepo.Create(ctx, token))
 
 	// Act
-	_, err := tokenRepo.FindActiveByHash(ctx, token.TokenHash, now)
+	_, err = tokenRepo.FindActiveByHash(ctx, token.TokenHash, now)
 
 	// Assert
 	require.Error(t, err)
@@ -86,8 +91,10 @@ func TestRefreshTokenRepository_Revoke(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	userRepo := NewUserRepository(db)
-	tokenRepo := NewRefreshTokenRepository(db)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
 	user := newTestUser(t, "revoked-token-user")
 	now := time.Now().UTC()
 	token := newTestRefreshToken(t, user.ID, "revoked-token-hash", now)
@@ -97,7 +104,7 @@ func TestRefreshTokenRepository_Revoke(t *testing.T) {
 	require.NoError(t, tokenRepo.Create(ctx, token))
 
 	// Act
-	err := tokenRepo.Revoke(ctx, token.ID, revokedAt)
+	err = tokenRepo.Revoke(ctx, token.ID, revokedAt)
 
 	// Assert
 	require.NoError(t, err)
@@ -111,10 +118,11 @@ func TestRefreshTokenRepository_Revoke_NotFound(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
-	tokenRepo := NewRefreshTokenRepository(db)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
 
 	// Act
-	err := tokenRepo.Revoke(ctx, uuid.New(), time.Now().UTC())
+	err = tokenRepo.Revoke(ctx, uuid.New(), time.Now().UTC())
 
 	// Assert
 	require.Error(t, err)

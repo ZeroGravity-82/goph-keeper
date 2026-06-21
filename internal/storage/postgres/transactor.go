@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -21,8 +22,11 @@ type Transactor struct {
 }
 
 // NewTransactor создает Transactor на основе подключения к БД.
-func NewTransactor(db *sqlx.DB) *Transactor {
-	return &Transactor{db: db}
+func NewTransactor(db *sqlx.DB) (*Transactor, error) {
+	if db == nil {
+		return nil, errors.New("database connection is not provided")
+	}
+	return &Transactor{db: db}, nil
 }
 
 // WithinTransaction выполняет fn внутри транзакции.
