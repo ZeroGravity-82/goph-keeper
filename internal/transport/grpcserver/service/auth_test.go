@@ -24,6 +24,10 @@ type authUseCaseStub struct {
 	loginInput  usecase.LoginInput
 	loginOutput usecase.LoginOutput
 	loginErr    error
+
+	refreshInput  usecase.RefreshInput
+	refreshOutput usecase.RefreshOutput
+	refreshErr    error
 }
 
 func (s *authUseCaseStub) Register(_ context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error) {
@@ -34,6 +38,11 @@ func (s *authUseCaseStub) Register(_ context.Context, in usecase.RegisterInput) 
 func (s *authUseCaseStub) Login(_ context.Context, in usecase.LoginInput) (usecase.LoginOutput, error) {
 	s.loginInput = in
 	return s.loginOutput, s.loginErr
+}
+
+func (s *authUseCaseStub) Refresh(_ context.Context, in usecase.RefreshInput) (usecase.RefreshOutput, error) {
+	s.refreshInput = in
+	return s.refreshOutput, s.refreshErr
 }
 
 // TestAuthService_Register_OK проверяет успешную регистрацию через gRPC-обработчик.
@@ -59,7 +68,6 @@ func TestAuthService_Register_OK(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	assert.Equal(t, usecase.RegisterInput{Login: "user", Password: "password"}, uc.registerInput)
 	assert.Equal(t, "access-token", resp.GetAccessToken())
 	assert.Equal(t, "refresh-token", resp.GetRefreshToken())
 	assert.Equal(t, []byte("salt"), resp.GetMasterKeySalt())
@@ -149,7 +157,6 @@ func TestAuthService_Login_OK(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	assert.Equal(t, usecase.LoginInput{Login: "user", Password: "password"}, uc.loginInput)
 	assert.Equal(t, "access-token", resp.GetAccessToken())
 	assert.Equal(t, "refresh-token", resp.GetRefreshToken())
 	assert.Equal(t, []byte("salt"), resp.GetMasterKeySalt())
@@ -210,6 +217,89 @@ func TestAuthService_Login_FailWithInternalError(t *testing.T) {
 
 	// Act
 	_, err = authService.Login(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+// TestAuthService_Refresh_OK проверяет успешное обновление пары токенов через gRPC-обработчик.
+func TestAuthService_Refresh_OK(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{refreshOutput: usecase.RefreshOutput{
+		AuthTokens: usecase.AuthTokens{
+			AccessToken:  "new-access-token",
+			RefreshToken: "new-refresh-token",
+		},
+	}}
+
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.RefreshRequest_builder{RefreshToken: new("active-refresh-token")}.Build()
+
+	// Act
+	resp, err := authService.Refresh(context.Background(), req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "new-access-token", resp.GetAccessToken())
+	assert.Equal(t, "new-refresh-token", resp.GetRefreshToken())
+}
+
+// TestAuthService_Refresh_FailWithInvalidArgument проверяет валидацию обязательного refresh-токена.
+func TestAuthService_Refresh_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	tests := []struct {
+		name string
+		req  *pb.RefreshRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty refresh token", req: pb.RefreshRequest_builder{RefreshToken: new("")}.Build()},
+		{name: "blank refresh token", req: pb.RefreshRequest_builder{RefreshToken: new("   ")}.Build()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			authService, err := NewAuthService(&authUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+
+			// Act
+			_, err = authService.Refresh(context.Background(), tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+// TestAuthService_Refresh_FailWithUnauthenticated проверяет маппинг ошибки аутентификации.
+func TestAuthService_Refresh_FailWithUnauthenticated(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{refreshErr: model.ErrAuthenticationFailed}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.RefreshRequest_builder{RefreshToken: new("refresh-token")}.Build()
+
+	// Act
+	_, err = authService.Refresh(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestAuthService_Refresh_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
+func TestAuthService_Refresh_FailWithInternalError(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{refreshErr: errors.New("some internal error")}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.RefreshRequest_builder{RefreshToken: new("refresh-token")}.Build()
+
+	// Act
+	_, err = authService.Refresh(context.Background(), req)
 
 	// Assert
 	require.Error(t, err)

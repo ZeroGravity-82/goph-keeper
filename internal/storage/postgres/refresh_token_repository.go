@@ -50,7 +50,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 	return nil
 }
 
-// FindActiveByHash возвращает активный refresh-токен по хешу.
+// FindActiveByHash возвращает активный refresh-токен по хешу и блокирует найденную строку до конца транзакции.
 //
 // Активным считается токен, который не отозван и срок действия которого еще не истек.
 // Если активный токен не найден, возвращает model.ErrRefreshTokenNotFound.
@@ -63,6 +63,7 @@ func (r *RefreshTokenRepository) FindActiveByHash(
 SELECT id, app_user_id, token_hash, issued_at, expires_at, revoked_at
 FROM refresh_token
 WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > $2
+FOR UPDATE
 `
 	var token dto.RefreshToken
 	exec := executorFromContext(ctx, r.db)

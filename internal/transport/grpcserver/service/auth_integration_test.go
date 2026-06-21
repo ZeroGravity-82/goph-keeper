@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/auth"
+	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/logging"
 	"zerogravity-82/goph-keeper/internal/pb"
 	"zerogravity-82/goph-keeper/internal/storage/postgres"
@@ -169,6 +171,97 @@ func TestAuthService_Login_Integration_UnknownUser(t *testing.T) {
 
 	// Act
 	_, err := authService.Login(ctx, loginReq)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestAuthService_Refresh_Integration_OK проверяет ротацию refresh-токена через gRPC-обработчик и реальные зависимости.
+func TestAuthService_Refresh_Integration_OK(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, tokenManager, userRepo, tokenRepo := newIntegrationAuthService(t, db)
+
+	registerReq := pb.RegisterRequest_builder{
+		Login:    new("refresh-user"),
+		Password: new("password"),
+	}.Build()
+	registerResp, err := authService.Register(ctx, registerReq)
+	require.NoError(t, err)
+
+	refreshReq := pb.RefreshRequest_builder{RefreshToken: new(registerResp.GetRefreshToken())}.Build()
+
+	// Act
+	refreshResp, err := authService.Refresh(ctx, refreshReq)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotEmpty(t, refreshResp.GetAccessToken())
+	assert.NotEmpty(t, refreshResp.GetRefreshToken())
+	assert.NotEqual(t, registerResp.GetRefreshToken(), refreshResp.GetRefreshToken())
+
+	user, err := userRepo.GetByLogin(ctx, "refresh-user")
+	require.NoError(t, err)
+
+	claims, err := tokenManager.ParseAccessToken(refreshResp.GetAccessToken())
+	require.NoError(t, err)
+	assert.Equal(t, user.ID.String(), claims.Subject)
+
+	_, err = tokenRepo.FindActiveByHash(
+		ctx,
+		auth.HashRefreshToken(registerResp.GetRefreshToken()),
+		time.Now().UTC(),
+	)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+
+	storedRefreshToken, err := tokenRepo.FindActiveByHash(
+		ctx,
+		auth.HashRefreshToken(refreshResp.GetRefreshToken()),
+		time.Now().UTC(),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, storedRefreshToken.UserID)
+}
+
+// TestAuthService_Refresh_Integration_ReusedToken проверяет ошибку при повторном использовании refresh-токена.
+func TestAuthService_Refresh_Integration_ReusedToken(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, _, _, _ := newIntegrationAuthService(t, db)
+
+	registerReq := pb.RegisterRequest_builder{
+		Login:    new("reused-refresh"),
+		Password: new("password"),
+	}.Build()
+	registerResp, err := authService.Register(ctx, registerReq)
+	require.NoError(t, err)
+
+	refreshReq := pb.RefreshRequest_builder{RefreshToken: new(registerResp.GetRefreshToken())}.Build()
+	_, err = authService.Refresh(ctx, refreshReq)
+	require.NoError(t, err)
+
+	// Act
+	_, err = authService.Refresh(ctx, refreshReq)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestAuthService_Refresh_Integration_UnknownToken проверяет ошибку при неизвестном refresh-токене.
+func TestAuthService_Refresh_Integration_UnknownToken(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, _, _, _ := newIntegrationAuthService(t, db)
+	refreshReq := pb.RefreshRequest_builder{RefreshToken: new("unknown-refresh-token")}.Build()
+
+	// Act
+	_, err := authService.Refresh(ctx, refreshReq)
 
 	// Assert
 	require.Error(t, err)

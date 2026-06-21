@@ -38,6 +38,14 @@ type LoginOutput struct {
 	MasterKeySalt []byte
 }
 
+type RefreshInput struct {
+	RefreshToken string
+}
+
+type RefreshOutput struct {
+	AuthTokens AuthTokens
+}
+
 type userRepository interface {
 	Create(ctx context.Context, u model.User) error
 	GetByLogin(ctx context.Context, login string) (model.User, error)
@@ -62,7 +70,7 @@ type AuthUseCase struct {
 	userRepo         userRepository
 	refreshTokenRepo refreshTokenRepository
 	transactor       transactor
-	tokens           sessionTokenIssuer
+	tokenIssuer      sessionTokenIssuer
 	refreshTokenTTL  time.Duration
 }
 
@@ -71,7 +79,7 @@ func NewAuthUseCase(
 	userRepo userRepository,
 	refreshTokenRepo refreshTokenRepository,
 	transactor transactor,
-	tokens sessionTokenIssuer,
+	tokenIssuer sessionTokenIssuer,
 	refreshTokenTTL time.Duration,
 ) (*AuthUseCase, error) {
 	if userRepo == nil {
@@ -83,7 +91,7 @@ func NewAuthUseCase(
 	if transactor == nil {
 		return nil, errors.New("transactor is not provided")
 	}
-	if tokens == nil {
+	if tokenIssuer == nil {
 		return nil, errors.New("token issuer is not provided")
 	}
 	if refreshTokenTTL <= 0 {
@@ -94,7 +102,7 @@ func NewAuthUseCase(
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		transactor:       transactor,
-		tokens:           tokens,
+		tokenIssuer:      tokenIssuer,
 		refreshTokenTTL:  refreshTokenTTL,
 	}, nil
 }
@@ -181,12 +189,51 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (LoginOutput, e
 	return LoginOutput{AuthTokens: tokens, MasterKeySalt: u.MasterKeySalt}, nil
 }
 
+// Refresh обновляет пару токенов по активному refresh-токену.
+func (uc *AuthUseCase) Refresh(ctx context.Context, in RefreshInput) (RefreshOutput, error) {
+	now := time.Now().UTC()
+	activeRefreshHash := auth.HashRefreshToken(in.RefreshToken)
+
+	var tokens AuthTokens
+	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		activeRefreshToken, err := uc.refreshTokenRepo.FindActiveByHash(ctx, activeRefreshHash, now)
+		if err != nil {
+			if errors.Is(err, model.ErrRefreshTokenNotFound) {
+				return model.ErrAuthenticationFailed
+			}
+			return fmt.Errorf("failed to find active refresh token: %w", err)
+		}
+
+		newTokens, newRefreshToken, err := uc.issueTokens(activeRefreshToken.UserID, now)
+		if err != nil {
+			return fmt.Errorf("failed to issue tokens: %w", err)
+		}
+
+		if err = uc.refreshTokenRepo.Revoke(ctx, activeRefreshToken.ID, now); err != nil {
+			return fmt.Errorf("failed to revoke refresh token: %w", err)
+		}
+		if err = uc.refreshTokenRepo.Create(ctx, newRefreshToken); err != nil {
+			return fmt.Errorf("failed to persist refresh token: %w", err)
+		}
+
+		tokens = newTokens
+		return nil
+	}); err != nil {
+		if errors.Is(err, model.ErrAuthenticationFailed) {
+			return RefreshOutput{}, model.ErrAuthenticationFailed
+		}
+		return RefreshOutput{}, fmt.Errorf("failed to refresh tokens: %w", err)
+	}
+
+	return RefreshOutput{AuthTokens: tokens}, nil
+}
+
 func (uc *AuthUseCase) issueTokens(userID uuid.UUID, now time.Time) (AuthTokens, model.RefreshToken, error) {
-	access, err := uc.tokens.IssueAccessToken(userID)
+	access, err := uc.tokenIssuer.IssueAccessToken(userID)
 	if err != nil {
 		return AuthTokens{}, model.RefreshToken{}, err
 	}
-	refresh, err := uc.tokens.GenerateRefreshToken()
+	refresh, err := uc.tokenIssuer.GenerateRefreshToken()
 	if err != nil {
 		return AuthTokens{}, model.RefreshToken{}, err
 	}

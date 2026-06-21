@@ -18,6 +18,7 @@ import (
 type authUseCase interface {
 	Register(ctx context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error)
 	Login(ctx context.Context, in usecase.LoginInput) (usecase.LoginOutput, error)
+	Refresh(ctx context.Context, in usecase.RefreshInput) (usecase.RefreshOutput, error)
 }
 
 // AuthService реализует gRPC-сервис аутентификации.
@@ -87,6 +88,26 @@ func (s *AuthService) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Logi
 	}.Build(), nil
 }
 
+// Refresh обновляет пару токенов по refresh-токену.
+func (s *AuthService) Refresh(ctx context.Context, req *pb.RefreshRequest) (*pb.RefreshResponse, error) {
+	if err := validateRefreshRequest(req); err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.Refresh(ctx, usecase.RefreshInput{RefreshToken: req.GetRefreshToken()})
+	if err != nil {
+		if !isExpectedAuthError(err) {
+			s.logger.Error("failed to refresh tokens", slog.Any("err", err))
+		}
+		return nil, authErrorToStatus(err)
+	}
+
+	return pb.RefreshResponse_builder{
+		AccessToken:  &out.AuthTokens.AccessToken,
+		RefreshToken: &out.AuthTokens.RefreshToken,
+	}.Build(), nil
+}
+
 func validateRegisterRequest(req *pb.RegisterRequest) error {
 	if req == nil {
 		return status.Error(codes.InvalidArgument, "request is required")
@@ -99,6 +120,16 @@ func validateLoginRequest(req *pb.LoginRequest) error {
 		return status.Error(codes.InvalidArgument, "request is required")
 	}
 	return validateCredentials(req.GetLogin(), req.GetPassword())
+}
+
+func validateRefreshRequest(req *pb.RefreshRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "request is required")
+	}
+	if strings.TrimSpace(req.GetRefreshToken()) == "" {
+		return status.Error(codes.InvalidArgument, "refresh token is required")
+	}
+	return nil
 }
 
 func validateCredentials(login, password string) error {
