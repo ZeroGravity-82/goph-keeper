@@ -128,20 +128,3 @@ func TestRefreshTokenRepository_Revoke_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
 }
-
-func newTestRefreshToken(t *testing.T, userID uuid.UUID, tokenHash string, issuedAt time.Time) model.RefreshToken {
-	t.Helper()
-
-	id, err := uuid.NewV7()
-	require.NoError(t, err)
-	issuedAt = issuedAt.UTC().Truncate(time.Microsecond)
-
-	return model.RefreshToken{
-		ID:        id,
-		UserID:    userID,
-		TokenHash: tokenHash,
-		IssuedAt:  issuedAt,
-		ExpiresAt: issuedAt.Add(time.Hour),
-		RevokedAt: nil,
-	}
-}
