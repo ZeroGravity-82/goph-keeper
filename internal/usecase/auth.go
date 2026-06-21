@@ -28,6 +28,16 @@ type RegisterOutput struct {
 	MasterKeySalt []byte
 }
 
+type LoginInput struct {
+	Login    string
+	Password string
+}
+
+type LoginOutput struct {
+	AuthTokens    AuthTokens
+	MasterKeySalt []byte
+}
+
 type userRepository interface {
 	Create(ctx context.Context, u model.User) error
 	GetByLogin(ctx context.Context, login string) (model.User, error)
@@ -142,6 +152,33 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 	}
 
 	return RegisterOutput{AuthTokens: tokens, MasterKeySalt: salt}, nil
+}
+
+// Login аутентифицирует пользователя и возвращает пару токенов (access/refresh) и соль для мастер-ключа.
+func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (LoginOutput, error) {
+	u, err := uc.userRepo.GetByLogin(ctx, in.Login)
+	if err != nil {
+		if errors.Is(err, model.ErrUserNotFound) {
+			return LoginOutput{}, model.ErrAuthenticationFailed
+		}
+		return LoginOutput{}, fmt.Errorf("failed to get user by login: %w", err)
+	}
+
+	if err = auth.CheckPasswordHash(in.Password, u.PasswordHash); err != nil {
+		return LoginOutput{}, model.ErrAuthenticationFailed
+	}
+
+	now := time.Now().UTC()
+	tokens, rt, err := uc.issueTokens(u.ID, now)
+	if err != nil {
+		return LoginOutput{}, fmt.Errorf("failed to issue tokens: %w", err)
+	}
+
+	if err = uc.refreshTokenRepo.Create(ctx, rt); err != nil {
+		return LoginOutput{}, fmt.Errorf("failed to save login session: %w", err)
+	}
+
+	return LoginOutput{AuthTokens: tokens, MasterKeySalt: u.MasterKeySalt}, nil
 }
 
 func (uc *AuthUseCase) issueTokens(userID uuid.UUID, now time.Time) (AuthTokens, model.RefreshToken, error) {

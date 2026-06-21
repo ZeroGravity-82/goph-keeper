@@ -17,6 +17,7 @@ import (
 
 type authUseCase interface {
 	Register(ctx context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error)
+	Login(ctx context.Context, in usecase.LoginInput) (usecase.LoginOutput, error)
 }
 
 // AuthService реализует gRPC-сервис аутентификации.
@@ -49,7 +50,7 @@ func (s *AuthService) Register(ctx context.Context, req *pb.RegisterRequest) (*p
 		Password: req.GetPassword(),
 	})
 	if err != nil {
-		if !errors.Is(err, model.ErrLoginAlreadyTaken) {
+		if !isExpectedAuthError(err) {
 			s.logger.Error("failed to register user", slog.Any("err", err))
 		}
 		return nil, authErrorToStatus(err)
@@ -62,14 +63,49 @@ func (s *AuthService) Register(ctx context.Context, req *pb.RegisterRequest) (*p
 	}.Build(), nil
 }
 
+// Login аутентифицирует пользователя и возвращает пару токенов и соль мастер-ключа.
+func (s *AuthService) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
+	if err := validateLoginRequest(req); err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.Login(ctx, usecase.LoginInput{
+		Login:    req.GetLogin(),
+		Password: req.GetPassword(),
+	})
+	if err != nil {
+		if !isExpectedAuthError(err) {
+			s.logger.Error("failed to login user", slog.Any("err", err))
+		}
+		return nil, authErrorToStatus(err)
+	}
+
+	return pb.LoginResponse_builder{
+		AccessToken:   &out.AuthTokens.AccessToken,
+		RefreshToken:  &out.AuthTokens.RefreshToken,
+		MasterKeySalt: out.MasterKeySalt,
+	}.Build(), nil
+}
+
 func validateRegisterRequest(req *pb.RegisterRequest) error {
 	if req == nil {
 		return status.Error(codes.InvalidArgument, "request is required")
 	}
-	if strings.TrimSpace(req.GetLogin()) == "" {
+	return validateCredentials(req.GetLogin(), req.GetPassword())
+}
+
+func validateLoginRequest(req *pb.LoginRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "request is required")
+	}
+	return validateCredentials(req.GetLogin(), req.GetPassword())
+}
+
+func validateCredentials(login, password string) error {
+	if strings.TrimSpace(login) == "" {
 		return status.Error(codes.InvalidArgument, "login is required")
 	}
-	if req.GetPassword() == "" {
+	if password == "" {
 		return status.Error(codes.InvalidArgument, "password is required")
 	}
 	return nil
@@ -79,5 +115,12 @@ func authErrorToStatus(err error) error {
 	if errors.Is(err, model.ErrLoginAlreadyTaken) {
 		return status.Error(codes.AlreadyExists, "login already taken")
 	}
+	if errors.Is(err, model.ErrAuthenticationFailed) {
+		return status.Error(codes.Unauthenticated, "authentication failed")
+	}
 	return status.Error(codes.Internal, "internal error")
+}
+
+func isExpectedAuthError(err error) bool {
+	return errors.Is(err, model.ErrLoginAlreadyTaken) || errors.Is(err, model.ErrAuthenticationFailed)
 }

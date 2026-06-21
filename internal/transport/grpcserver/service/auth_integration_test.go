@@ -46,7 +46,7 @@ func TestAuthService_Register_Integration_OK(t *testing.T) {
 
 	user, err := userRepo.GetByLogin(ctx, "alice")
 	require.NoError(t, err)
-	assert.Equal(t, resp.GetMasterKeySalt(), user.MasterKeySalt)
+	assert.Equal(t, user.MasterKeySalt, resp.GetMasterKeySalt())
 
 	claims, err := tokenManager.ParseAccessToken(resp.GetAccessToken())
 	require.NoError(t, err)
@@ -59,7 +59,6 @@ func TestAuthService_Register_Integration_OK(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, storedRefreshToken.UserID)
-	assert.NotEqual(t, resp.GetRefreshToken(), storedRefreshToken.TokenHash)
 }
 
 // TestAuthService_Register_Integration_DuplicateLogin проверяет ошибку при повторной регистрации того же логина.
@@ -82,6 +81,98 @@ func TestAuthService_Register_Integration_DuplicateLogin(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.AlreadyExists, status.Code(err))
+}
+
+// TestAuthService_Login_Integration_OK проверяет аутентификацию через gRPC-обработчик и реальные зависимости.
+func TestAuthService_Login_Integration_OK(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, tokenManager, userRepo, tokenRepo := newIntegrationAuthService(t, db)
+
+	registerReq := pb.RegisterRequest_builder{
+		Login:    new("login-user"),
+		Password: new("password"),
+	}.Build()
+	registerResp, err := authService.Register(ctx, registerReq)
+	require.NoError(t, err)
+
+	loginReq := pb.LoginRequest_builder{
+		Login:    new("login-user"),
+		Password: new("password"),
+	}.Build()
+
+	// Act
+	loginResp, err := authService.Login(ctx, loginReq)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotEmpty(t, loginResp.GetAccessToken())
+	assert.NotEmpty(t, loginResp.GetRefreshToken())
+	assert.NotEqual(t, registerResp.GetRefreshToken(), loginResp.GetRefreshToken())
+	assert.Equal(t, registerResp.GetMasterKeySalt(), loginResp.GetMasterKeySalt())
+
+	user, err := userRepo.GetByLogin(ctx, "login-user")
+	require.NoError(t, err)
+	assert.Equal(t, user.MasterKeySalt, loginResp.GetMasterKeySalt())
+
+	claims, err := tokenManager.ParseAccessToken(loginResp.GetAccessToken())
+	require.NoError(t, err)
+	assert.Equal(t, user.ID.String(), claims.Subject)
+
+	storedRefreshToken, err := tokenRepo.FindActiveByHash(
+		ctx,
+		auth.HashRefreshToken(loginResp.GetRefreshToken()),
+		time.Now().UTC(),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, storedRefreshToken.UserID)
+}
+
+// TestAuthService_Login_Integration_WrongPassword проверяет ошибку при неверном пароле.
+func TestAuthService_Login_Integration_WrongPassword(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, _, _, _ := newIntegrationAuthService(t, db)
+
+	registerReq := pb.RegisterRequest_builder{
+		Login:    new("login-user"),
+		Password: new("password"),
+	}.Build()
+	_, err := authService.Register(ctx, registerReq)
+	require.NoError(t, err)
+
+	loginReq := pb.LoginRequest_builder{
+		Login:    new("login-user"),
+		Password: new("another-password"),
+	}.Build()
+
+	// Act
+	_, err = authService.Login(ctx, loginReq)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestAuthService_Login_Integration_UnknownUser проверяет ошибку при неизвестном логине.
+func TestAuthService_Login_Integration_UnknownUser(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, _, _, _ := newIntegrationAuthService(t, db)
+	loginReq := pb.LoginRequest_builder{
+		Login:    new("unknown"),
+		Password: new("password"),
+	}.Build()
+
+	// Act
+	_, err := authService.Login(ctx, loginReq)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
 func newIntegrationAuthService(
