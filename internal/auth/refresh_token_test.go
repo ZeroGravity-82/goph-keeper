@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestHashRefreshToken проверяет вычисление SHA-256 хеша refresh-токена в hex-представлении.
@@ -44,4 +46,22 @@ func TestHashRefreshToken_DifferentTokens(t *testing.T) {
 
 	// Assert
 	assert.NotEqual(t, firstHash, secondHash)
+}
+
+// TestGenerateRefreshToken проверяет генерацию refresh-токена.
+func TestGenerateRefreshToken(t *testing.T) {
+	// Arrange
+	m, err := NewTokenManager("secret", 15*time.Minute)
+	require.NoError(t, err)
+
+	// Act
+	t1, err := m.GenerateRefreshToken()
+	require.NoError(t, err)
+	t2, err := m.GenerateRefreshToken()
+	require.NoError(t, err)
+
+	// Assert
+	assert.NotEmpty(t, t1)
+	assert.NotEmpty(t, t2)
+	assert.NotEqual(t, t1, t2)
 }

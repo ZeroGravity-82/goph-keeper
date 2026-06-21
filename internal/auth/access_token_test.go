@@ -10,42 +10,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNewJWTManager проверяет создание JWTManager и валидацию входных параметров.
-func TestNewJWTManager(t *testing.T) {
+// TestNewTokenManager проверяет создание TokenManager и валидацию входных параметров.
+func TestNewTokenManager(t *testing.T) {
 	// Arrange
 	tests := []struct {
-		name           string
-		secret         string
-		accessTokenTTL time.Duration
-		wantJWTManager JWTManager
-		wantErr        bool
+		name             string
+		secret           string
+		accessTokenTTL   time.Duration
+		wantTokenManager TokenManager
+		wantErr          bool
 	}{
 		{
-			name:           "fail with empty secret",
-			secret:         "",
+			name:             "fail with empty secret",
+			secret:           "",
+			accessTokenTTL:   15 * time.Minute,
+			wantTokenManager: TokenManager{},
+			wantErr:          true,
+		},
+		{
+			name:             "fail with zero access token TTL",
+			secret:           "secret",
+			accessTokenTTL:   0,
+			wantTokenManager: TokenManager{},
+			wantErr:          true,
+		},
+		{
+			name:             "fail with negative access token TTL",
+			secret:           "secret",
+			accessTokenTTL:   -15 * time.Minute,
+			wantTokenManager: TokenManager{},
+			wantErr:          true,
+		},
+		{
+			name:           "can create token manager",
+			secret:         "secret",
 			accessTokenTTL: 15 * time.Minute,
-			wantJWTManager: JWTManager{},
-			wantErr:        true,
-		},
-		{
-			name:           "fail with zero access token TTL",
-			secret:         "secret",
-			accessTokenTTL: 0,
-			wantJWTManager: JWTManager{},
-			wantErr:        true,
-		},
-		{
-			name:           "fail with negative access token TTL",
-			secret:         "secret",
-			accessTokenTTL: -15 * time.Minute,
-			wantJWTManager: JWTManager{},
-			wantErr:        true,
-		},
-		{
-			name:           "can create JWT manager",
-			secret:         "secret",
-			accessTokenTTL: 15 * time.Minute,
-			wantJWTManager: JWTManager{
+			wantTokenManager: TokenManager{
 				secret:         []byte("secret"),
 				accessTokenTTL: 15 * time.Minute,
 			},
@@ -56,7 +56,7 @@ func TestNewJWTManager(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Act
-			m, err := NewJWTManager(tt.secret, tt.accessTokenTTL)
+			m, err := NewTokenManager(tt.secret, tt.accessTokenTTL)
 
 			// Assert
 			if tt.wantErr {
@@ -64,7 +64,7 @@ func TestNewJWTManager(t *testing.T) {
 				assert.Nil(t, m)
 			} else {
 				require.NoError(t, err)
-				assert.Equal(t, tt.wantJWTManager, *m)
+				assert.Equal(t, tt.wantTokenManager, *m)
 			}
 
 		})
@@ -74,7 +74,7 @@ func TestNewJWTManager(t *testing.T) {
 // TestIssueAndParseAccessToken_OK проверяет выпуск access-токена и последующий разбор claims.
 func TestIssueAndParseAccessToken_OK(t *testing.T) {
 	// Arrange
-	m, err := NewJWTManager("secret", 15*time.Minute)
+	m, err := NewTokenManager("secret", 15*time.Minute)
 	require.NoError(t, err)
 	userID, err := uuid.NewV7()
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestIssueAndParseAccessToken_OK(t *testing.T) {
 // TestParseAccessToken_FailWithInvalidToken проверяет ошибку при разборе некорректного токена.
 func TestParseAccessToken_FailWithInvalidToken(t *testing.T) {
 	// Arrange
-	m, err := NewJWTManager("secret", 15*time.Minute)
+	m, err := NewTokenManager("secret", 15*time.Minute)
 	require.NoError(t, err)
 
 	// Act
@@ -111,9 +111,9 @@ func TestParseAccessToken_FailWithInvalidToken(t *testing.T) {
 // TestParseAccessToken_FailWithWrongSecret проверяет ошибку, если токен подписан другим секретом.
 func TestParseAccessToken_FailWithWrongSecret(t *testing.T) {
 	// Arrange
-	m1, err := NewJWTManager("secret-1", 15*time.Minute)
+	m1, err := NewTokenManager("secret-1", 15*time.Minute)
 	require.NoError(t, err)
-	m2, err := NewJWTManager("secret-2", 15*time.Minute)
+	m2, err := NewTokenManager("secret-2", 15*time.Minute)
 	require.NoError(t, err)
 	userID, err := uuid.NewV7()
 	require.NoError(t, err)
@@ -132,7 +132,7 @@ func TestParseAccessToken_FailWithWrongSecret(t *testing.T) {
 // TestParseAccessToken_FailWithExpiredToken проверяет ошибку при разборе истекшего токена.
 func TestParseAccessToken_FailWithExpiredToken(t *testing.T) {
 	// Arrange
-	m, err := NewJWTManager("secret", 1*time.Millisecond)
+	m, err := NewTokenManager("secret", 1*time.Millisecond)
 	require.NoError(t, err)
 	userID, err := uuid.NewV7()
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestParseAccessToken_FailWithExpiredToken(t *testing.T) {
 // TestParseAccessToken_FailWithRejectedNonHMACAlg проверяет отклонение токена с неподдерживаемым алгоритмом подписи.
 func TestParseAccessToken_FailWithRejectedNonHMACAlg(t *testing.T) {
 	// Arrange
-	m, err := NewJWTManager("secret", 15*time.Minute)
+	m, err := NewTokenManager("secret", 15*time.Minute)
 	require.NoError(t, err)
 
 	claims := AccessClaims{RegisteredClaims: jwt.RegisteredClaims{Subject: "user-123"}}
@@ -169,22 +169,4 @@ func TestParseAccessToken_FailWithRejectedNonHMACAlg(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrInvalidToken)
-}
-
-// TestGenerateRefreshToken проверяет генерацию refresh-токена.
-func TestGenerateRefreshToken(t *testing.T) {
-	// Arrange
-	m, err := NewJWTManager("secret", 15*time.Minute)
-	require.NoError(t, err)
-
-	// Act
-	t1, err := m.GenerateRefreshToken()
-	require.NoError(t, err)
-	t2, err := m.GenerateRefreshToken()
-	require.NoError(t, err)
-
-	// Assert
-	assert.NotEmpty(t, t1)
-	assert.NotEmpty(t, t2)
-	assert.NotEqual(t, t1, t2)
 }

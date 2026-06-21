@@ -68,9 +68,9 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 }
 
 func buildAuthUseCase(db *sqlx.DB, jwtSecret string) (*usecase.AuthUseCase, error) {
-	jwtManager, err := auth.NewJWTManager(jwtSecret, accessTokenTTL)
+	tokenManager, err := auth.NewTokenManager(jwtSecret, accessTokenTTL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create JWT manager: %w", err)
+		return nil, fmt.Errorf("failed to create token manager: %w", err)
 	}
 	userRepo, err := postgres.NewUserRepository(db)
 	if err != nil {
@@ -88,7 +88,7 @@ func buildAuthUseCase(db *sqlx.DB, jwtSecret string) (*usecase.AuthUseCase, erro
 		userRepo,
 		refreshTokenRepo,
 		transactor,
-		jwtManager,
+		tokenManager,
 		refreshTokenTTL,
 	)
 	if err != nil {

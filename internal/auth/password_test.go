@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHashPassword_Empty проверяет ошибку при попытке хэшировать пустой пароль.
+// TestHashPassword_Empty проверяет ошибку при попытке хешировать пустой пароль.
 func TestHashPassword_Empty(t *testing.T) {
 	// Arrange
 	password := ""
@@ -19,7 +19,7 @@ func TestHashPassword_Empty(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestHashPassword проверяет генерацию хэша пароля.
+// TestHashPassword проверяет генерацию хеша пароля.
 func TestHashPassword(t *testing.T) {
 	// Arrange
 	tests := []struct {
@@ -56,7 +56,7 @@ func TestHashPassword(t *testing.T) {
 	}
 }
 
-// TestCheckPasswordHash проверяет валидацию пароля по сохраненному хэшу.
+// TestCheckPasswordHash проверяет валидацию пароля по сохраненному хешу.
 func TestCheckPasswordHash(t *testing.T) {
 	// Arrange
 	validPassword := "qwerty"

@@ -1,8 +1,6 @@
 package auth
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -16,26 +14,27 @@ var (
 	ErrInvalidToken = errors.New("invalid token")
 )
 
-// JWTManager выпускает и валидирует access JWT.
+// TokenManager выпускает и валидирует access JWT, а также генерирует криптографически стойкий непрозрачный
+// refresh-токен.
 //
-// Он использует подпись HMAC-SHA256 (HS256) с заданным секретом.
-type JWTManager struct {
+// Для JWT используется подпись HMAC-SHA256 (HS256) с заданным секретом.
+type TokenManager struct {
 	secret         []byte
 	accessTokenTTL time.Duration
 }
 
-// NewJWTManager создает JWTManager.
+// NewTokenManager создает TokenManager.
 //
 // secret используется для подписи/проверки токенов.
 // accessTokenTTL задает время жизни access-токена.
-func NewJWTManager(secret string, accessTokenTTL time.Duration) (*JWTManager, error) {
+func NewTokenManager(secret string, accessTokenTTL time.Duration) (*TokenManager, error) {
 	if secret == "" {
 		return nil, errors.New("JWT secret is empty")
 	}
 	if accessTokenTTL <= 0 {
 		return nil, errors.New("access token TTL must be positive")
 	}
-	return &JWTManager{secret: []byte(secret), accessTokenTTL: accessTokenTTL}, nil
+	return &TokenManager{secret: []byte(secret), accessTokenTTL: accessTokenTTL}, nil
 }
 
 // AccessClaims содержит стандартные зарегистрированные утверждения JWT.
@@ -48,7 +47,7 @@ type AccessClaims struct {
 // IssueAccessToken создает и подписывает новый access-токен для указанного userID.
 //
 // Возвращаемое значение — компактная строка JWT, подходящая для заголовка `Authorization: Bearer <token>`.
-func (m *JWTManager) IssueAccessToken(userID uuid.UUID) (string, error) {
+func (m *TokenManager) IssueAccessToken(userID uuid.UUID) (string, error) {
 	now := time.Now().UTC()
 	claims := AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -69,7 +68,7 @@ func (m *JWTManager) IssueAccessToken(userID uuid.UUID) (string, error) {
 // ParseAccessToken парсит и валидирует строку токена, после чего возвращает распарсенные утверждения.
 //
 // В случае любых ошибок парсинга/валидации/подписи возвращает ErrInvalidToken.
-func (m *JWTManager) ParseAccessToken(tokenString string) (*AccessClaims, error) {
+func (m *TokenManager) ParseAccessToken(tokenString string) (*AccessClaims, error) {
 	claims := &AccessClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if token.Method != jwt.SigningMethodHS256 {
@@ -85,17 +84,4 @@ func (m *JWTManager) ParseAccessToken(tokenString string) (*AccessClaims, error)
 		return nil, ErrInvalidToken
 	}
 	return claims, nil
-}
-
-// GenerateRefreshToken возвращает криптографически стойкий непрозрачный refresh-токен.
-//
-// Токен предполагается хранить на стороне клиента и обменивать на новый access-токен. Его необходимо считать секретом.
-func (m *JWTManager) GenerateRefreshToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("failed to generate refresh token: %w", err)
-	}
-
-	// URL-safe without padding.
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }

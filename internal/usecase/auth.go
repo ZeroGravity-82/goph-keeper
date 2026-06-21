@@ -43,7 +43,7 @@ type transactor interface {
 	WithinTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-type tokenIssuer interface {
+type sessionTokenIssuer interface {
 	IssueAccessToken(userID uuid.UUID) (string, error)
 	GenerateRefreshToken() (string, error)
 }
@@ -52,7 +52,7 @@ type AuthUseCase struct {
 	userRepo         userRepository
 	refreshTokenRepo refreshTokenRepository
 	transactor       transactor
-	tokens           tokenIssuer
+	tokens           sessionTokenIssuer
 	refreshTokenTTL  time.Duration
 }
 
@@ -61,7 +61,7 @@ func NewAuthUseCase(
 	userRepo userRepository,
 	refreshTokenRepo refreshTokenRepository,
 	transactor transactor,
-	tokens tokenIssuer,
+	tokens sessionTokenIssuer,
 	refreshTokenTTL time.Duration,
 ) (*AuthUseCase, error) {
 	if userRepo == nil {

@@ -7,7 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// HashPassword вычисляет bcrypt-хэш для пароля.
+// HashPassword вычисляет bcrypt-хеш для пароля.
 func HashPassword(password string) (string, error) {
 	if password == "" {
 		return "", errors.New("failed to hash empty password")
@@ -19,7 +19,7 @@ func HashPassword(password string) (string, error) {
 	return string(b), nil
 }
 
-// CheckPasswordHash сравнивает пароль с сохраненным bcrypt-хэшем.
+// CheckPasswordHash сравнивает пароль с сохраненным bcrypt-хешем.
 func CheckPasswordHash(password, passwordHash string) error {
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
 		return fmt.Errorf("invalid password: %w", err)
