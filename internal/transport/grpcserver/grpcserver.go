@@ -10,6 +10,9 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	"zerogravity-82/goph-keeper/internal/logging"
+	"zerogravity-82/goph-keeper/internal/pb"
 )
 
 const (
@@ -18,22 +21,38 @@ const (
 
 // GRPCServer описывает gRPC-сервер.
 type GRPCServer struct {
-	addr   string
-	creds  credentials.TransportCredentials
-	logger *slog.Logger
+	addr        string
+	creds       credentials.TransportCredentials
+	authService pb.AuthServer
+	logger      *slog.Logger
 }
 
 // NewGRPCServer создает новый GRPCServer.
 func NewGRPCServer(
 	addr string,
 	creds credentials.TransportCredentials,
+	authService pb.AuthServer,
 	logger *slog.Logger,
-) *GRPCServer {
-	return &GRPCServer{
-		addr:   addr,
-		creds:  creds,
-		logger: logger,
+) (*GRPCServer, error) {
+	if addr == "" {
+		return nil, errors.New("grpc server address is not provided")
 	}
+	if creds == nil {
+		return nil, errors.New("transport credentials are not provided")
+	}
+	if authService == nil {
+		return nil, errors.New("auth service is not provided")
+	}
+	if logger == nil {
+		logger = logging.NopLogger()
+	}
+
+	return &GRPCServer{
+		addr:        addr,
+		creds:       creds,
+		authService: authService,
+		logger:      logger,
+	}, nil
 }
 
 // Run запускает gRPC-сервер и блокируется, пока не отменен контекст или сервер не остановится с ошибкой.
@@ -43,6 +62,7 @@ func (s *GRPCServer) Run(ctx context.Context) error {
 		return fmt.Errorf("grpc server error: %w", err)
 	}
 	srv := grpc.NewServer(grpc.Creds(s.creds))
+	pb.RegisterAuthServer(srv, s.authService)
 
 	errCh := make(chan error, 1)
 	go func() {

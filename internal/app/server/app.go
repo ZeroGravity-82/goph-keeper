@@ -5,15 +5,25 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/credentials"
 
+	"zerogravity-82/goph-keeper/internal/auth"
 	"zerogravity-82/goph-keeper/internal/config"
 	"zerogravity-82/goph-keeper/internal/logging"
+	"zerogravity-82/goph-keeper/internal/storage/postgres"
 	"zerogravity-82/goph-keeper/internal/transport/grpcserver"
+	"zerogravity-82/goph-keeper/internal/transport/grpcserver/service"
+	"zerogravity-82/goph-keeper/internal/usecase"
+)
+
+const (
+	accessTokenTTL  = 15 * time.Minute // TODO вынести TTL в конфиг
+	refreshTokenTTL = 30 * 24 * time.Hour
 )
 
 // App инициализирует зависимости сервиса.
@@ -39,15 +49,56 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to load tls certificate: %w", err)
 	}
-	grpcSrv := buildGRPCServer(cfg.GRPCServerAddr, tlsCert, logger)
-
+	authUC, err := buildAuthUseCase(db, cfg.JWTSecret)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	authService, err := service.NewAuthService(authUC, logger)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to create auth service: %w", err)
+	}
+	grpcSrv, err := buildGRPCServer(cfg.GRPCServerAddr, tlsCert, authService, logger)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return &App{db: db, grpcSrv: grpcSrv, logger: logger}, nil
 }
 
-func buildGRPCServer(grpcServerAddr string, tlsCert tls.Certificate, logger *slog.Logger) *grpcserver.GRPCServer {
+func buildAuthUseCase(db *sqlx.DB, jwtSecret string) (*usecase.AuthUseCase, error) {
+	jwtManager, err := auth.NewJWTManager(jwtSecret, accessTokenTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JWT manager: %w", err)
+	}
+	authUC, err := usecase.NewAuthUseCase(
+		postgres.NewUserRepository(db),
+		postgres.NewRefreshTokenRepository(db),
+		postgres.NewTransactor(db),
+		jwtManager,
+		refreshTokenTTL,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create auth use case: %w", err)
+	}
+	return authUC, nil
+}
+
+func buildGRPCServer(
+	grpcServerAddr string,
+	tlsCert tls.Certificate,
+	authService *service.AuthService,
+	logger *slog.Logger,
+) (*grpcserver.GRPCServer, error) {
 	grpcTlsConfig := &tls.Config{Certificates: []tls.Certificate{tlsCert}}
 	grpcSrvCredentials := credentials.NewTLS(grpcTlsConfig)
-	return grpcserver.NewGRPCServer(grpcServerAddr, grpcSrvCredentials, logger)
+	server, err := grpcserver.NewGRPCServer(grpcServerAddr, grpcSrvCredentials, authService, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create grpc server: %w", err)
+	}
+
+	return server, nil
 }
 
 // Run применяет миграции БД и запускает gRPC-сервер.
