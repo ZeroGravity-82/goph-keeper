@@ -19,6 +19,7 @@ type authUseCase interface {
 	Register(ctx context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error)
 	Login(ctx context.Context, in usecase.LoginInput) (usecase.LoginOutput, error)
 	Refresh(ctx context.Context, in usecase.RefreshInput) (usecase.RefreshOutput, error)
+	Logout(ctx context.Context, in usecase.LogoutInput) error
 }
 
 // AuthService реализует gRPC-сервис аутентификации.
@@ -108,6 +109,22 @@ func (s *AuthService) Refresh(ctx context.Context, req *pb.RefreshRequest) (*pb.
 	}.Build(), nil
 }
 
+// Logout завершает пользовательскую сессию по refresh-токену.
+func (s *AuthService) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
+	if err := validateLogoutRequest(req); err != nil {
+		return nil, err
+	}
+
+	if err := s.uc.Logout(ctx, usecase.LogoutInput{RefreshToken: req.GetRefreshToken()}); err != nil {
+		if !isExpectedAuthError(err) {
+			s.logger.Error("failed to logout user", slog.Any("err", err))
+		}
+		return nil, authErrorToStatus(err)
+	}
+
+	return pb.LogoutResponse_builder{}.Build(), nil
+}
+
 func validateRegisterRequest(req *pb.RegisterRequest) error {
 	if req == nil {
 		return status.Error(codes.InvalidArgument, "request is required")
@@ -126,7 +143,18 @@ func validateRefreshRequest(req *pb.RefreshRequest) error {
 	if req == nil {
 		return status.Error(codes.InvalidArgument, "request is required")
 	}
-	if strings.TrimSpace(req.GetRefreshToken()) == "" {
+	return validateRefreshToken(req.GetRefreshToken())
+}
+
+func validateLogoutRequest(req *pb.LogoutRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "request is required")
+	}
+	return validateRefreshToken(req.GetRefreshToken())
+}
+
+func validateRefreshToken(refreshToken string) error {
+	if strings.TrimSpace(refreshToken) == "" {
 		return status.Error(codes.InvalidArgument, "refresh token is required")
 	}
 	return nil

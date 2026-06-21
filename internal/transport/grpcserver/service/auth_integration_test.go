@@ -268,6 +268,80 @@ func TestAuthService_Refresh_Integration_UnknownToken(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
+// TestAuthService_Logout_Integration_OK проверяет отзыв refresh-токена через gRPC-обработчик и реальные зависимости.
+func TestAuthService_Logout_Integration_OK(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, _, _, tokenRepo := newIntegrationAuthService(t, db)
+
+	registerReq := pb.RegisterRequest_builder{
+		Login:    new("logout-user"),
+		Password: new("password"),
+	}.Build()
+	registerResp, err := authService.Register(ctx, registerReq)
+	require.NoError(t, err)
+
+	logoutReq := pb.LogoutRequest_builder{RefreshToken: new(registerResp.GetRefreshToken())}.Build()
+
+	// Act
+	resp, err := authService.Logout(ctx, logoutReq)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+
+	_, err = tokenRepo.FindActiveByHash(
+		ctx,
+		auth.HashRefreshToken(registerResp.GetRefreshToken()),
+		time.Now().UTC(),
+	)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+}
+
+// TestAuthService_Logout_Integration_ReusedToken проверяет ошибку при повторном завершении той же сессии.
+func TestAuthService_Logout_Integration_ReusedToken(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, _, _, _ := newIntegrationAuthService(t, db)
+
+	registerReq := pb.RegisterRequest_builder{
+		Login:    new("reused-logout"),
+		Password: new("password"),
+	}.Build()
+	registerResp, err := authService.Register(ctx, registerReq)
+	require.NoError(t, err)
+
+	logoutReq := pb.LogoutRequest_builder{RefreshToken: new(registerResp.GetRefreshToken())}.Build()
+	_, err = authService.Logout(ctx, logoutReq)
+	require.NoError(t, err)
+
+	// Act
+	_, err = authService.Logout(ctx, logoutReq)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestAuthService_Logout_Integration_UnknownToken проверяет ошибку при неизвестном refresh-токене.
+func TestAuthService_Logout_Integration_UnknownToken(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	authService, _, _, _ := newIntegrationAuthService(t, db)
+	logoutReq := pb.LogoutRequest_builder{RefreshToken: new("unknown-refresh-token")}.Build()
+
+	// Act
+	_, err := authService.Logout(ctx, logoutReq)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
 func newIntegrationAuthService(
 	t *testing.T,
 	db *sqlx.DB,

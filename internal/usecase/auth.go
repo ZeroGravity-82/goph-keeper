@@ -46,6 +46,10 @@ type RefreshOutput struct {
 	AuthTokens AuthTokens
 }
 
+type LogoutInput struct {
+	RefreshToken string
+}
+
 type userRepository interface {
 	Create(ctx context.Context, u model.User) error
 	GetByLogin(ctx context.Context, login string) (model.User, error)
@@ -226,6 +230,35 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, in RefreshInput) (RefreshOut
 	}
 
 	return RefreshOutput{AuthTokens: tokens}, nil
+}
+
+// Logout завершает пользовательскую сессию, отзывая активный refresh-токен.
+func (uc *AuthUseCase) Logout(ctx context.Context, in LogoutInput) error {
+	now := time.Now().UTC()
+	activeRefreshHash := auth.HashRefreshToken(in.RefreshToken)
+
+	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		activeRefreshToken, err := uc.refreshTokenRepo.FindActiveByHash(ctx, activeRefreshHash, now)
+		if err != nil {
+			if errors.Is(err, model.ErrRefreshTokenNotFound) {
+				return model.ErrAuthenticationFailed
+			}
+			return fmt.Errorf("failed to find active refresh token: %w", err)
+		}
+
+		if err = uc.refreshTokenRepo.Revoke(ctx, activeRefreshToken.ID, now); err != nil {
+			return fmt.Errorf("failed to revoke refresh token: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		if errors.Is(err, model.ErrAuthenticationFailed) {
+			return model.ErrAuthenticationFailed
+		}
+		return fmt.Errorf("failed to logout user: %w", err)
+	}
+
+	return nil
 }
 
 func (uc *AuthUseCase) issueTokens(userID uuid.UUID, now time.Time) (AuthTokens, model.RefreshToken, error) {

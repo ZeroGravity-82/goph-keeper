@@ -28,6 +28,9 @@ type authUseCaseStub struct {
 	refreshInput  usecase.RefreshInput
 	refreshOutput usecase.RefreshOutput
 	refreshErr    error
+
+	logoutInput usecase.LogoutInput
+	logoutErr   error
 }
 
 func (s *authUseCaseStub) Register(_ context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error) {
@@ -43,6 +46,11 @@ func (s *authUseCaseStub) Login(_ context.Context, in usecase.LoginInput) (useca
 func (s *authUseCaseStub) Refresh(_ context.Context, in usecase.RefreshInput) (usecase.RefreshOutput, error) {
 	s.refreshInput = in
 	return s.refreshOutput, s.refreshErr
+}
+
+func (s *authUseCaseStub) Logout(_ context.Context, in usecase.LogoutInput) error {
+	s.logoutInput = in
+	return s.logoutErr
 }
 
 // TestAuthService_Register_OK проверяет успешную регистрацию через gRPC-обработчик.
@@ -300,6 +308,82 @@ func TestAuthService_Refresh_FailWithInternalError(t *testing.T) {
 
 	// Act
 	_, err = authService.Refresh(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+// TestAuthService_Logout_OK проверяет успешное завершение сессии через gRPC-обработчик.
+func TestAuthService_Logout_OK(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.LogoutRequest_builder{RefreshToken: new("active-refresh-token")}.Build()
+
+	// Act
+	resp, err := authService.Logout(context.Background(), req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+}
+
+// TestAuthService_Logout_FailWithInvalidArgument проверяет валидацию обязательного refresh-токена.
+func TestAuthService_Logout_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	tests := []struct {
+		name string
+		req  *pb.LogoutRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty refresh token", req: pb.LogoutRequest_builder{RefreshToken: new("")}.Build()},
+		{name: "blank refresh token", req: pb.LogoutRequest_builder{RefreshToken: new("   ")}.Build()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			authService, err := NewAuthService(&authUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+
+			// Act
+			_, err = authService.Logout(context.Background(), tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+// TestAuthService_Logout_FailWithUnauthenticated проверяет маппинг ошибки аутентификации.
+func TestAuthService_Logout_FailWithUnauthenticated(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{logoutErr: model.ErrAuthenticationFailed}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.LogoutRequest_builder{RefreshToken: new("refresh-token")}.Build()
+
+	// Act
+	_, err = authService.Logout(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestAuthService_Logout_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
+func TestAuthService_Logout_FailWithInternalError(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{logoutErr: errors.New("some internal error")}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.LogoutRequest_builder{RefreshToken: new("refresh-token")}.Build()
+
+	// Act
+	_, err = authService.Logout(context.Background(), req)
 
 	// Assert
 	require.Error(t, err)
