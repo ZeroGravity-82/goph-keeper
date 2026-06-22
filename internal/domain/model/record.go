@@ -52,8 +52,10 @@ const (
 type UploadMode string
 
 const (
-	// UploadStatusPending обозначает, что загрузка файла на сервер еще не началась или находится в процессе.
+	// UploadStatusPending обозначает, что загрузка файла на сервер еще не началась.
 	UploadStatusPending UploadStatus = "pending"
+	// UploadStatusUploading обозначает, что загрузка файла на сервер находится в процессе.
+	UploadStatusUploading UploadStatus = "uploading"
 	// UploadStatusUploaded обозначает, что загрузка файла на сервер завершилась успешно.
 	UploadStatusUploaded UploadStatus = "uploaded"
 	// UploadStatusFailed обозначает, что загрузка файла на сервер завершилась неудачей.
@@ -68,8 +70,8 @@ type RecordFile struct {
 	ID            uuid.UUID
 	RecordID      uuid.UUID
 	ObjectKey     string
-	EncryptedSize int64
-	UploadMode    UploadMode
+	EncryptedSize *int64
+	UploadMode    *UploadMode
 	UploadStatus  UploadStatus
 	CreatedAt     time.Time
 	UpdatedAt     time.Time

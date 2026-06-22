@@ -96,7 +96,7 @@ func NewAuthUseCase(
 		return nil, errors.New("transactor is not provided")
 	}
 	if tokenIssuer == nil {
-		return nil, errors.New("token issuer is not provided")
+		return nil, errors.New("session token issuer is not provided")
 	}
 	if refreshTokenTTL <= 0 {
 		return nil, errors.New("refresh token TTL must be positive")

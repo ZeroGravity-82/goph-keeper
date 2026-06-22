@@ -49,17 +49,22 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to load tls certificate: %w", err)
 	}
-	authUC, err := buildAuthUseCase(db, cfg.JWTSecret)
+	tokenManager, err := auth.NewTokenManager(cfg.JWTSecret, accessTokenTTL)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to create token manager: %w", err)
+	}
+	authUC, err := buildAuthUseCase(db, tokenManager)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	authService, err := service.NewAuthService(authUC, logger)
+	recordUC, err := buildRecordUseCase(db)
 	if err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("failed to create auth service: %w", err)
+		return nil, err
 	}
-	grpcSrv, err := buildGRPCServer(cfg.GRPCServerAddr, tlsCert, authService, logger)
+	grpcSrv, err := buildGRPCServer(cfg.GRPCServerAddr, tlsCert, authUC, recordUC, tokenManager, logger)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -67,11 +72,51 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	return &App{db: db, grpcSrv: grpcSrv, logger: logger}, nil
 }
 
-func buildAuthUseCase(db *sqlx.DB, jwtSecret string) (*usecase.AuthUseCase, error) {
-	tokenManager, err := auth.NewTokenManager(jwtSecret, accessTokenTTL)
+func buildGRPCServer(
+	grpcServerAddr string,
+	tlsCert tls.Certificate,
+	authUC *usecase.AuthUseCase,
+	recordUC *usecase.RecordUseCase,
+	tokenManager *auth.TokenManager,
+	logger *slog.Logger,
+) (*grpcserver.GRPCServer, error) {
+	authService, err := buildAuthService(authUC, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create token manager: %w", err)
+		return nil, err
 	}
+	recordsService, err := buildRecordService(recordUC, logger)
+	if err != nil {
+		return nil, err
+	}
+	grpcTlsConfig := &tls.Config{Certificates: []tls.Certificate{tlsCert}}
+	grpcSrvCredentials := credentials.NewTLS(grpcTlsConfig)
+	server, err := grpcserver.NewGRPCServer(
+		grpcServerAddr,
+		grpcSrvCredentials,
+		authService,
+		recordsService,
+		tokenManager,
+		logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create grpc server: %w", err)
+	}
+
+	return server, nil
+}
+
+func buildAuthService(
+	authUC *usecase.AuthUseCase,
+	logger *slog.Logger,
+) (*service.AuthService, error) {
+	authService, err := service.NewAuthService(authUC, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create auth service: %w", err)
+	}
+	return authService, nil
+}
+
+func buildAuthUseCase(db *sqlx.DB, tokenManager *auth.TokenManager) (*usecase.AuthUseCase, error) {
 	userRepo, err := postgres.NewUserRepository(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user repository: %w", err)
@@ -97,20 +142,32 @@ func buildAuthUseCase(db *sqlx.DB, jwtSecret string) (*usecase.AuthUseCase, erro
 	return authUC, nil
 }
 
-func buildGRPCServer(
-	grpcServerAddr string,
-	tlsCert tls.Certificate,
-	authService *service.AuthService,
-	logger *slog.Logger,
-) (*grpcserver.GRPCServer, error) {
-	grpcTlsConfig := &tls.Config{Certificates: []tls.Certificate{tlsCert}}
-	grpcSrvCredentials := credentials.NewTLS(grpcTlsConfig)
-	server, err := grpcserver.NewGRPCServer(grpcServerAddr, grpcSrvCredentials, authService, logger)
+func buildRecordService(recordUC *usecase.RecordUseCase, logger *slog.Logger) (*service.RecordsService, error) {
+	recordsService, err := service.NewRecordsService(recordUC, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create grpc server: %w", err)
+		return nil, fmt.Errorf("failed to create records service: %w", err)
 	}
+	return recordsService, nil
+}
 
-	return server, nil
+func buildRecordUseCase(db *sqlx.DB) (*usecase.RecordUseCase, error) {
+	recordRepo, err := postgres.NewRecordRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create record repository: %w", err)
+	}
+	recordFileRepo, err := postgres.NewRecordFileRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create record file repository: %w", err)
+	}
+	transactor, err := postgres.NewTransactor(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transactor: %w", err)
+	}
+	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, transactor)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create record use case: %w", err)
+	}
+	return recordUC, nil
 }
 
 // Run применяет миграции БД и запускает gRPC-сервер.

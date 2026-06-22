@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS record_file (
     id             UUID PRIMARY KEY,
     record_id      UUID        NOT NULL UNIQUE REFERENCES record(id) ON DELETE RESTRICT,
     object_key     TEXT        NOT NULL,
-    encrypted_size BIGINT      NOT NULL,
-    upload_mode    VARCHAR(16) NOT NULL CHECK (upload_mode IN ('single_part', 'multipart')),
-    upload_status  VARCHAR(16) NOT NULL CHECK (upload_status IN ('pending', 'uploaded', 'failed')),
+    encrypted_size BIGINT      NULL,
+    upload_mode    VARCHAR(16) NULL CHECK (upload_mode IN ('single_part', 'multipart')),
+    upload_status  VARCHAR(16) NOT NULL CHECK (upload_status IN ('pending', 'uploading', 'uploaded', 'failed')),
     created_at     TIMESTAMPTZ NOT NULL,
     updated_at     TIMESTAMPTZ NOT NULL
 );

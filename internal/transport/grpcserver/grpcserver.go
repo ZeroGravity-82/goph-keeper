@@ -21,10 +21,12 @@ const (
 
 // GRPCServer описывает gRPC-сервер.
 type GRPCServer struct {
-	addr        string
-	creds       credentials.TransportCredentials
-	authService pb.AuthServer
-	logger      *slog.Logger
+	addr           string
+	creds          credentials.TransportCredentials
+	authService    pb.AuthServer
+	recordsService pb.RecordsServer
+	tokenParser    accessTokenParser
+	logger         *slog.Logger
 }
 
 // NewGRPCServer создает новый GRPCServer.
@@ -32,6 +34,8 @@ func NewGRPCServer(
 	addr string,
 	creds credentials.TransportCredentials,
 	authService pb.AuthServer,
+	recordsService pb.RecordsServer,
+	tokenParser accessTokenParser,
 	logger *slog.Logger,
 ) (*GRPCServer, error) {
 	if addr == "" {
@@ -43,15 +47,23 @@ func NewGRPCServer(
 	if authService == nil {
 		return nil, errors.New("auth service is not provided")
 	}
+	if recordsService == nil {
+		return nil, errors.New("records service is not provided")
+	}
+	if tokenParser == nil {
+		return nil, errors.New("access token parser is not provided")
+	}
 	if logger == nil {
 		logger = logging.NopLogger()
 	}
 
 	return &GRPCServer{
-		addr:        addr,
-		creds:       creds,
-		authService: authService,
-		logger:      logger,
+		addr:           addr,
+		creds:          creds,
+		authService:    authService,
+		recordsService: recordsService,
+		tokenParser:    tokenParser,
+		logger:         logger,
 	}, nil
 }
 
@@ -61,8 +73,12 @@ func (s *GRPCServer) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("grpc server error: %w", err)
 	}
-	srv := grpc.NewServer(grpc.Creds(s.creds))
+	srv := grpc.NewServer(
+		grpc.Creds(s.creds),
+		grpc.UnaryInterceptor(s.authenticateInterceptor),
+	)
 	pb.RegisterAuthServer(srv, s.authService)
+	pb.RegisterRecordsServer(srv, s.recordsService)
 
 	errCh := make(chan error, 1)
 	go func() {
