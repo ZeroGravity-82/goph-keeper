@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
+	"zerogravity-82/goph-keeper/internal/storage/postgres/dto"
 )
 
 // RecordRepository реализует доступ к приватным записям в PostgreSQL.
@@ -51,6 +53,44 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		return fmt.Errorf("failed to persist record: %w", err)
 	}
 	return nil
+}
+
+// ListByUserID возвращает список приватных записей пользователя.
+func (r *RecordRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error) {
+	const q = `
+SELECT r.id, r.type, r.title, r.description, r.created_at, r.updated_at, rf.upload_status
+FROM record r
+LEFT JOIN record_file rf ON rf.record_id = r.id
+WHERE r.app_user_id = $1 AND r.deleted_at IS NULL
+ORDER BY r.updated_at DESC, r.id DESC
+`
+
+	var rows []dto.RecordListItem
+	exec := executorFromContext(ctx, r.db)
+	if err := exec.SelectContext(ctx, &rows, q, userID); err != nil {
+		return nil, fmt.Errorf("failed to select record list by user ID: %w", err)
+	}
+
+	items := make([]model.RecordListItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, recordListItemFromDTO(row))
+	}
+	return items, nil
+}
+
+func recordListItemFromDTO(row dto.RecordListItem) model.RecordListItem {
+	item := model.RecordListItem{
+		ID:          row.ID,
+		Type:        model.RecordType(row.Type),
+		Title:       row.Title,
+		Description: row.Description,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+	if row.UploadStatus != nil {
+		item.File = &model.RecordFileListItem{UploadStatus: model.UploadStatus(*row.UploadStatus)}
+	}
+	return item
 }
 
 // RecordFileRepository реализует доступ к техническим данным (ключ в объектном хранилище, размер зашифрованного файла,

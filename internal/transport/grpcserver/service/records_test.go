@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +23,9 @@ type recordsUseCaseStub struct {
 	createRecordInput  usecase.CreateRecordInput
 	createRecordOutput usecase.CreateRecordOutput
 	createRecordErr    error
+	listRecordsInput   usecase.ListRecordsInput
+	listRecordsOutput  usecase.ListRecordsOutput
+	listRecordsErr     error
 }
 
 func (s *recordsUseCaseStub) CreateRecord(
@@ -30,6 +34,14 @@ func (s *recordsUseCaseStub) CreateRecord(
 ) (usecase.CreateRecordOutput, error) {
 	s.createRecordInput = in
 	return s.createRecordOutput, s.createRecordErr
+}
+
+func (s *recordsUseCaseStub) ListRecords(
+	_ context.Context,
+	in usecase.ListRecordsInput,
+) (usecase.ListRecordsOutput, error) {
+	s.listRecordsInput = in
+	return s.listRecordsOutput, s.listRecordsErr
 }
 
 // TestRecordsService_CreateRecord_OK проверяет успешное создание приватной записи через gRPC-обработчик.
@@ -136,6 +148,95 @@ func TestRecordsService_CreateRecord_FailWithInternalError(t *testing.T) {
 
 	// Act
 	_, err = recordsService.CreateRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+// TestRecordsService_ListRecords_OK проверяет успешное получение списка приватных записей через gRPC-обработчик.
+func TestRecordsService_ListRecords_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	createdAt := time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Minute)
+	uc := &recordsUseCaseStub{listRecordsOutput: usecase.ListRecordsOutput{Items: []model.RecordListItem{
+		{
+			ID:          recordID,
+			Type:        model.RecordTypeBinary,
+			Title:       "binary title",
+			Description: "binary description",
+			CreatedAt:   createdAt,
+			UpdatedAt:   updatedAt,
+			File:        &model.RecordFileListItem{UploadStatus: model.UploadStatusPending},
+		},
+	}}}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), userID)
+	req := pb.ListRecordsRequest_builder{}.Build()
+
+	// Act
+	resp, err := recordsService.ListRecords(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, userID, uc.listRecordsInput.UserID)
+	require.Len(t, resp.GetItems(), 1)
+	item := resp.GetItems()[0]
+	assert.Equal(t, recordID.String(), item.GetRecordId())
+	assert.Equal(t, pb.RecordType_RECORD_TYPE_BINARY, item.GetType())
+	assert.Equal(t, "binary title", item.GetTitle())
+	assert.Equal(t, "binary description", item.GetDescription())
+	assert.Equal(t, createdAt, item.GetCreatedAt().AsTime())
+	assert.Equal(t, updatedAt, item.GetUpdatedAt().AsTime())
+	require.NotNil(t, item.GetFile())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_PENDING, item.GetFile().GetUploadStatus())
+}
+
+// TestRecordsService_ListRecords_FailWithUnauthenticated проверяет ошибку при отсутствии идентификатора пользователя
+// в контексте.
+func TestRecordsService_ListRecords_FailWithUnauthenticated(t *testing.T) {
+	// Arrange
+	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.ListRecordsRequest_builder{}.Build()
+
+	// Act
+	_, err = recordsService.ListRecords(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestRecordsService_ListRecords_FailWithInvalidArgument проверяет валидацию запроса.
+func TestRecordsService_ListRecords_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+
+	// Act
+	_, err = recordsService.ListRecords(ctx, nil)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// TestRecordsService_ListRecords_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
+func TestRecordsService_ListRecords_FailWithInternalError(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{listRecordsErr: errors.New("some internal error")}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := pb.ListRecordsRequest_builder{}.Build()
+
+	// Act
+	_, err = recordsService.ListRecords(ctx, req)
 
 	// Assert
 	require.Error(t, err)

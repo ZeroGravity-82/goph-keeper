@@ -29,8 +29,19 @@ type CreateRecordOutput struct {
 	Version  int64
 }
 
+// ListRecordsInput описывает входные данные сценария получения списка приватных записей.
+type ListRecordsInput struct {
+	UserID uuid.UUID
+}
+
+// ListRecordsOutput описывает результат получения списка приватных записей.
+type ListRecordsOutput struct {
+	Items []model.RecordListItem
+}
+
 type recordRepository interface {
 	Create(ctx context.Context, record model.Record) error
+	ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error)
 }
 
 type recordFileRepository interface {
@@ -120,6 +131,15 @@ func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput)
 	}
 
 	return CreateRecordOutput{RecordID: record.ID, Version: record.Version}, nil
+}
+
+// ListRecords возвращает список приватных записей пользователя.
+func (uc *RecordUseCase) ListRecords(ctx context.Context, in ListRecordsInput) (ListRecordsOutput, error) {
+	items, err := uc.recordRepo.ListByUserID(ctx, in.UserID)
+	if err != nil {
+		return ListRecordsOutput{}, fmt.Errorf("failed to list records: %w", err)
+	}
+	return ListRecordsOutput{Items: items}, nil
 }
 
 func buildObjectKey(userID, recordID, fileID uuid.UUID) string {

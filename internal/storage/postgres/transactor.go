@@ -9,11 +9,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-type txContextKey struct{}
+type ctxKey string
+
+const txContextKey ctxKey = "tx"
 
 type queryExecutor interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	GetContext(ctx context.Context, dest any, query string, args ...any) error
+	SelectContext(ctx context.Context, dest any, query string, args ...any) error
 }
 
 // Transactor управляет транзакциями PostgreSQL.
@@ -49,7 +52,7 @@ func (t *Transactor) WithinTransaction(ctx context.Context, fn func(ctx context.
 		}
 	}()
 
-	if err = fn(context.WithValue(ctx, txContextKey{}, tx)); err != nil {
+	if err = fn(context.WithValue(ctx, txContextKey, tx)); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -70,6 +73,6 @@ func txFromContext(ctx context.Context) *sqlx.Tx {
 	if ctx == nil {
 		return nil
 	}
-	tx, _ := ctx.Value(txContextKey{}).(*sqlx.Tx)
+	tx, _ := ctx.Value(txContextKey).(*sqlx.Tx)
 	return tx
 }

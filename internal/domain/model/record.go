@@ -41,6 +41,17 @@ type Record struct {
 	DeletedAt        *time.Time
 }
 
+// RecordListItem описывает краткое представление приватной записи для списка записей пользователя.
+type RecordListItem struct {
+	ID          uuid.UUID
+	Type        RecordType
+	Title       string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	File        *RecordFileListItem
+}
+
 const (
 	// UploadModeSinglePart обозначает загрузку файла одним объектом.
 	UploadModeSinglePart UploadMode = "single_part"
@@ -75,4 +86,9 @@ type RecordFile struct {
 	UploadStatus  UploadStatus
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+// RecordFileListItem описывает краткое представление файла приватной записи для списка записей пользователя.
+type RecordFileListItem struct {
+	UploadStatus UploadStatus
 }

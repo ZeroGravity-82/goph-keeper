@@ -113,6 +113,55 @@ WHERE record_id = $1
 	assert.Equal(t, string(model.UploadStatusPending), storedFile.UploadStatus)
 }
 
+// TestRecordsService_ListRecords_Integration проверяет получение списка приватных записей пользователя.
+func TestRecordsService_ListRecords_Integration(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-list-user")
+	otherUser := createIntegrationUser(t, ctx, db, "record-list-other-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	otherUserCtx := authcontext.WithUserID(ctx, otherUser.ID)
+
+	textRecordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "text title")
+	binaryRecordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_BINARY, "binary title")
+	deletedRecordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_CARD, "deleted title")
+	_ = createIntegrationRecord(t, otherUserCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "other user title")
+
+	textUpdatedAt := time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC)
+	binaryUpdatedAt := textUpdatedAt.Add(time.Hour)
+	deletedAt := binaryUpdatedAt.Add(time.Hour)
+	_, err := db.ExecContext(ctx, `UPDATE record SET updated_at = $1 WHERE id = $2`, textUpdatedAt, textRecordID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE record SET updated_at = $1 WHERE id = $2`, binaryUpdatedAt, binaryRecordID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE record SET deleted_at = $1 WHERE id = $2`, deletedAt, deletedRecordID)
+	require.NoError(t, err)
+
+	// Act
+	resp, err := recordsService.ListRecords(requestCtx, pb.ListRecordsRequest_builder{}.Build())
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, resp.GetItems(), 2)
+
+	first := resp.GetItems()[0]
+	assert.Equal(t, binaryRecordID.String(), first.GetRecordId())
+	assert.Equal(t, pb.RecordType_RECORD_TYPE_BINARY, first.GetType())
+	assert.Equal(t, "binary title", first.GetTitle())
+	assert.Equal(t, binaryUpdatedAt, first.GetUpdatedAt().AsTime())
+	require.NotNil(t, first.GetFile())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_PENDING, first.GetFile().GetUploadStatus())
+
+	second := resp.GetItems()[1]
+	assert.Equal(t, textRecordID.String(), second.GetRecordId())
+	assert.Equal(t, pb.RecordType_RECORD_TYPE_TEXT, second.GetType())
+	assert.Equal(t, "text title", second.GetTitle())
+	assert.Equal(t, textUpdatedAt, second.GetUpdatedAt().AsTime())
+	assert.Nil(t, second.GetFile())
+}
+
 func newIntegrationRecordsService(t *testing.T, db *sqlx.DB) *RecordsService {
 	t.Helper()
 
@@ -147,6 +196,29 @@ func createIntegrationUser(t *testing.T, ctx context.Context, db *sqlx.DB, login
 	}
 	require.NoError(t, userRepo.Create(ctx, user))
 	return user
+}
+
+func createIntegrationRecord(
+	t *testing.T,
+	ctx context.Context,
+	recordsService *RecordsService,
+	recordType pb.RecordType,
+	title string,
+) uuid.UUID {
+	t.Helper()
+
+	req := pb.CreateRecordRequest_builder{
+		Type:             &recordType,
+		Title:            &title,
+		Description:      new("description"),
+		EncryptedDek:     []byte("encrypted-dek"),
+		EncryptedPayload: []byte("encrypted-payload"),
+	}.Build()
+	resp, err := recordsService.CreateRecord(ctx, req)
+	require.NoError(t, err)
+	recordID, err := uuid.Parse(resp.GetRecordId())
+	require.NoError(t, err)
+	return recordID
 }
 
 func getStoredRecord(t *testing.T, ctx context.Context, db *sqlx.DB, recordID uuid.UUID) dto.Record {

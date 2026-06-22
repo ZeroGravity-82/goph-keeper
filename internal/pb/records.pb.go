@@ -120,8 +120,9 @@ type UploadStatus int32
 const (
 	UploadStatus_UPLOAD_STATUS_UNSPECIFIED UploadStatus = 0
 	UploadStatus_UPLOAD_STATUS_PENDING     UploadStatus = 1
-	UploadStatus_UPLOAD_STATUS_UPLOADED    UploadStatus = 2
-	UploadStatus_UPLOAD_STATUS_FAILED      UploadStatus = 3
+	UploadStatus_UPLOAD_STATUS_UPLOADING   UploadStatus = 2
+	UploadStatus_UPLOAD_STATUS_UPLOADED    UploadStatus = 3
+	UploadStatus_UPLOAD_STATUS_FAILED      UploadStatus = 4
 )
 
 // Enum value maps for UploadStatus.
@@ -129,14 +130,16 @@ var (
 	UploadStatus_name = map[int32]string{
 		0: "UPLOAD_STATUS_UNSPECIFIED",
 		1: "UPLOAD_STATUS_PENDING",
-		2: "UPLOAD_STATUS_UPLOADED",
-		3: "UPLOAD_STATUS_FAILED",
+		2: "UPLOAD_STATUS_UPLOADING",
+		3: "UPLOAD_STATUS_UPLOADED",
+		4: "UPLOAD_STATUS_FAILED",
 	}
 	UploadStatus_value = map[string]int32{
 		"UPLOAD_STATUS_UNSPECIFIED": 0,
 		"UPLOAD_STATUS_PENDING":     1,
-		"UPLOAD_STATUS_UPLOADED":    2,
-		"UPLOAD_STATUS_FAILED":      3,
+		"UPLOAD_STATUS_UPLOADING":   2,
+		"UPLOAD_STATUS_UPLOADED":    3,
+		"UPLOAD_STATUS_FAILED":      4,
 	}
 )
 
@@ -2629,12 +2632,13 @@ const file_api_records_proto_rawDesc = "" +
 	"UploadMode\x12\x1b\n" +
 	"\x17UPLOAD_MODE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17UPLOAD_MODE_SINGLE_PART\x10\x01\x12\x19\n" +
-	"\x15UPLOAD_MODE_MULTIPART\x10\x02*~\n" +
+	"\x15UPLOAD_MODE_MULTIPART\x10\x02*\x9b\x01\n" +
 	"\fUploadStatus\x12\x1d\n" +
 	"\x19UPLOAD_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
-	"\x15UPLOAD_STATUS_PENDING\x10\x01\x12\x1a\n" +
-	"\x16UPLOAD_STATUS_UPLOADED\x10\x02\x12\x18\n" +
-	"\x14UPLOAD_STATUS_FAILED\x10\x032\xea\x04\n" +
+	"\x15UPLOAD_STATUS_PENDING\x10\x01\x12\x1b\n" +
+	"\x17UPLOAD_STATUS_UPLOADING\x10\x02\x12\x1a\n" +
+	"\x16UPLOAD_STATUS_UPLOADED\x10\x03\x12\x18\n" +
+	"\x14UPLOAD_STATUS_FAILED\x10\x042\xea\x04\n" +
 	"\aRecords\x12W\n" +
 	"\fCreateRecord\x12\".gophkeeper.v1.CreateRecordRequest\x1a#.gophkeeper.v1.CreateRecordResponse\x12T\n" +
 	"\vListRecords\x12!.gophkeeper.v1.ListRecordsRequest\x1a\".gophkeeper.v1.ListRecordsResponse\x12N\n" +

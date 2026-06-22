@@ -21,6 +21,17 @@ type Record struct {
 	DeletedAt        *time.Time `db:"deleted_at"`
 }
 
+// RecordListItem описывает строку выборки списка приватных записей пользователя из базы данных.
+type RecordListItem struct {
+	ID           uuid.UUID `db:"id"`
+	Type         string    `db:"type"`
+	Title        string    `db:"title"`
+	Description  string    `db:"description"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
+	UploadStatus *string   `db:"upload_status"`
+}
+
 // RecordFile описывает строку таблицы record_file, представляющую model.RecordFile в базе данных.
 type RecordFile struct {
 	ID            uuid.UUID `db:"id"`
