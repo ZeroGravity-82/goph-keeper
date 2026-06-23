@@ -43,14 +43,12 @@ func NewAuthService(uc authUseCase, logger *slog.Logger) (*AuthService, error) {
 
 // Register регистрирует пользователя и возвращает пару токенов и соль мастер-ключа.
 func (s *AuthService) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	if err := validateRegisterRequest(req); err != nil {
+	in, err := registerInputFromRequest(req)
+	if err != nil {
 		return nil, err
 	}
 
-	out, err := s.uc.Register(ctx, usecase.RegisterInput{
-		Login:    req.GetLogin(),
-		Password: req.GetPassword(),
-	})
+	out, err := s.uc.Register(ctx, in)
 	if err != nil {
 		if !isExpectedAuthError(err) {
 			s.logger.Error("failed to register user", slog.Any("err", err))
@@ -65,16 +63,48 @@ func (s *AuthService) Register(ctx context.Context, req *pb.RegisterRequest) (*p
 	}.Build(), nil
 }
 
+func registerInputFromRequest(req *pb.RegisterRequest) (usecase.RegisterInput, error) {
+	if req == nil {
+		return usecase.RegisterInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	if err := validateCredentials(req.GetLogin(), req.GetPassword()); err != nil {
+		return usecase.RegisterInput{}, err
+	}
+	return usecase.RegisterInput{Login: req.GetLogin(), Password: req.GetPassword()}, nil
+}
+
+func validateCredentials(login, password string) error {
+	if strings.TrimSpace(login) == "" {
+		return status.Error(codes.InvalidArgument, "login is required")
+	}
+	if password == "" {
+		return status.Error(codes.InvalidArgument, "password is required")
+	}
+	return nil
+}
+
+func isExpectedAuthError(err error) bool {
+	return errors.Is(err, model.ErrLoginAlreadyTaken) || errors.Is(err, model.ErrAuthenticationFailed)
+}
+
+func authErrorToStatus(err error) error {
+	if errors.Is(err, model.ErrLoginAlreadyTaken) {
+		return status.Error(codes.AlreadyExists, "login already taken")
+	}
+	if errors.Is(err, model.ErrAuthenticationFailed) {
+		return status.Error(codes.Unauthenticated, "authentication failed")
+	}
+	return status.Error(codes.Internal, "internal error")
+}
+
 // Login аутентифицирует пользователя и возвращает пару токенов и соль мастер-ключа.
 func (s *AuthService) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
-	if err := validateLoginRequest(req); err != nil {
+	in, err := loginInputFromRequest(req)
+	if err != nil {
 		return nil, err
 	}
 
-	out, err := s.uc.Login(ctx, usecase.LoginInput{
-		Login:    req.GetLogin(),
-		Password: req.GetPassword(),
-	})
+	out, err := s.uc.Login(ctx, in)
 	if err != nil {
 		if !isExpectedAuthError(err) {
 			s.logger.Error("failed to login user", slog.Any("err", err))
@@ -89,13 +119,24 @@ func (s *AuthService) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Logi
 	}.Build(), nil
 }
 
+func loginInputFromRequest(req *pb.LoginRequest) (usecase.LoginInput, error) {
+	if req == nil {
+		return usecase.LoginInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	if err := validateCredentials(req.GetLogin(), req.GetPassword()); err != nil {
+		return usecase.LoginInput{}, err
+	}
+	return usecase.LoginInput{Login: req.GetLogin(), Password: req.GetPassword()}, nil
+}
+
 // Refresh обновляет пару токенов по refresh-токену.
 func (s *AuthService) Refresh(ctx context.Context, req *pb.RefreshRequest) (*pb.RefreshResponse, error) {
-	if err := validateRefreshRequest(req); err != nil {
+	in, err := refreshInputFromRequest(req)
+	if err != nil {
 		return nil, err
 	}
 
-	out, err := s.uc.Refresh(ctx, usecase.RefreshInput{RefreshToken: req.GetRefreshToken()})
+	out, err := s.uc.Refresh(ctx, in)
 	if err != nil {
 		if !isExpectedAuthError(err) {
 			s.logger.Error("failed to refresh tokens", slog.Any("err", err))
@@ -109,48 +150,14 @@ func (s *AuthService) Refresh(ctx context.Context, req *pb.RefreshRequest) (*pb.
 	}.Build(), nil
 }
 
-// Logout завершает пользовательскую сессию по refresh-токену.
-func (s *AuthService) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
-	if err := validateLogoutRequest(req); err != nil {
-		return nil, err
-	}
-
-	if err := s.uc.Logout(ctx, usecase.LogoutInput{RefreshToken: req.GetRefreshToken()}); err != nil {
-		if !isExpectedAuthError(err) {
-			s.logger.Error("failed to logout user", slog.Any("err", err))
-		}
-		return nil, authErrorToStatus(err)
-	}
-
-	return pb.LogoutResponse_builder{}.Build(), nil
-}
-
-func validateRegisterRequest(req *pb.RegisterRequest) error {
+func refreshInputFromRequest(req *pb.RefreshRequest) (usecase.RefreshInput, error) {
 	if req == nil {
-		return status.Error(codes.InvalidArgument, "request is required")
+		return usecase.RefreshInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	return validateCredentials(req.GetLogin(), req.GetPassword())
-}
-
-func validateLoginRequest(req *pb.LoginRequest) error {
-	if req == nil {
-		return status.Error(codes.InvalidArgument, "request is required")
+	if err := validateRefreshToken(req.GetRefreshToken()); err != nil {
+		return usecase.RefreshInput{}, err
 	}
-	return validateCredentials(req.GetLogin(), req.GetPassword())
-}
-
-func validateRefreshRequest(req *pb.RefreshRequest) error {
-	if req == nil {
-		return status.Error(codes.InvalidArgument, "request is required")
-	}
-	return validateRefreshToken(req.GetRefreshToken())
-}
-
-func validateLogoutRequest(req *pb.LogoutRequest) error {
-	if req == nil {
-		return status.Error(codes.InvalidArgument, "request is required")
-	}
-	return validateRefreshToken(req.GetRefreshToken())
+	return usecase.RefreshInput{RefreshToken: req.GetRefreshToken()}, nil
 }
 
 func validateRefreshToken(refreshToken string) error {
@@ -160,26 +167,29 @@ func validateRefreshToken(refreshToken string) error {
 	return nil
 }
 
-func validateCredentials(login, password string) error {
-	if strings.TrimSpace(login) == "" {
-		return status.Error(codes.InvalidArgument, "login is required")
+// Logout завершает пользовательскую сессию по refresh-токену.
+func (s *AuthService) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
+	in, err := logoutInputFromRequest(req)
+	if err != nil {
+		return nil, err
 	}
-	if password == "" {
-		return status.Error(codes.InvalidArgument, "password is required")
+
+	if err := s.uc.Logout(ctx, in); err != nil {
+		if !isExpectedAuthError(err) {
+			s.logger.Error("failed to logout user", slog.Any("err", err))
+		}
+		return nil, authErrorToStatus(err)
 	}
-	return nil
+
+	return pb.LogoutResponse_builder{}.Build(), nil
 }
 
-func authErrorToStatus(err error) error {
-	if errors.Is(err, model.ErrLoginAlreadyTaken) {
-		return status.Error(codes.AlreadyExists, "login already taken")
+func logoutInputFromRequest(req *pb.LogoutRequest) (usecase.LogoutInput, error) {
+	if req == nil {
+		return usecase.LogoutInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	if errors.Is(err, model.ErrAuthenticationFailed) {
-		return status.Error(codes.Unauthenticated, "authentication failed")
+	if err := validateRefreshToken(req.GetRefreshToken()); err != nil {
+		return usecase.LogoutInput{}, err
 	}
-	return status.Error(codes.Internal, "internal error")
-}
-
-func isExpectedAuthError(err error) bool {
-	return errors.Is(err, model.ErrLoginAlreadyTaken) || errors.Is(err, model.ErrAuthenticationFailed)
+	return usecase.LogoutInput{RefreshToken: req.GetRefreshToken()}, nil
 }
