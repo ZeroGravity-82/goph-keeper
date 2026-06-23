@@ -39,6 +39,7 @@ type Record struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	DeletedAt        *time.Time
+	File             *RecordFile
 }
 
 // RecordListItem описывает краткое представление приватной записи для списка записей пользователя.
@@ -49,7 +50,7 @@ type RecordListItem struct {
 	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	File        *RecordFileListItem
+	File        *RecordListItemFile
 }
 
 const (
@@ -88,7 +89,7 @@ type RecordFile struct {
 	UpdatedAt     time.Time
 }
 
-// RecordFileListItem описывает краткое представление файла приватной записи для списка записей пользователя.
-type RecordFileListItem struct {
+// RecordListItemFile описывает краткое представление файла приватной записи для списка записей пользователя.
+type RecordListItemFile struct {
 	UploadStatus UploadStatus
 }

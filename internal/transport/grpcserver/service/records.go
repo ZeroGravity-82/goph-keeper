@@ -5,7 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -20,6 +22,7 @@ import (
 type recordsUseCase interface {
 	CreateRecord(ctx context.Context, in usecase.CreateRecordInput) (usecase.CreateRecordOutput, error)
 	ListRecords(ctx context.Context, in usecase.ListRecordsInput) (usecase.ListRecordsOutput, error)
+	GetRecord(ctx context.Context, in usecase.GetRecordInput) (usecase.GetRecordOutput, error)
 }
 
 // RecordsService реализует gRPC-сервис приватных записей.
@@ -81,6 +84,25 @@ func (s *RecordsService) ListRecords(ctx context.Context, req *pb.ListRecordsReq
 	return pb.ListRecordsResponse_builder{Items: items}.Build(), nil
 }
 
+// GetRecord возвращает приватную запись пользователя.
+func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest) (*pb.GetRecordResponse, error) {
+	in, err := getRecordInputFromRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.GetRecord(ctx, in)
+	if err != nil {
+		if errors.Is(err, model.ErrRecordNotFound) {
+			return nil, status.Error(codes.NotFound, "record not found")
+		}
+		s.logger.Error("failed to get record", slog.Any("err", err))
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+
+	return pb.GetRecordResponse_builder{Record: recordToProto(out.Record)}.Build(), nil
+}
+
 func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordRequest) (usecase.CreateRecordInput, error) {
 	if req == nil {
 		return usecase.CreateRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -124,6 +146,57 @@ func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest
 	return usecase.ListRecordsInput{UserID: userID}, nil
 }
 
+func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (usecase.GetRecordInput, error) {
+	if req == nil {
+		return usecase.GetRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, ok := authcontext.UserIDFromContext(ctx)
+	if !ok {
+		return usecase.GetRecordInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+	recordID, err := uuid.Parse(req.GetRecordId())
+	if err != nil || recordID == uuid.Nil {
+		return usecase.GetRecordInput{}, status.Error(codes.InvalidArgument, "record id is invalid")
+	}
+	return usecase.GetRecordInput{RecordID: recordID, UserID: userID}, nil
+}
+
+func recordToProto(record model.Record) *pb.Record {
+	recordID := record.ID.String()
+	recordType := recordTypeToProto(record.Type)
+	createdAt := timestamppb.New(record.CreatedAt)
+	updatedAt := timestamppb.New(record.UpdatedAt)
+
+	return pb.Record_builder{
+		RecordId:         &recordID,
+		Type:             &recordType,
+		Title:            &record.Title,
+		Description:      &record.Description,
+		EncryptedDek:     record.EncryptedDEK.Data,
+		EncryptedPayload: record.EncryptedPayload.Data,
+		Version:          &record.Version,
+		CreatedAt:        createdAt,
+		UpdatedAt:        updatedAt,
+		DeletedAt:        timeToProto(record.DeletedAt),
+		File:             recordFileToProto(record.File),
+	}.Build()
+}
+
+func recordFileToProto(file *model.RecordFile) *pb.RecordFile {
+	if file == nil {
+		return nil
+	}
+	uploadStatus := uploadStatusToProto(file.UploadStatus)
+	return pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build()
+}
+
+func timeToProto(t *time.Time) *timestamppb.Timestamp {
+	if t == nil {
+		return nil
+	}
+	return timestamppb.New(*t)
+}
+
 func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
 	recordID := item.ID.String()
 	recordType := recordTypeToProto(item.Type)
@@ -137,11 +210,11 @@ func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
 		Description: &item.Description,
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
-		File:        recordFileListItemToProto(item.File),
+		File:        recordListItemFileToProto(item.File),
 	}.Build()
 }
 
-func recordFileListItemToProto(file *model.RecordFileListItem) *pb.RecordFile {
+func recordListItemFileToProto(file *model.RecordListItemFile) *pb.RecordFile {
 	if file == nil {
 		return nil
 	}

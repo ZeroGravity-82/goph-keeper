@@ -12,6 +12,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/logging"
@@ -63,6 +65,66 @@ func TestRecordsService_CreateRecord_Integration_Text(t *testing.T) {
 	err = db.GetContext(ctx, &fileCount, `SELECT COUNT(*) FROM record_file WHERE record_id = $1`, recordID)
 	require.NoError(t, err)
 	assert.Equal(t, 0, fileCount)
+}
+
+func createIntegrationUser(t *testing.T, ctx context.Context, db *sqlx.DB, login string) model.User {
+	t.Helper()
+
+	userRepo, err := postgres.NewUserRepository(db)
+	require.NoError(t, err)
+	userID, err := uuid.NewV7()
+	require.NoError(t, err)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	user := model.User{
+		ID:            userID,
+		Login:         login,
+		PasswordHash:  "password-hash",
+		MasterKeySalt: []byte("master-key-salt"),
+		RegisteredAt:  now,
+		UpdatedAt:     now,
+	}
+	require.NoError(t, userRepo.Create(ctx, user))
+	return user
+}
+
+func newIntegrationRecordsService(t *testing.T, db *sqlx.DB) *RecordsService {
+	t.Helper()
+
+	recordRepo, err := postgres.NewRecordRepository(db)
+	require.NoError(t, err)
+	recordFileRepo, err := postgres.NewRecordFileRepository(db)
+	require.NoError(t, err)
+	transactor, err := postgres.NewTransactor(db)
+	require.NoError(t, err)
+	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, transactor)
+	require.NoError(t, err)
+	recordsService, err := NewRecordsService(recordUC, logging.NopLogger())
+	require.NoError(t, err)
+	return recordsService
+}
+
+func getStoredRecord(t *testing.T, ctx context.Context, db *sqlx.DB, recordID uuid.UUID) dto.Record {
+	t.Helper()
+
+	var record dto.Record
+	err := db.GetContext(ctx, &record, `
+SELECT
+    id,
+    app_user_id,
+    type,
+    title,
+    description,
+    encrypted_dek,
+    encrypted_payload,
+    version,
+    created_at,
+    updated_at,
+    deleted_at
+FROM record
+WHERE id = $1
+`, recordID)
+	require.NoError(t, err)
+	return record
 }
 
 // TestRecordsService_CreateRecord_Integration_Binary проверяет создание бинарной записи с пустыми атрибутами файла и
@@ -124,9 +186,27 @@ func TestRecordsService_ListRecords_Integration(t *testing.T) {
 	requestCtx := authcontext.WithUserID(ctx, user.ID)
 	otherUserCtx := authcontext.WithUserID(ctx, otherUser.ID)
 
-	textRecordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "text title")
-	binaryRecordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_BINARY, "binary title")
-	deletedRecordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_CARD, "deleted title")
+	textRecordID := createIntegrationRecord(
+		t,
+		requestCtx,
+		recordsService,
+		pb.RecordType_RECORD_TYPE_TEXT,
+		"text title",
+	)
+	binaryRecordID := createIntegrationRecord(
+		t,
+		requestCtx,
+		recordsService,
+		pb.RecordType_RECORD_TYPE_BINARY,
+		"binary title",
+	)
+	deletedRecordID := createIntegrationRecord(
+		t,
+		requestCtx,
+		recordsService,
+		pb.RecordType_RECORD_TYPE_CARD,
+		"deleted title",
+	)
 	_ = createIntegrationRecord(t, otherUserCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "other user title")
 
 	textUpdatedAt := time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC)
@@ -162,42 +242,6 @@ func TestRecordsService_ListRecords_Integration(t *testing.T) {
 	assert.Nil(t, second.GetFile())
 }
 
-func newIntegrationRecordsService(t *testing.T, db *sqlx.DB) *RecordsService {
-	t.Helper()
-
-	recordRepo, err := postgres.NewRecordRepository(db)
-	require.NoError(t, err)
-	recordFileRepo, err := postgres.NewRecordFileRepository(db)
-	require.NoError(t, err)
-	transactor, err := postgres.NewTransactor(db)
-	require.NoError(t, err)
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, transactor)
-	require.NoError(t, err)
-	recordsService, err := NewRecordsService(recordUC, logging.NopLogger())
-	require.NoError(t, err)
-	return recordsService
-}
-
-func createIntegrationUser(t *testing.T, ctx context.Context, db *sqlx.DB, login string) model.User {
-	t.Helper()
-
-	userRepo, err := postgres.NewUserRepository(db)
-	require.NoError(t, err)
-	userID, err := uuid.NewV7()
-	require.NoError(t, err)
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	user := model.User{
-		ID:            userID,
-		Login:         login,
-		PasswordHash:  "password-hash",
-		MasterKeySalt: []byte("master-key-salt"),
-		RegisteredAt:  now,
-		UpdatedAt:     now,
-	}
-	require.NoError(t, userRepo.Create(ctx, user))
-	return user
-}
-
 func createIntegrationRecord(
 	t *testing.T,
 	ctx context.Context,
@@ -221,15 +265,79 @@ func createIntegrationRecord(
 	return recordID
 }
 
-func getStoredRecord(t *testing.T, ctx context.Context, db *sqlx.DB, recordID uuid.UUID) dto.Record {
-	t.Helper()
+// TestRecordsService_GetRecord_Integration_Binary проверяет получение бинарной записи с зашифрованными данными и
+// статусом файла.
+func TestRecordsService_GetRecord_Integration_Binary(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-get-binary-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	recordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_BINARY, "binary title")
+	req := pb.GetRecordRequest_builder{RecordId: new(recordID.String())}.Build()
 
-	var record dto.Record
-	err := db.GetContext(ctx, &record, `
-SELECT id, app_user_id, type, title, description, encrypted_dek, encrypted_payload, version, created_at, updated_at, deleted_at
-FROM record
-WHERE id = $1
-`, recordID)
+	// Act
+	resp, err := recordsService.GetRecord(requestCtx, req)
+
+	// Assert
 	require.NoError(t, err)
-	return record
+	record := resp.GetRecord()
+	require.NotNil(t, record)
+	assert.Equal(t, recordID.String(), record.GetRecordId())
+	assert.Equal(t, pb.RecordType_RECORD_TYPE_BINARY, record.GetType())
+	assert.Equal(t, "binary title", record.GetTitle())
+	assert.Equal(t, "description", record.GetDescription())
+	assert.Equal(t, []byte("encrypted-dek"), record.GetEncryptedDek())
+	assert.Equal(t, []byte("encrypted-payload"), record.GetEncryptedPayload())
+	assert.Equal(t, int64(1), record.GetVersion())
+	assert.NotNil(t, record.GetCreatedAt())
+	assert.NotNil(t, record.GetUpdatedAt())
+	assert.Nil(t, record.GetDeletedAt())
+	require.NotNil(t, record.GetFile())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_PENDING, record.GetFile().GetUploadStatus())
+}
+
+// TestRecordsService_GetRecord_Integration_NotFoundForOtherUser проверяет, что пользователь не может получить чужую
+// приватную запись.
+func TestRecordsService_GetRecord_Integration_NotFoundForOtherUser(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	owner := createIntegrationUser(t, ctx, db, "record-get-owner")
+	otherUser := createIntegrationUser(t, ctx, db, "record-get-other-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	ownerCtx := authcontext.WithUserID(ctx, owner.ID)
+	otherUserCtx := authcontext.WithUserID(ctx, otherUser.ID)
+	recordID := createIntegrationRecord(t, ownerCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "text title")
+	req := pb.GetRecordRequest_builder{RecordId: new(recordID.String())}.Build()
+
+	// Act
+	_, err := recordsService.GetRecord(otherUserCtx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord проверяет, что помеченная как удаленная запись не
+// отдается пользователю.
+func TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-get-deleted-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	recordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "deleted title")
+	_, err := db.ExecContext(ctx, `UPDATE record SET deleted_at = $1 WHERE id = $2`, time.Now().UTC(), recordID)
+	require.NoError(t, err)
+	req := pb.GetRecordRequest_builder{RecordId: new(recordID.String())}.Build()
+
+	// Act
+	_, err = recordsService.GetRecord(requestCtx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
 }

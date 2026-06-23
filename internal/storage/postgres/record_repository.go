@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -55,6 +56,49 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	return nil
 }
 
+// GetByIDAndUserID возвращает приватную запись по ID и ID пользователя-владельца.
+func (r *RecordRepository) GetByIDAndUserID(
+	ctx context.Context,
+	recordID uuid.UUID,
+	userID uuid.UUID,
+) (model.Record, error) {
+	const q = `
+SELECT
+    r.id,
+    r.app_user_id,
+    r.type,
+    r.title,
+    r.description,
+    r.encrypted_dek,
+    r.encrypted_payload,
+    r.version,
+    r.created_at,
+    r.updated_at,
+    r.deleted_at,
+    rf.id AS file_id,
+    rf.record_id AS file_record_id,
+    rf.object_key AS file_object_key,
+    rf.encrypted_size AS file_encrypted_size,
+    rf.upload_mode AS file_upload_mode,
+    rf.upload_status AS file_upload_status,
+    rf.created_at AS file_created_at,
+    rf.updated_at AS file_updated_at
+FROM record r
+LEFT JOIN record_file rf ON rf.record_id = r.id
+WHERE r.id = $1 AND r.app_user_id = $2 AND r.deleted_at IS NULL
+`
+
+	var row dto.RecordWithFile
+	exec := executorFromContext(ctx, r.db)
+	if err := exec.GetContext(ctx, &row, q, recordID, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Record{}, model.ErrRecordNotFound
+		}
+		return model.Record{}, fmt.Errorf("failed to select record by ID and user ID: %w", err)
+	}
+	return recordWithFileFromDTO(row), nil
+}
+
 // ListByUserID возвращает список приватных записей пользователя.
 func (r *RecordRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error) {
 	const q = `
@@ -88,9 +132,38 @@ func recordListItemFromDTO(row dto.RecordListItem) model.RecordListItem {
 		UpdatedAt:   row.UpdatedAt,
 	}
 	if row.UploadStatus != nil {
-		item.File = &model.RecordFileListItem{UploadStatus: model.UploadStatus(*row.UploadStatus)}
+		item.File = &model.RecordListItemFile{UploadStatus: model.UploadStatus(*row.UploadStatus)}
 	}
 	return item
+}
+
+func recordWithFileFromDTO(row dto.RecordWithFile) model.Record {
+	record := model.Record{
+		ID:               row.ID,
+		UserID:           row.UserID,
+		Type:             model.RecordType(row.Type),
+		Title:            row.Title,
+		Description:      row.Description,
+		EncryptedDEK:     model.EncryptedBlob{Data: row.EncryptedDEK},
+		EncryptedPayload: model.EncryptedBlob{Data: row.EncryptedPayload},
+		Version:          row.Version,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
+		DeletedAt:        row.DeletedAt,
+	}
+	if row.FileID != nil {
+		record.File = &model.RecordFile{
+			ID:            *row.FileID,
+			RecordID:      *row.FileRecordID,
+			ObjectKey:     *row.FileObjectKey,
+			EncryptedSize: row.FileEncryptedSize,
+			UploadMode:    uploadModeFromDB(row.FileUploadMode),
+			UploadStatus:  model.UploadStatus(*row.FileUploadStatus),
+			CreatedAt:     *row.FileCreatedAt,
+			UpdatedAt:     *row.FileUpdatedAt,
+		}
+	}
+	return record
 }
 
 // RecordFileRepository реализует доступ к техническим данным (ключ в объектном хранилище, размер зашифрованного файла,
@@ -137,5 +210,13 @@ func uploadModeToDB(uploadMode *model.UploadMode) *string {
 		return nil
 	}
 	value := string(*uploadMode)
+	return &value
+}
+
+func uploadModeFromDB(uploadMode *string) *model.UploadMode {
+	if uploadMode == nil {
+		return nil
+	}
+	value := model.UploadMode(*uploadMode)
 	return &value
 }

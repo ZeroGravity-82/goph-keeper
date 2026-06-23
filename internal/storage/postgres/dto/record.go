@@ -21,6 +21,30 @@ type Record struct {
 	DeletedAt        *time.Time `db:"deleted_at"`
 }
 
+// RecordWithFile описывает строку выборки приватной записи с опциональной связанной строкой record_file.
+type RecordWithFile struct {
+	ID               uuid.UUID  `db:"id"`
+	UserID           uuid.UUID  `db:"app_user_id"`
+	Type             string     `db:"type"`
+	Title            string     `db:"title"`
+	Description      string     `db:"description"`
+	EncryptedDEK     []byte     `db:"encrypted_dek"`
+	EncryptedPayload []byte     `db:"encrypted_payload"`
+	Version          int64      `db:"version"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	DeletedAt        *time.Time `db:"deleted_at"`
+
+	FileID            *uuid.UUID `db:"file_id"`
+	FileRecordID      *uuid.UUID `db:"file_record_id"`
+	FileObjectKey     *string    `db:"file_object_key"`
+	FileEncryptedSize *int64     `db:"file_encrypted_size"`
+	FileUploadMode    *string    `db:"file_upload_mode"`
+	FileUploadStatus  *string    `db:"file_upload_status"`
+	FileCreatedAt     *time.Time `db:"file_created_at"`
+	FileUpdatedAt     *time.Time `db:"file_updated_at"`
+}
+
 // RecordListItem описывает строку выборки списка приватных записей пользователя из базы данных.
 type RecordListItem struct {
 	ID           uuid.UUID `db:"id"`

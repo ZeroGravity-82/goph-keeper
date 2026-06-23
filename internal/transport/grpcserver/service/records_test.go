@@ -26,6 +26,9 @@ type recordsUseCaseStub struct {
 	listRecordsInput   usecase.ListRecordsInput
 	listRecordsOutput  usecase.ListRecordsOutput
 	listRecordsErr     error
+	getRecordInput     usecase.GetRecordInput
+	getRecordOutput    usecase.GetRecordOutput
+	getRecordErr       error
 }
 
 func (s *recordsUseCaseStub) CreateRecord(
@@ -42,6 +45,14 @@ func (s *recordsUseCaseStub) ListRecords(
 ) (usecase.ListRecordsOutput, error) {
 	s.listRecordsInput = in
 	return s.listRecordsOutput, s.listRecordsErr
+}
+
+func (s *recordsUseCaseStub) GetRecord(
+	_ context.Context,
+	in usecase.GetRecordInput,
+) (usecase.GetRecordOutput, error) {
+	s.getRecordInput = in
+	return s.getRecordOutput, s.getRecordErr
 }
 
 // TestRecordsService_CreateRecord_OK проверяет успешное создание приватной записи через gRPC-обработчик.
@@ -137,6 +148,20 @@ func TestRecordsService_CreateRecord_FailWithInvalidArgument(t *testing.T) {
 	}
 }
 
+func newCreateRecordRequest(
+	recordType pb.RecordType,
+	title string,
+	encryptedDEK []byte,
+	encryptedPayload []byte,
+) *pb.CreateRecordRequest {
+	return pb.CreateRecordRequest_builder{
+		Type:             &recordType,
+		Title:            &title,
+		EncryptedDek:     encryptedDEK,
+		EncryptedPayload: encryptedPayload,
+	}.Build()
+}
+
 // TestRecordsService_CreateRecord_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
 func TestRecordsService_CreateRecord_FailWithInternalError(t *testing.T) {
 	// Arrange
@@ -169,7 +194,7 @@ func TestRecordsService_ListRecords_OK(t *testing.T) {
 			Description: "binary description",
 			CreatedAt:   createdAt,
 			UpdatedAt:   updatedAt,
-			File:        &model.RecordFileListItem{UploadStatus: model.UploadStatusPending},
+			File:        &model.RecordListItemFile{UploadStatus: model.UploadStatusPending},
 		},
 	}}}
 	recordsService, err := NewRecordsService(uc, logging.NopLogger())
@@ -243,16 +268,127 @@ func TestRecordsService_ListRecords_FailWithInternalError(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
-func newCreateRecordRequest(
-	recordType pb.RecordType,
-	title string,
-	encryptedDEK []byte,
-	encryptedPayload []byte,
-) *pb.CreateRecordRequest {
-	return pb.CreateRecordRequest_builder{
-		Type:             &recordType,
-		Title:            &title,
-		EncryptedDek:     encryptedDEK,
-		EncryptedPayload: encryptedPayload,
-	}.Build()
+// TestRecordsService_GetRecord_OK проверяет успешное получение приватной записи через gRPC-обработчик.
+func TestRecordsService_GetRecord_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	createdAt := time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Minute)
+	uc := &recordsUseCaseStub{getRecordOutput: usecase.GetRecordOutput{Record: model.Record{
+		ID:               recordID,
+		UserID:           userID,
+		Type:             model.RecordTypeText,
+		Title:            "text title",
+		Description:      "text description",
+		EncryptedDEK:     model.EncryptedBlob{Data: []byte("encrypted-dek")},
+		EncryptedPayload: model.EncryptedBlob{Data: []byte("encrypted-payload")},
+		Version:          2,
+		CreatedAt:        createdAt,
+		UpdatedAt:        updatedAt,
+	}}}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), userID)
+	req := pb.GetRecordRequest_builder{RecordId: new(recordID.String())}.Build()
+
+	// Act
+	resp, err := recordsService.GetRecord(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, userID, uc.getRecordInput.UserID)
+	assert.Equal(t, recordID, uc.getRecordInput.RecordID)
+	record := resp.GetRecord()
+	require.NotNil(t, record)
+	assert.Equal(t, recordID.String(), record.GetRecordId())
+	assert.Equal(t, pb.RecordType_RECORD_TYPE_TEXT, record.GetType())
+	assert.Equal(t, "text title", record.GetTitle())
+	assert.Equal(t, "text description", record.GetDescription())
+	assert.Equal(t, []byte("encrypted-dek"), record.GetEncryptedDek())
+	assert.Equal(t, []byte("encrypted-payload"), record.GetEncryptedPayload())
+	assert.Equal(t, int64(2), record.GetVersion())
+	assert.Equal(t, createdAt, record.GetCreatedAt().AsTime())
+	assert.Equal(t, updatedAt, record.GetUpdatedAt().AsTime())
+	assert.Nil(t, record.GetDeletedAt())
+	assert.Nil(t, record.GetFile())
+}
+
+// TestRecordsService_GetRecord_FailWithUnauthenticated проверяет ошибку при отсутствии идентификатора пользователя
+// в контексте.
+func TestRecordsService_GetRecord_FailWithUnauthenticated(t *testing.T) {
+	// Arrange
+	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.GetRecordRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	_, err = recordsService.GetRecord(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestRecordsService_GetRecord_FailWithInvalidArgument проверяет валидацию запроса.
+func TestRecordsService_GetRecord_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	tests := []struct {
+		name string
+		req  *pb.GetRecordRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty record id", req: pb.GetRecordRequest_builder{RecordId: new("")}.Build()},
+		{name: "invalid record id", req: pb.GetRecordRequest_builder{RecordId: new("not-a-uuid")}.Build()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+
+			// Act
+			_, err = recordsService.GetRecord(ctx, tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+// TestRecordsService_GetRecord_FailWithNotFound проверяет маппинг отсутствующей записи в код ошибки NotFound.
+func TestRecordsService_GetRecord_FailWithNotFound(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{getRecordErr: model.ErrRecordNotFound}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := pb.GetRecordRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	_, err = recordsService.GetRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// TestRecordsService_GetRecord_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
+func TestRecordsService_GetRecord_FailWithInternalError(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{getRecordErr: errors.New("some internal error")}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := pb.GetRecordRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	_, err = recordsService.GetRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
 }

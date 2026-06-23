@@ -39,8 +39,20 @@ type ListRecordsOutput struct {
 	Items []model.RecordListItem
 }
 
+// GetRecordInput описывает входные данные сценария получения приватной записи.
+type GetRecordInput struct {
+	RecordID uuid.UUID
+	UserID   uuid.UUID
+}
+
+// GetRecordOutput описывает результат получения приватной записи.
+type GetRecordOutput struct {
+	Record model.Record
+}
+
 type recordRepository interface {
 	Create(ctx context.Context, record model.Record) error
+	GetByIDAndUserID(ctx context.Context, recordID uuid.UUID, userID uuid.UUID) (model.Record, error)
 	ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error)
 }
 
@@ -140,6 +152,18 @@ func (uc *RecordUseCase) ListRecords(ctx context.Context, in ListRecordsInput) (
 		return ListRecordsOutput{}, fmt.Errorf("failed to list records: %w", err)
 	}
 	return ListRecordsOutput{Items: items}, nil
+}
+
+// GetRecord возвращает приватную запись пользователя.
+func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetRecordOutput, error) {
+	record, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
+	if err != nil {
+		if errors.Is(err, model.ErrRecordNotFound) {
+			return GetRecordOutput{}, model.ErrRecordNotFound
+		}
+		return GetRecordOutput{}, fmt.Errorf("failed to get record: %w", err)
+	}
+	return GetRecordOutput{Record: record}, nil
 }
 
 func buildObjectKey(userID, recordID, fileID uuid.UUID) string {
