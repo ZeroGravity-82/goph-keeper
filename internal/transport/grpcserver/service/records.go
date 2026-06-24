@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -19,8 +21,15 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
+var (
+	errInvalidBinaryRecordStream = errors.New("binary record stream is invalid")
+	errReadBinaryRecordStream    = errors.New("failed to read binary record stream")
+)
+
+// recordsUseCase описывает сценарии работы с приватными записями, которые нужны gRPC-сервису.
 type recordsUseCase interface {
 	CreateRecord(ctx context.Context, in usecase.CreateRecordInput) (usecase.CreateRecordOutput, error)
+	CreateBinaryRecord(ctx context.Context, in usecase.CreateBinaryRecordInput) (usecase.CreateBinaryRecordOutput, error)
 	ListRecords(ctx context.Context, in usecase.ListRecordsInput) (usecase.ListRecordsOutput, error)
 	GetRecord(ctx context.Context, in usecase.GetRecordInput) (usecase.GetRecordOutput, error)
 }
@@ -44,7 +53,7 @@ func NewRecordsService(uc recordsUseCase, logger *slog.Logger) (*RecordsService,
 	return &RecordsService{uc: uc, logger: logger}, nil
 }
 
-// CreateRecord создает приватную запись пользователя.
+// CreateRecord создает приватную запись.
 func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordRequest) (*pb.CreateRecordResponse, error) {
 	in, err := createRecordInputFromRequest(ctx, req)
 	if err != nil {
@@ -53,6 +62,9 @@ func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordR
 
 	out, err := s.uc.CreateRecord(ctx, in)
 	if err != nil {
+		if errors.Is(err, usecase.ErrBinaryRecordNotSupported) {
+			return nil, status.Error(codes.InvalidArgument, "binary record requires CreateBinaryRecord")
+		}
 		s.logger.Error("failed to create record", slog.Any("err", err))
 		return nil, status.Error(codes.Internal, "internal error")
 	}
@@ -64,6 +76,7 @@ func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordR
 	}.Build(), nil
 }
 
+// createRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария создания записи.
 func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordRequest) (usecase.CreateRecordInput, error) {
 	if req == nil {
 		return usecase.CreateRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -96,6 +109,7 @@ func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordReque
 	}, nil
 }
 
+// recordTypeFromProto преобразует protobuf-тип записи в доменный тип записи.
 func recordTypeFromProto(recordType pb.RecordType) (model.RecordType, bool) {
 	switch recordType {
 	case pb.RecordType_RECORD_TYPE_CREDENTIAL:
@@ -111,7 +125,200 @@ func recordTypeFromProto(recordType pb.RecordType) (model.RecordType, bool) {
 	}
 }
 
-// ListRecords возвращает список приватных записей пользователя.
+// CreateBinaryRecord создает бинарную приватную запись вместе с загрузкой зашифрованного файла в хранилище.
+func (s *RecordsService) CreateBinaryRecord(stream pb.Records_CreateBinaryRecordServer) error {
+	streamInput, err := createBinaryRecordInputFromStream(stream)
+	if err != nil {
+		return err
+	}
+
+	out, usecaseErr := s.uc.CreateBinaryRecord(stream.Context(), streamInput.in)
+	if usecaseErr != nil {
+		_ = streamInput.fileReader.CloseWithError(usecaseErr)
+	} else {
+		_ = streamInput.fileReader.Close()
+	}
+
+	// Продюсер-горутина читает чанки из gRPC-стрима и пишет их в пайп, а usecase читает данные из пайпа.
+	// После завершения usecase нужно дождаться продюсера, чтобы не потерять ошибку чтения стрима, а также чтобы
+	// не оставить горутину после ответа клиенту.
+	producerErr := waitBinaryRecordChunksProducer(streamInput)
+	if producerErr != nil {
+		if errors.Is(producerErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
+			errors.Is(producerErr, errInvalidBinaryRecordStream) {
+			return status.Error(codes.InvalidArgument, producerErr.Error())
+		}
+		if usecaseErr == nil {
+			s.logger.Error("failed to receive binary record chunks", slog.Any("err", producerErr))
+			return status.Error(codes.Internal, "internal error")
+		}
+	}
+	if usecaseErr != nil {
+		if errors.Is(usecaseErr, usecase.ErrInvalidBinaryEncryptedSize) ||
+			errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
+			errors.Is(usecaseErr, usecase.ErrUploadModeNotSupported) {
+			return status.Error(codes.InvalidArgument, usecaseErr.Error())
+		}
+		s.logger.Error("failed to create binary record", slog.Any("err", usecaseErr))
+		return status.Error(codes.Internal, "internal error")
+	}
+
+	recordID := out.RecordID.String()
+	uploadStatus := uploadStatusToProto(out.UploadStatus)
+	return stream.SendAndClose(pb.CreateBinaryRecordResponse_builder{
+		RecordId:     &recordID,
+		Version:      &out.Version,
+		UploadStatus: &uploadStatus,
+	}.Build())
+}
+
+// createBinaryRecordStreamInput содержит входные данные сценария и служебные объекты для чтения файла из стрима.
+type createBinaryRecordStreamInput struct {
+	in            usecase.CreateBinaryRecordInput
+	fileReader    *io.PipeReader
+	producerErrCh <-chan error
+}
+
+// createBinaryRecordInputFromStream читает первое сообщение стрима, валидирует метаданные и готовит пайп для файла.
+//
+// Первое сообщение должно содержать метаданные, потому что серверу нужны параметры записи и файла до чтения чанков.
+// Все последующие сообщения должны содержать чанк с частью зашифрованного файла. Сервер передает чанки в файловое
+// хранилище потоково, не дожидаясь загрузки всего файла.
+func createBinaryRecordInputFromStream(
+	stream pb.Records_CreateBinaryRecordServer,
+) (createBinaryRecordStreamInput, error) {
+	userID, ok := authcontext.UserIDFromContext(stream.Context())
+	if !ok {
+		return createBinaryRecordStreamInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+
+	first, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return createBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "metadata is required")
+	}
+	if err != nil {
+		return createBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "failed to receive metadata")
+	}
+	if first.WhichPayload() != pb.CreateBinaryRecordRequest_Metadata_case {
+		return createBinaryRecordStreamInput{}, status.Error(
+			codes.InvalidArgument, "first message must contain metadata",
+		)
+	}
+	metadata := first.GetMetadata()
+	in, err := createBinaryRecordInputFromMetadata(userID, metadata)
+	if err != nil {
+		return createBinaryRecordStreamInput{}, err
+	}
+
+	// Пайп связывает чтение чанков из gRPC-стрима с io.Reader, который потом usecase передает в файловое хранилище.
+	fileReader, fileWriter := io.Pipe()
+	producerErrCh := make(chan error, 1)
+	go func() {
+		producerErrCh <- receiveBinaryRecordChunks(stream, fileWriter, in.EncryptedSize)
+	}()
+	in.EncryptedFile = fileReader
+
+	return createBinaryRecordStreamInput{
+		in:            in,
+		fileReader:    fileReader,
+		producerErrCh: producerErrCh,
+	}, nil
+}
+
+// createBinaryRecordInputFromMetadata валидирует метаданные бинарной записи и преобразует их во входной DTO сценария
+// создания бинарной записи.
+func createBinaryRecordInputFromMetadata(
+	userID uuid.UUID,
+	metadata *pb.CreateBinaryRecordMetadata,
+) (usecase.CreateBinaryRecordInput, error) {
+	if metadata == nil {
+		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "metadata is required")
+	}
+	if strings.TrimSpace(metadata.GetTitle()) == "" {
+		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "title is required")
+	}
+	if len(metadata.GetEncryptedDek()) == 0 {
+		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted dek is required")
+	}
+	if len(metadata.GetEncryptedPayload()) == 0 {
+		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
+	}
+	uploadMode, ok := uploadModeFromProto(metadata.GetUploadMode())
+	if !ok {
+		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "upload mode is invalid")
+	}
+	return usecase.CreateBinaryRecordInput{
+		UserID:           userID,
+		Title:            metadata.GetTitle(),
+		Description:      metadata.GetDescription(),
+		EncryptedDEK:     metadata.GetEncryptedDek(),
+		EncryptedPayload: metadata.GetEncryptedPayload(),
+		EncryptedSize:    metadata.GetEncryptedSize(),
+		UploadMode:       uploadMode,
+	}, nil
+}
+
+// uploadModeFromProto преобразует protobuf-режим загрузки файла в доменный режим загрузки.
+func uploadModeFromProto(uploadMode pb.UploadMode) (model.UploadMode, bool) {
+	switch uploadMode {
+	case pb.UploadMode_UPLOAD_MODE_SINGLE_PART:
+		return model.UploadModeSinglePart, true
+	case pb.UploadMode_UPLOAD_MODE_MULTIPART:
+		return model.UploadModeMultiPart, true
+	default:
+		return "", false
+	}
+}
+
+// receiveBinaryRecordChunks принимает чанки зашифрованного файла из стрима и передает их в пайп писателя.
+func receiveBinaryRecordChunks(
+	stream pb.Records_CreateBinaryRecordServer,
+	fileWriter *io.PipeWriter,
+	expectedSize int64,
+) error {
+	var receivedSize int64
+	for {
+		req, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			if receivedSize != expectedSize {
+				_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
+				return usecase.ErrBinaryEncryptedSizeMismatch
+			}
+			return fileWriter.Close()
+		}
+		if err != nil {
+			closeErr := fmt.Errorf("failed to receive file chunk: %w", errInvalidBinaryRecordStream)
+			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
+			return closeErr
+		}
+		if req.WhichPayload() != pb.CreateBinaryRecordRequest_Chunk_case {
+			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
+			return errInvalidBinaryRecordStream
+		}
+
+		chunk := req.GetChunk()
+		receivedSize += int64(len(chunk))
+		if receivedSize > int64(usecase.MaxEncryptedFileSize()) || receivedSize > expectedSize {
+			_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
+			return usecase.ErrBinaryEncryptedSizeMismatch
+		}
+		if _, err = fileWriter.Write(chunk); err != nil {
+			_ = fileWriter.CloseWithError(err)
+			return err
+		}
+	}
+}
+
+// waitBinaryRecordChunksProducer дожидается завершения горутины, принимающей чанки файла.
+func waitBinaryRecordChunksProducer(streamInput createBinaryRecordStreamInput) error {
+	if streamInput.producerErrCh == nil {
+		return nil
+	}
+	err := <-streamInput.producerErrCh
+	return err
+}
+
+// ListRecords возвращает список приватных записей.
 func (s *RecordsService) ListRecords(ctx context.Context, req *pb.ListRecordsRequest) (*pb.ListRecordsResponse, error) {
 	in, err := listRecordsInputFromRequest(ctx, req)
 	if err != nil {
@@ -131,6 +338,8 @@ func (s *RecordsService) ListRecords(ctx context.Context, req *pb.ListRecordsReq
 	return pb.ListRecordsResponse_builder{Items: items}.Build(), nil
 }
 
+// listRecordsInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения списка
+// приватных записей.
 func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest) (usecase.ListRecordsInput, error) {
 	if req == nil {
 		return usecase.ListRecordsInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -142,6 +351,7 @@ func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest
 	return usecase.ListRecordsInput{UserID: userID}, nil
 }
 
+// recordListItemToProto преобразует краткое представление записи в protobuf-модель.
 func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
 	recordID := item.ID.String()
 	recordType := recordTypeToProto(item.Type)
@@ -159,6 +369,7 @@ func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
 	}.Build()
 }
 
+// recordTypeToProto преобразует доменный тип записи в protobuf-тип записи.
 func recordTypeToProto(recordType model.RecordType) pb.RecordType {
 	switch recordType {
 	case model.RecordTypeCredential:
@@ -173,6 +384,8 @@ func recordTypeToProto(recordType model.RecordType) pb.RecordType {
 		return pb.RecordType_RECORD_TYPE_UNSPECIFIED
 	}
 }
+
+// recordListItemFileToProto преобразует краткое представление файла записи в protobuf-модель.
 func recordListItemFileToProto(file *model.RecordListItemFile) *pb.RecordFile {
 	if file == nil {
 		return nil
@@ -181,10 +394,9 @@ func recordListItemFileToProto(file *model.RecordListItemFile) *pb.RecordFile {
 	return pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build()
 }
 
+// uploadStatusToProto преобразует доменный статус загрузки файла в protobuf-статус.
 func uploadStatusToProto(uploadStatus model.UploadStatus) pb.UploadStatus {
 	switch uploadStatus {
-	case model.UploadStatusPending:
-		return pb.UploadStatus_UPLOAD_STATUS_PENDING
 	case model.UploadStatusUploading:
 		return pb.UploadStatus_UPLOAD_STATUS_UPLOADING
 	case model.UploadStatusUploaded:
@@ -196,7 +408,7 @@ func uploadStatusToProto(uploadStatus model.UploadStatus) pb.UploadStatus {
 	}
 }
 
-// GetRecord возвращает приватную запись пользователя.
+// GetRecord возвращает приватную запись.
 func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest) (*pb.GetRecordResponse, error) {
 	in, err := getRecordInputFromRequest(ctx, req)
 	if err != nil {
@@ -215,6 +427,7 @@ func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest
 	return pb.GetRecordResponse_builder{Record: recordToProto(out.Record)}.Build(), nil
 }
 
+// getRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения записи.
 func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (usecase.GetRecordInput, error) {
 	if req == nil {
 		return usecase.GetRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -230,6 +443,7 @@ func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (u
 	return usecase.GetRecordInput{RecordID: recordID, UserID: userID}, nil
 }
 
+// recordToProto преобразует доменную модель приватной записи в protobuf-модель.
 func recordToProto(record model.Record) *pb.Record {
 	recordID := record.ID.String()
 	recordType := recordTypeToProto(record.Type)
@@ -251,6 +465,7 @@ func recordToProto(record model.Record) *pb.Record {
 	}.Build()
 }
 
+// timeToProto преобразует опциональное время в штамп времени protobuf.
 func timeToProto(t *time.Time) *timestamppb.Timestamp {
 	if t == nil {
 		return nil
@@ -258,6 +473,7 @@ func timeToProto(t *time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(*t)
 }
 
+// recordFileToProto преобразует технические данные файла записи в protobuf-модель.
 func recordFileToProto(file *model.RecordFile) *pb.RecordFile {
 	if file == nil {
 		return nil

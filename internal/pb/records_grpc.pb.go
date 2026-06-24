@@ -19,13 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Records_CreateRecord_FullMethodName = "/gophkeeper.v1.Records/CreateRecord"
-	Records_ListRecords_FullMethodName  = "/gophkeeper.v1.Records/ListRecords"
-	Records_GetRecord_FullMethodName    = "/gophkeeper.v1.Records/GetRecord"
-	Records_UpdateRecord_FullMethodName = "/gophkeeper.v1.Records/UpdateRecord"
-	Records_DeleteRecord_FullMethodName = "/gophkeeper.v1.Records/DeleteRecord"
-	Records_UploadFile_FullMethodName   = "/gophkeeper.v1.Records/UploadFile"
-	Records_DownloadFile_FullMethodName = "/gophkeeper.v1.Records/DownloadFile"
+	Records_CreateRecord_FullMethodName       = "/gophkeeper.v1.Records/CreateRecord"
+	Records_CreateBinaryRecord_FullMethodName = "/gophkeeper.v1.Records/CreateBinaryRecord"
+	Records_ListRecords_FullMethodName        = "/gophkeeper.v1.Records/ListRecords"
+	Records_GetRecord_FullMethodName          = "/gophkeeper.v1.Records/GetRecord"
+	Records_UpdateRecord_FullMethodName       = "/gophkeeper.v1.Records/UpdateRecord"
+	Records_DeleteRecord_FullMethodName       = "/gophkeeper.v1.Records/DeleteRecord"
+	Records_DownloadFile_FullMethodName       = "/gophkeeper.v1.Records/DownloadFile"
 )
 
 // RecordsClient is the client API for Records service.
@@ -33,11 +33,11 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RecordsClient interface {
 	CreateRecord(ctx context.Context, in *CreateRecordRequest, opts ...grpc.CallOption) (*CreateRecordResponse, error)
+	CreateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[CreateBinaryRecordRequest, CreateBinaryRecordResponse], error)
 	ListRecords(ctx context.Context, in *ListRecordsRequest, opts ...grpc.CallOption) (*ListRecordsResponse, error)
 	GetRecord(ctx context.Context, in *GetRecordRequest, opts ...grpc.CallOption) (*GetRecordResponse, error)
 	UpdateRecord(ctx context.Context, in *UpdateRecordRequest, opts ...grpc.CallOption) (*UpdateRecordResponse, error)
 	DeleteRecord(ctx context.Context, in *DeleteRecordRequest, opts ...grpc.CallOption) (*DeleteRecordResponse, error)
-	UploadFile(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadFileRequest, UploadFileResponse], error)
 	DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadFileResponse], error)
 }
 
@@ -58,6 +58,19 @@ func (c *recordsClient) CreateRecord(ctx context.Context, in *CreateRecordReques
 	}
 	return out, nil
 }
+
+func (c *recordsClient) CreateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[CreateBinaryRecordRequest, CreateBinaryRecordResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[0], Records_CreateBinaryRecord_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[CreateBinaryRecordRequest, CreateBinaryRecordResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Records_CreateBinaryRecordClient = grpc.ClientStreamingClient[CreateBinaryRecordRequest, CreateBinaryRecordResponse]
 
 func (c *recordsClient) ListRecords(ctx context.Context, in *ListRecordsRequest, opts ...grpc.CallOption) (*ListRecordsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -99,19 +112,6 @@ func (c *recordsClient) DeleteRecord(ctx context.Context, in *DeleteRecordReques
 	return out, nil
 }
 
-func (c *recordsClient) UploadFile(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadFileRequest, UploadFileResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[0], Records_UploadFile_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[UploadFileRequest, UploadFileResponse]{ClientStream: stream}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Records_UploadFileClient = grpc.ClientStreamingClient[UploadFileRequest, UploadFileResponse]
-
 func (c *recordsClient) DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadFileResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[1], Records_DownloadFile_FullMethodName, cOpts...)
@@ -136,11 +136,11 @@ type Records_DownloadFileClient = grpc.ServerStreamingClient[DownloadFileRespons
 // for forward compatibility.
 type RecordsServer interface {
 	CreateRecord(context.Context, *CreateRecordRequest) (*CreateRecordResponse, error)
+	CreateBinaryRecord(grpc.ClientStreamingServer[CreateBinaryRecordRequest, CreateBinaryRecordResponse]) error
 	ListRecords(context.Context, *ListRecordsRequest) (*ListRecordsResponse, error)
 	GetRecord(context.Context, *GetRecordRequest) (*GetRecordResponse, error)
 	UpdateRecord(context.Context, *UpdateRecordRequest) (*UpdateRecordResponse, error)
 	DeleteRecord(context.Context, *DeleteRecordRequest) (*DeleteRecordResponse, error)
-	UploadFile(grpc.ClientStreamingServer[UploadFileRequest, UploadFileResponse]) error
 	DownloadFile(*DownloadFileRequest, grpc.ServerStreamingServer[DownloadFileResponse]) error
 	mustEmbedUnimplementedRecordsServer()
 }
@@ -155,6 +155,9 @@ type UnimplementedRecordsServer struct{}
 func (UnimplementedRecordsServer) CreateRecord(context.Context, *CreateRecordRequest) (*CreateRecordResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateRecord not implemented")
 }
+func (UnimplementedRecordsServer) CreateBinaryRecord(grpc.ClientStreamingServer[CreateBinaryRecordRequest, CreateBinaryRecordResponse]) error {
+	return status.Error(codes.Unimplemented, "method CreateBinaryRecord not implemented")
+}
 func (UnimplementedRecordsServer) ListRecords(context.Context, *ListRecordsRequest) (*ListRecordsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRecords not implemented")
 }
@@ -166,9 +169,6 @@ func (UnimplementedRecordsServer) UpdateRecord(context.Context, *UpdateRecordReq
 }
 func (UnimplementedRecordsServer) DeleteRecord(context.Context, *DeleteRecordRequest) (*DeleteRecordResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteRecord not implemented")
-}
-func (UnimplementedRecordsServer) UploadFile(grpc.ClientStreamingServer[UploadFileRequest, UploadFileResponse]) error {
-	return status.Error(codes.Unimplemented, "method UploadFile not implemented")
 }
 func (UnimplementedRecordsServer) DownloadFile(*DownloadFileRequest, grpc.ServerStreamingServer[DownloadFileResponse]) error {
 	return status.Error(codes.Unimplemented, "method DownloadFile not implemented")
@@ -211,6 +211,13 @@ func _Records_CreateRecord_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _Records_CreateBinaryRecord_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(RecordsServer).CreateBinaryRecord(&grpc.GenericServerStream[CreateBinaryRecordRequest, CreateBinaryRecordResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Records_CreateBinaryRecordServer = grpc.ClientStreamingServer[CreateBinaryRecordRequest, CreateBinaryRecordResponse]
 
 func _Records_ListRecords_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListRecordsRequest)
@@ -284,13 +291,6 @@ func _Records_DeleteRecord_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Records_UploadFile_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(RecordsServer).UploadFile(&grpc.GenericServerStream[UploadFileRequest, UploadFileResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Records_UploadFileServer = grpc.ClientStreamingServer[UploadFileRequest, UploadFileResponse]
-
 func _Records_DownloadFile_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(DownloadFileRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -332,8 +332,8 @@ var Records_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "UploadFile",
-			Handler:       _Records_UploadFile_Handler,
+			StreamName:    "CreateBinaryRecord",
+			Handler:       _Records_CreateBinaryRecord_Handler,
 			ClientStreams: true,
 		},
 		{

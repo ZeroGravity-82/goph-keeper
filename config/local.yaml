@@ -1,4 +1,8 @@
 database_uri: postgres://gophkeeper:userpassword@localhost:5432/gophkeeper?sslmode=disable
+file_storage:
+  endpoint: localhost:9000
+  bucket: gophkeeper
+  use_ssl: false
 logging:
   format: text
   level: debug

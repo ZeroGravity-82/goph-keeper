@@ -64,8 +64,6 @@ const (
 type UploadMode string
 
 const (
-	// UploadStatusPending обозначает, что загрузка файла на сервер еще не началась.
-	UploadStatusPending UploadStatus = "pending"
 	// UploadStatusUploading обозначает, что загрузка файла на сервер находится в процессе.
 	UploadStatusUploading UploadStatus = "uploading"
 	// UploadStatusUploaded обозначает, что загрузка файла на сервер завершилась успешно.

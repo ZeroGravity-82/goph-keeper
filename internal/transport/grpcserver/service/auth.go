@@ -15,6 +15,7 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
+// authUseCase описывает сценарии аутентификации, которые нужны gRPC-сервису.
 type authUseCase interface {
 	Register(ctx context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error)
 	Login(ctx context.Context, in usecase.LoginInput) (usecase.LoginOutput, error)
@@ -63,6 +64,7 @@ func (s *AuthService) Register(ctx context.Context, req *pb.RegisterRequest) (*p
 	}.Build(), nil
 }
 
+// registerInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария регистрации.
 func registerInputFromRequest(req *pb.RegisterRequest) (usecase.RegisterInput, error) {
 	if req == nil {
 		return usecase.RegisterInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -73,6 +75,7 @@ func registerInputFromRequest(req *pb.RegisterRequest) (usecase.RegisterInput, e
 	return usecase.RegisterInput{Login: req.GetLogin(), Password: req.GetPassword()}, nil
 }
 
+// validateCredentials проверяет обязательные учетные данные пользователя.
 func validateCredentials(login, password string) error {
 	if strings.TrimSpace(login) == "" {
 		return status.Error(codes.InvalidArgument, "login is required")
@@ -83,10 +86,12 @@ func validateCredentials(login, password string) error {
 	return nil
 }
 
+// isExpectedAuthError определяет ожидаемые ошибки аутентификации, которые не нужно логировать как внутренние ошибки.
 func isExpectedAuthError(err error) bool {
 	return errors.Is(err, model.ErrLoginAlreadyTaken) || errors.Is(err, model.ErrAuthenticationFailed)
 }
 
+// authErrorToStatus преобразует ошибку сценария аутентификации в gRPC-статус.
 func authErrorToStatus(err error) error {
 	if errors.Is(err, model.ErrLoginAlreadyTaken) {
 		return status.Error(codes.AlreadyExists, "login already taken")
@@ -119,6 +124,7 @@ func (s *AuthService) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Logi
 	}.Build(), nil
 }
 
+// loginInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария входа.
 func loginInputFromRequest(req *pb.LoginRequest) (usecase.LoginInput, error) {
 	if req == nil {
 		return usecase.LoginInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -150,6 +156,7 @@ func (s *AuthService) Refresh(ctx context.Context, req *pb.RefreshRequest) (*pb.
 	}.Build(), nil
 }
 
+// refreshInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария обновления токенов.
 func refreshInputFromRequest(req *pb.RefreshRequest) (usecase.RefreshInput, error) {
 	if req == nil {
 		return usecase.RefreshInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -160,6 +167,7 @@ func refreshInputFromRequest(req *pb.RefreshRequest) (usecase.RefreshInput, erro
 	return usecase.RefreshInput{RefreshToken: req.GetRefreshToken()}, nil
 }
 
+// validateRefreshToken проверяет обязательный refresh-токен.
 func validateRefreshToken(refreshToken string) error {
 	if strings.TrimSpace(refreshToken) == "" {
 		return status.Error(codes.InvalidArgument, "refresh token is required")
@@ -184,6 +192,7 @@ func (s *AuthService) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.Lo
 	return pb.LogoutResponse_builder{}.Build(), nil
 }
 
+// logoutInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария завершения сессии.
 func logoutInputFromRequest(req *pb.LogoutRequest) (usecase.LogoutInput, error) {
 	if req == nil {
 		return usecase.LogoutInput{}, status.Error(codes.InvalidArgument, "request is required")

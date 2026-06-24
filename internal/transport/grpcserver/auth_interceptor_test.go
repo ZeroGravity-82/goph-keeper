@@ -38,7 +38,7 @@ func TestAuthenticateUnary_SkipsAuthMethods(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Auth_Register_FullMethodName}
 
 	// Act
-	resp, err := srv.authenticateInterceptor(context.Background(), nil, info, func(ctx context.Context, req any) (any, error) {
+	resp, err := srv.authenticateUnaryInterceptor(context.Background(), nil, info, func(ctx context.Context, req any) (any, error) {
 		return "ok", nil
 	})
 
@@ -61,7 +61,7 @@ func TestAuthenticateUnary_AddsUserIDToContext(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
 	// Act
-	resp, err := srv.authenticateInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+	resp, err := srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		actualUserID, ok := authcontext.UserIDFromContext(ctx)
 		require.True(t, ok)
 		assert.Equal(t, userID, actualUserID)
@@ -74,6 +74,32 @@ func TestAuthenticateUnary_AddsUserIDToContext(t *testing.T) {
 	assert.True(t, parser.called)
 }
 
+// TestAuthenticateStream_AddsUserIDToContext проверяет успешную аутентификацию streaming Records-метода.
+func TestAuthenticateStream_AddsUserIDToContext(t *testing.T) {
+	// Arrange
+	userID, err := uuid.NewV7()
+	require.NoError(t, err)
+	parser := &accessTokenParserStub{claims: &auth.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: userID.String()},
+	}}
+	srv := &GRPCServer{tokenParser: parser}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
+	stream := &authTestServerStream{ctx: ctx}
+	info := &grpc.StreamServerInfo{FullMethod: pb.Records_CreateBinaryRecord_FullMethodName}
+
+	// Act
+	err = srv.authenticateStreamInterceptor(nil, stream, info, func(_ any, stream grpc.ServerStream) error {
+		actualUserID, ok := authcontext.UserIDFromContext(stream.Context())
+		require.True(t, ok)
+		assert.Equal(t, userID, actualUserID)
+		return nil
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.True(t, parser.called)
+}
+
 // TestAuthenticateUnary_FailsWithoutAuthorization проверяет ошибку при отсутствии метаданных authorization.
 func TestAuthenticateUnary_FailsWithoutAuthorization(t *testing.T) {
 	// Arrange
@@ -81,13 +107,22 @@ func TestAuthenticateUnary_FailsWithoutAuthorization(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
 	// Act
-	_, err := srv.authenticateInterceptor(context.Background(), nil, info, func(ctx context.Context, req any) (any, error) {
+	_, err := srv.authenticateUnaryInterceptor(context.Background(), nil, info, func(ctx context.Context, req any) (any, error) {
 		return nil, errors.New("handler must not be called")
 	})
 
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+type authTestServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *authTestServerStream) Context() context.Context {
+	return s.ctx
 }
 
 // TestAuthenticateUnary_FailsWithInvalidBearerScheme проверяет ошибку при неверном формате authorization metadata.
@@ -98,7 +133,7 @@ func TestAuthenticateUnary_FailsWithInvalidBearerScheme(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
 	// Act
-	_, err := srv.authenticateInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+	_, err := srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return nil, errors.New("handler must not be called")
 	})
 
@@ -115,7 +150,7 @@ func TestAuthenticateUnary_FailsWithInvalidToken(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
 	// Act
-	_, err := srv.authenticateInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+	_, err := srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return nil, errors.New("handler must not be called")
 	})
 
@@ -135,7 +170,7 @@ func TestAuthenticateUnary_FailsWithInvalidSubject(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
 	// Act
-	_, err := srv.authenticateInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+	_, err := srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
 		return nil, errors.New("handler must not be called")
 	})
 

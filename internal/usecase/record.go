@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,7 +12,15 @@ import (
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
 
-const initialRecordVersion int64 = 1
+const (
+	initialRecordVersion int64 = 1
+	maxEncryptedFileSize       = 200 * 1024 * 1024
+)
+
+// MaxEncryptedFileSize возвращает максимальный размер зашифрованного файла для MVP-сценария.
+func MaxEncryptedFileSize() int {
+	return maxEncryptedFileSize
+}
 
 // CreateRecordInput описывает входные данные сценария создания приватной записи.
 type CreateRecordInput struct {
@@ -27,6 +36,25 @@ type CreateRecordInput struct {
 type CreateRecordOutput struct {
 	RecordID uuid.UUID
 	Version  int64
+}
+
+// CreateBinaryRecordInput описывает входные данные сценария создания бинарной приватной записи.
+type CreateBinaryRecordInput struct {
+	UserID           uuid.UUID
+	Title            string
+	Description      string
+	EncryptedDEK     []byte
+	EncryptedPayload []byte
+	EncryptedFile    io.Reader
+	EncryptedSize    int64
+	UploadMode       model.UploadMode
+}
+
+// CreateBinaryRecordOutput описывает результат создания бинарной приватной записи.
+type CreateBinaryRecordOutput struct {
+	RecordID     uuid.UUID
+	Version      int64
+	UploadStatus model.UploadStatus
 }
 
 // ListRecordsInput описывает входные данные сценария получения списка приватных записей.
@@ -58,12 +86,19 @@ type recordRepository interface {
 
 type recordFileRepository interface {
 	Create(ctx context.Context, file model.RecordFile) error
+	UpdateUploadStatus(ctx context.Context, fileID uuid.UUID, status model.UploadStatus, updatedAt time.Time) error
+}
+
+type fileStorage interface {
+	ObjectKey(userID, recordID, fileID uuid.UUID) string
+	Put(ctx context.Context, objectKey string, data io.Reader, size int64) (int64, error)
 }
 
 // RecordUseCase реализует сценарии работы с приватными записями.
 type RecordUseCase struct {
 	recordRepo     recordRepository
 	recordFileRepo recordFileRepository
+	fileStorage    fileStorage
 	transactor     transactor
 }
 
@@ -71,6 +106,7 @@ type RecordUseCase struct {
 func NewRecordUseCase(
 	recordRepo recordRepository,
 	recordFileRepo recordFileRepository,
+	fileStorage fileStorage,
 	transactor transactor,
 ) (*RecordUseCase, error) {
 	if recordRepo == nil {
@@ -79,6 +115,9 @@ func NewRecordUseCase(
 	if recordFileRepo == nil {
 		return nil, errors.New("record file repository is not provided")
 	}
+	if fileStorage == nil {
+		return nil, errors.New("file storage is not provided")
+	}
 	if transactor == nil {
 		return nil, errors.New("transactor is not provided")
 	}
@@ -86,12 +125,18 @@ func NewRecordUseCase(
 	return &RecordUseCase{
 		recordRepo:     recordRepo,
 		recordFileRepo: recordFileRepo,
+		fileStorage:    fileStorage,
 		transactor:     transactor,
 	}, nil
 }
 
 // CreateRecord создает приватную запись пользователя.
+// Бинарные записи создаются отдельным сценарием вместе с загрузкой файла.
 func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput) (CreateRecordOutput, error) {
+	if in.Type == model.RecordTypeBinary {
+		return CreateRecordOutput{}, ErrBinaryRecordNotSupported
+	}
+
 	recordID, err := uuid.NewV7()
 	if err != nil {
 		return CreateRecordOutput{}, fmt.Errorf("failed to generate ID for record: %w", err)
@@ -111,38 +156,112 @@ func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput)
 		UpdatedAt:        now,
 		DeletedAt:        nil,
 	}
+	if err = uc.recordRepo.Create(ctx, record); err != nil {
+		return CreateRecordOutput{}, fmt.Errorf("failed to create record: %w", err)
+	}
+	return CreateRecordOutput{RecordID: record.ID, Version: record.Version}, nil
+}
+
+// CreateBinaryRecord создает бинарную приватную запись пользователя вместе с загрузкой зашифрованного файла.
+func (uc *RecordUseCase) CreateBinaryRecord(
+	ctx context.Context,
+	in CreateBinaryRecordInput,
+) (CreateBinaryRecordOutput, error) {
+	if in.UploadMode != model.UploadModeSinglePart {
+		return CreateBinaryRecordOutput{}, ErrUploadModeNotSupported
+	}
+	if in.EncryptedSize <= 0 || in.EncryptedSize > maxEncryptedFileSize {
+		return CreateBinaryRecordOutput{}, ErrInvalidBinaryEncryptedSize
+	}
+
+	recordID, err := uuid.NewV7()
+	if err != nil {
+		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to generate ID for record: %w", err)
+	}
+	fileID, err := uuid.NewV7()
+	if err != nil {
+		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to generate ID for record file: %w", err)
+	}
+
+	now := time.Now().UTC()
+	encryptedSize := in.EncryptedSize
+	uploadMode := in.UploadMode
+	record := model.Record{
+		ID:               recordID,
+		UserID:           in.UserID,
+		Type:             model.RecordTypeBinary,
+		Title:            in.Title,
+		Description:      in.Description,
+		EncryptedDEK:     model.EncryptedBlob{Data: in.EncryptedDEK},
+		EncryptedPayload: model.EncryptedBlob{Data: in.EncryptedPayload},
+		Version:          initialRecordVersion,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		DeletedAt:        nil,
+	}
+
+	objectKey := uc.fileStorage.ObjectKey(in.UserID, recordID, fileID)
+	file := model.RecordFile{
+		ID:            fileID,
+		RecordID:      recordID,
+		ObjectKey:     objectKey,
+		EncryptedSize: &encryptedSize,
+		UploadMode:    &uploadMode,
+		UploadStatus:  model.UploadStatusUploading,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
 
 	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
 		if err = uc.recordRepo.Create(ctx, record); err != nil {
 			return fmt.Errorf("failed to persist record: %w", err)
-		}
-		if record.Type != model.RecordTypeBinary {
-			return nil
-		}
-
-		fileID, err := uuid.NewV7()
-		if err != nil {
-			return fmt.Errorf("failed to generate ID for record file: %w", err)
-		}
-		file := model.RecordFile{
-			ID:            fileID,
-			RecordID:      record.ID,
-			ObjectKey:     buildObjectKey(in.UserID, recordID, fileID),
-			EncryptedSize: nil,
-			UploadMode:    nil,
-			UploadStatus:  model.UploadStatusPending,
-			CreatedAt:     now,
-			UpdatedAt:     now,
 		}
 		if err = uc.recordFileRepo.Create(ctx, file); err != nil {
 			return fmt.Errorf("failed to persist record file: %w", err)
 		}
 		return nil
 	}); err != nil {
-		return CreateRecordOutput{}, fmt.Errorf("failed to create record: %w", err)
+		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to create binary record: %w", err)
 	}
 
-	return CreateRecordOutput{RecordID: record.ID, Version: record.Version}, nil
+	written, err := uc.fileStorage.Put(ctx, objectKey, in.EncryptedFile, in.EncryptedSize)
+	now = time.Now().UTC()
+	if err != nil {
+		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
+		if statusErr != nil {
+			return CreateBinaryRecordOutput{}, fmt.Errorf(
+				"failed to mark binary record upload as failed after upload error %q: %w",
+				err.Error(),
+				statusErr,
+			)
+		}
+
+		if errors.Is(err, ErrBinaryEncryptedSizeMismatch) {
+			return CreateBinaryRecordOutput{}, err
+		}
+
+		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to upload binary record file: %w", err)
+	}
+	if written != in.EncryptedSize {
+		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
+		if statusErr != nil {
+			return CreateBinaryRecordOutput{}, fmt.Errorf(
+				"failed to mark binary record upload as failed after encrypted size mismatch: %w",
+				statusErr,
+			)
+		}
+
+		return CreateBinaryRecordOutput{}, ErrBinaryEncryptedSizeMismatch
+	}
+	if err = uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusUploaded, now); err != nil {
+		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to mark binary record upload as uploaded: %w", err)
+	}
+
+	return CreateBinaryRecordOutput{
+		RecordID:     recordID,
+		Version:      initialRecordVersion,
+		UploadStatus: model.UploadStatusUploaded,
+	}, nil
 }
 
 // ListRecords возвращает список приватных записей пользователя.
@@ -164,8 +283,4 @@ func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetR
 		return GetRecordOutput{}, fmt.Errorf("failed to get record: %w", err)
 	}
 	return GetRecordOutput{Record: record}, nil
-}
-
-func buildObjectKey(userID, recordID, fileID uuid.UUID) string {
-	return fmt.Sprintf("users/%s/records/%s/files/%s/payload", userID, recordID, fileID)
 }

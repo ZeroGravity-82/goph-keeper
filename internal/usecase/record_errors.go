@@ -1,0 +1,15 @@
+package usecase
+
+import "errors"
+
+// ErrBinaryRecordNotSupported возвращается, когда бинарную запись пытаются создать через неподходящий сценарий.
+var ErrBinaryRecordNotSupported = errors.New("binary record is not supported by this operation")
+
+// ErrInvalidBinaryEncryptedSize возвращается при некорректном значении ожидаемого размера зашифрованного файла.
+var ErrInvalidBinaryEncryptedSize = errors.New("binary encrypted size is invalid")
+
+// ErrBinaryEncryptedSizeMismatch возвращается, когда фактический размер файла не совпадает с ожидаемым.
+var ErrBinaryEncryptedSizeMismatch = errors.New("binary encrypted size does not match uploaded data")
+
+// ErrUploadModeNotSupported возвращается, когда режим загрузки файла не поддерживается сценарием.
+var ErrUploadModeNotSupported = errors.New("upload mode is not supported")

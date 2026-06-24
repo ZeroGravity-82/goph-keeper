@@ -75,7 +75,8 @@ func (s *GRPCServer) Run(ctx context.Context) error {
 	}
 	srv := grpc.NewServer(
 		grpc.Creds(s.creds),
-		grpc.UnaryInterceptor(s.authenticateInterceptor),
+		grpc.UnaryInterceptor(s.authenticateUnaryInterceptor),
+		grpc.StreamInterceptor(s.authenticateStreamInterceptor),
 	)
 	pb.RegisterAuthServer(srv, s.authService)
 	pb.RegisterRecordsServer(srv, s.recordsService)

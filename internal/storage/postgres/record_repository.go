@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -26,7 +27,7 @@ func NewRecordRepository(db *sqlx.DB) (*RecordRepository, error) {
 	return &RecordRepository{db: db}, nil
 }
 
-// Create сохраняет приватную запись в БД.
+// Create сохраняет приватную запись.
 func (r *RecordRepository) Create(ctx context.Context, record model.Record) error {
 	const q = `
 INSERT INTO record (
@@ -180,7 +181,7 @@ func NewRecordFileRepository(db *sqlx.DB) (*RecordFileRepository, error) {
 	return &RecordFileRepository{db: db}, nil
 }
 
-// Create сохраняет техническую информацию о файле приватной записи в БД.
+// Create сохраняет техническую информацию о файле приватной записи.
 func (r *RecordFileRepository) Create(ctx context.Context, file model.RecordFile) error {
 	const q = `
 INSERT INTO record_file (id, record_id, object_key, encrypted_size, upload_mode, upload_status, created_at, updated_at)
@@ -201,6 +202,33 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	)
 	if err != nil {
 		return fmt.Errorf("failed to persist record file: %w", err)
+	}
+	return nil
+}
+
+// UpdateUploadStatus обновляет статус загрузки файла приватной записи.
+func (r *RecordFileRepository) UpdateUploadStatus(
+	ctx context.Context,
+	fileID uuid.UUID,
+	status model.UploadStatus,
+	updatedAt time.Time,
+) error {
+	const q = `
+UPDATE record_file
+SET upload_status = $1, updated_at = $2
+WHERE id = $3
+`
+	exec := executorFromContext(ctx, r.db)
+	result, err := exec.ExecContext(ctx, q, string(status), updatedAt, fileID)
+	if err != nil {
+		return fmt.Errorf("failed to update record file upload status: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read affected rows count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return model.ErrRecordNotFound
 	}
 	return nil
 }

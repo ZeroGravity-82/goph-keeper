@@ -23,7 +23,7 @@ type accessTokenParser interface {
 	ParseAccessToken(tokenString string) (*auth.AccessClaims, error)
 }
 
-func (s *GRPCServer) authenticateInterceptor(
+func (s *GRPCServer) authenticateUnaryInterceptor(
 	ctx context.Context,
 	req any,
 	info *grpc.UnaryServerInfo,
@@ -50,6 +50,51 @@ func (s *GRPCServer) authenticateInterceptor(
 	}
 
 	return handler(authcontext.WithUserID(ctx, userID), req)
+}
+
+func (s *GRPCServer) authenticateStreamInterceptor(
+	srv any,
+	stream grpc.ServerStream,
+	info *grpc.StreamServerInfo,
+	handler grpc.StreamHandler,
+) error {
+	if !requiresAccessToken(info.FullMethod) {
+		return handler(srv, stream)
+	}
+
+	ctx, err := s.authenticateContext(stream.Context())
+	if err != nil {
+		return err
+	}
+	return handler(srv, serverStreamWithContext{ServerStream: stream, ctx: ctx})
+}
+
+func (s *GRPCServer) authenticateContext(ctx context.Context) (context.Context, error) {
+	accessToken, err := accessTokenFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	claims, err := s.tokenParser.ParseAccessToken(accessToken)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "access token is invalid")
+	}
+	if claims == nil {
+		return nil, status.Error(codes.Unauthenticated, "access token is invalid")
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil || userID == uuid.Nil {
+		return nil, status.Error(codes.Unauthenticated, "access token subject is invalid")
+	}
+	return authcontext.WithUserID(ctx, userID), nil
+}
+
+type serverStreamWithContext struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s serverStreamWithContext) Context() context.Context {
+	return s.ctx
 }
 
 func requiresAccessToken(fullMethod string) bool {

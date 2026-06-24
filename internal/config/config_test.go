@@ -30,6 +30,10 @@ func TestLoad_RequiresDatabaseURI(t *testing.T) {
 	setArgs(t, "server")
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
 
 	// Act
 	_, err := Load()
@@ -45,6 +49,10 @@ func TestLoad_RequiresJWTSecret(t *testing.T) {
 	setArgs(t, "server")
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
 
 	// Act
 	_, err := Load()
@@ -61,6 +69,10 @@ func TestLoad_LoadsDefaults(t *testing.T) {
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
 
 	// Act
 	cfg, err := Load()
@@ -70,6 +82,11 @@ func TestLoad_LoadsDefaults(t *testing.T) {
 	assert.Equal(t, "localhost:3201", cfg.GRPCServerAddr)
 	assert.Equal(t, "certs/server.crt", cfg.TLSCertPath)
 	assert.Equal(t, "certs/server.key", cfg.TLSKeyPath)
+	assert.Equal(t, "localhost:9000", cfg.FileStorage.Endpoint)
+	assert.Equal(t, "access", cfg.FileStorage.AccessKey)
+	assert.Equal(t, "secret", cfg.FileStorage.SecretKey)
+	assert.Equal(t, "gophkeeper", cfg.FileStorage.Bucket)
+	assert.Equal(t, false, cfg.FileStorage.UseSSL)
 	assert.Equal(t, "json", cfg.Logging.Format)
 	assert.Equal(t, "info", cfg.Logging.Level)
 	assert.Equal(t, false, cfg.Logging.AddSource)
@@ -85,6 +102,12 @@ jwt_secret: file-secret
 grpc_address: localhost:3202
 tls_cert: certs/file-server.crt
 tls_key: certs/file-server.key
+file_storage:
+  endpoint: localhost:9000
+  access_key: file-access
+  secret_key: file-secret
+  bucket: file-bucket
+  use_ssl: true
 logging:
   format: json
   level: warn
@@ -98,6 +121,11 @@ logging:
 		"--grpc-address", "127.0.0.1:3203",
 		"--tls-cert", "certs/flag-server.crt",
 		"--tls-key", "certs/flag-server.key",
+		"--file-storage.endpoint", "localhost:9001",
+		"--file-storage.access-key", "flag-access",
+		"--file-storage.secret-key", "flag-object-secret",
+		"--file-storage.bucket", "flag-bucket",
+		"--file-storage.use-ssl=false",
 		"--logging.level", "debug",
 		"--logging.add-source",
 	)
@@ -105,6 +133,8 @@ logging:
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "env-secret")
 	t.Setenv("GOPHKEEPER_GRPC_ADDRESS", "127.0.0.1:3204")
 	t.Setenv("GOPHKEEPER_TLS_CERT", "certs/env-server.crt")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9002")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "env-bucket")
 	t.Setenv("GOPHKEEPER_LOGGING_LEVEL", "error")
 
 	// Act
@@ -117,6 +147,11 @@ logging:
 	assert.Equal(t, "127.0.0.1:3204", cfg.GRPCServerAddr)
 	assert.Equal(t, "certs/env-server.crt", cfg.TLSCertPath)
 	assert.Equal(t, "certs/flag-server.key", cfg.TLSKeyPath)
+	assert.Equal(t, "localhost:9002", cfg.FileStorage.Endpoint)
+	assert.Equal(t, "flag-access", cfg.FileStorage.AccessKey)
+	assert.Equal(t, "flag-object-secret", cfg.FileStorage.SecretKey)
+	assert.Equal(t, "env-bucket", cfg.FileStorage.Bucket)
+	assert.Equal(t, false, cfg.FileStorage.UseSSL)
 	assert.Equal(t, "json", cfg.Logging.Format)
 	assert.Equal(t, "error", cfg.Logging.Level)
 	assert.True(t, cfg.Logging.AddSource)
@@ -129,6 +164,11 @@ func TestLoad_EmptyEnvironmentValueOverridesLowerPrioritySources(t *testing.T) {
 	configPath := writeTempConfig(t, `
 database_uri: postgres://file-db
 jwt_secret: file-secret
+file_storage:
+  endpoint: localhost:9000
+  access_key: access
+  secret_key: object-secret
+  bucket: gophkeeper
 `)
 	setArgs(t,
 		"server",
@@ -165,6 +205,11 @@ func unsetConfigEnv(t *testing.T) {
 		"GOPHKEEPER_GRPC_ADDRESS",
 		"GOPHKEEPER_TLS_CERT",
 		"GOPHKEEPER_TLS_KEY",
+		"GOPHKEEPER_FILE_STORAGE_ENDPOINT",
+		"GOPHKEEPER_FILE_STORAGE_ACCESS_KEY",
+		"GOPHKEEPER_FILE_STORAGE_SECRET_KEY",
+		"GOPHKEEPER_FILE_STORAGE_BUCKET",
+		"GOPHKEEPER_FILE_STORAGE_USE_SSL",
 		"GOPHKEEPER_LOGGING_FORMAT",
 		"GOPHKEEPER_LOGGING_LEVEL",
 		"GOPHKEEPER_LOGGING_ADD_SOURCE",

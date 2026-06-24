@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,11 +98,41 @@ func newIntegrationRecordsService(t *testing.T, db *sqlx.DB) *RecordsService {
 	require.NoError(t, err)
 	transactor, err := postgres.NewTransactor(db)
 	require.NoError(t, err)
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, transactor)
+	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, newFakeFileStorage(), transactor)
 	require.NoError(t, err)
 	recordsService, err := NewRecordsService(recordUC, logging.NopLogger())
 	require.NoError(t, err)
 	return recordsService
+}
+
+type fakeFileStorage struct {
+	mu      sync.Mutex
+	objects map[string][]byte
+	err     error
+}
+
+func newFakeFileStorage() *fakeFileStorage {
+	return &fakeFileStorage{objects: make(map[string][]byte)}
+}
+
+func (s *fakeFileStorage) ObjectKey(userID, recordID, fileID uuid.UUID) string {
+	return fmt.Sprintf("users/%s/records/%s/files/%s/payload", userID, recordID, fileID)
+}
+
+func (s *fakeFileStorage) Put(_ context.Context, objectKey string, data io.Reader, _ int64) (int64, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	copied, err := io.ReadAll(data)
+	if err != nil {
+		return 0, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.objects[objectKey] = copied
+	return int64(len(copied)), nil
 }
 
 func getStoredRecord(t *testing.T, ctx context.Context, db *sqlx.DB, recordID uuid.UUID) dto.Record {
@@ -127,8 +159,7 @@ WHERE id = $1
 	return record
 }
 
-// TestRecordsService_CreateRecord_Integration_Binary проверяет создание бинарной записи с пустыми атрибутами файла и
-// статусом загрузки файла `pending`.
+// TestRecordsService_CreateRecord_Integration_Binary проверяет, что бинарная запись не создается обычным методом.
 func TestRecordsService_CreateRecord_Integration_Binary(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -146,18 +177,52 @@ func TestRecordsService_CreateRecord_Integration_Binary(t *testing.T) {
 	}.Build()
 
 	// Act
-	resp, err := recordsService.CreateRecord(requestCtx, req)
+	_, err := recordsService.CreateRecord(requestCtx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	var recordCount int
+	err = db.GetContext(ctx, &recordCount, `SELECT COUNT(*) FROM record WHERE app_user_id = $1`, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, recordCount)
+}
+
+// TestRecordsService_CreateBinaryRecord_Integration проверяет создание бинарной записи через реальные БД-зависимости.
+func TestRecordsService_CreateBinaryRecord_Integration(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-create-binary-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	encryptedFile := []byte("encrypted-file")
+	stream := newCreateBinaryRecordTestStream(
+		requestCtx,
+		newCreateBinaryRecordMetadata("binary title", int64(len(encryptedFile))),
+		encryptedFile,
+	)
+
+	// Act
+	err := recordsService.CreateBinaryRecord(stream)
 
 	// Assert
 	require.NoError(t, err)
-	assert.NotEmpty(t, resp.GetRecordId())
-	assert.Equal(t, int64(1), resp.GetVersion())
+	require.NotNil(t, stream.response)
+	assert.NotEmpty(t, stream.response.GetRecordId())
+	assert.Equal(t, int64(1), stream.response.GetVersion())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADED, stream.response.GetUploadStatus())
 
-	recordID, err := uuid.Parse(resp.GetRecordId())
+	recordID, err := uuid.Parse(stream.response.GetRecordId())
 	require.NoError(t, err)
 	storedRecord := getStoredRecord(t, ctx, db, recordID)
 	assert.Equal(t, user.ID, storedRecord.UserID)
 	assert.Equal(t, string(model.RecordTypeBinary), storedRecord.Type)
+	assert.Equal(t, "binary title", storedRecord.Title)
+	assert.Equal(t, "description", storedRecord.Description)
+	assert.Equal(t, []byte("encrypted-dek"), storedRecord.EncryptedDEK)
+	assert.Equal(t, []byte("encrypted-payload"), storedRecord.EncryptedPayload)
 
 	var storedFile dto.RecordFile
 	err = db.GetContext(ctx, &storedFile, `
@@ -170,9 +235,44 @@ WHERE record_id = $1
 	assert.Equal(t, recordID, storedFile.RecordID)
 	expectedObjectKey := fmt.Sprintf("users/%s/records/%s/files/%s/payload", user.ID, recordID, storedFile.ID)
 	assert.Equal(t, expectedObjectKey, storedFile.ObjectKey)
-	assert.Nil(t, storedFile.EncryptedSize)
-	assert.Nil(t, storedFile.UploadMode)
-	assert.Equal(t, string(model.UploadStatusPending), storedFile.UploadStatus)
+	require.NotNil(t, storedFile.EncryptedSize)
+	assert.Equal(t, int64(len(encryptedFile)), *storedFile.EncryptedSize)
+	require.NotNil(t, storedFile.UploadMode)
+	assert.Equal(t, string(model.UploadModeSinglePart), *storedFile.UploadMode)
+	assert.Equal(t, string(model.UploadStatusUploaded), storedFile.UploadStatus)
+}
+
+// TestRecordsService_CreateBinaryRecord_Integration_SizeMismatch проверяет, что при несовпадении размера запись файла
+// получает статус failed.
+func TestRecordsService_CreateBinaryRecord_Integration_SizeMismatch(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-create-binary-size-mismatch-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	stream := newCreateBinaryRecordTestStream(
+		requestCtx,
+		newCreateBinaryRecordMetadata("binary title", 100),
+		[]byte("short"),
+	)
+
+	// Act
+	err := recordsService.CreateBinaryRecord(stream)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	var storedFile dto.RecordFile
+	err = db.GetContext(ctx, &storedFile, `
+SELECT rf.id, rf.record_id, rf.object_key, rf.encrypted_size, rf.upload_mode, rf.upload_status, rf.created_at, rf.updated_at
+FROM record_file rf
+JOIN record r ON r.id = rf.record_id
+WHERE r.app_user_id = $1
+`, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, string(model.UploadStatusFailed), storedFile.UploadStatus)
 }
 
 // TestRecordsService_ListRecords_Integration проверяет получение списка приватных записей пользователя.
@@ -193,11 +293,11 @@ func TestRecordsService_ListRecords_Integration(t *testing.T) {
 		pb.RecordType_RECORD_TYPE_TEXT,
 		"text title",
 	)
-	binaryRecordID := createIntegrationRecord(
+	binaryRecordID := createIntegrationBinaryRecord(
 		t,
-		requestCtx,
-		recordsService,
-		pb.RecordType_RECORD_TYPE_BINARY,
+		ctx,
+		db,
+		user.ID,
 		"binary title",
 	)
 	deletedRecordID := createIntegrationRecord(
@@ -232,7 +332,7 @@ func TestRecordsService_ListRecords_Integration(t *testing.T) {
 	assert.Equal(t, "binary title", first.GetTitle())
 	assert.Equal(t, binaryUpdatedAt, first.GetUpdatedAt().AsTime())
 	require.NotNil(t, first.GetFile())
-	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_PENDING, first.GetFile().GetUploadStatus())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADED, first.GetFile().GetUploadStatus())
 
 	second := resp.GetItems()[1]
 	assert.Equal(t, textRecordID.String(), second.GetRecordId())
@@ -265,6 +365,63 @@ func createIntegrationRecord(
 	return recordID
 }
 
+func createIntegrationBinaryRecord(
+	t *testing.T,
+	ctx context.Context,
+	db *sqlx.DB,
+	userID uuid.UUID,
+	title string,
+) uuid.UUID {
+	t.Helper()
+
+	recordID, err := uuid.NewV7()
+	require.NoError(t, err)
+	fileID, err := uuid.NewV7()
+	require.NoError(t, err)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err = db.ExecContext(ctx, `
+INSERT INTO record (
+    id, app_user_id, type, title, description, encrypted_dek, encrypted_payload, version, created_at, updated_at, deleted_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL)
+`,
+		recordID,
+		userID,
+		string(model.RecordTypeBinary),
+		title,
+		"description",
+		[]byte("encrypted-dek"),
+		[]byte("encrypted-payload"),
+		int64(1),
+		now,
+		now,
+	)
+	require.NoError(t, err)
+
+	encryptedSize := int64(1024)
+	uploadMode := string(model.UploadModeSinglePart)
+	objectKey := fmt.Sprintf("users/%s/records/%s/files/%s/payload", userID, recordID, fileID)
+	_, err = db.ExecContext(ctx, `
+INSERT INTO record_file (
+    id, record_id, object_key, encrypted_size, upload_mode, upload_status, created_at, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`,
+		fileID,
+		recordID,
+		objectKey,
+		encryptedSize,
+		uploadMode,
+		string(model.UploadStatusUploaded),
+		now,
+		now,
+	)
+	require.NoError(t, err)
+
+	return recordID
+}
+
 // TestRecordsService_GetRecord_Integration_Binary проверяет получение бинарной записи с зашифрованными данными и
 // статусом файла.
 func TestRecordsService_GetRecord_Integration_Binary(t *testing.T) {
@@ -274,7 +431,7 @@ func TestRecordsService_GetRecord_Integration_Binary(t *testing.T) {
 	user := createIntegrationUser(t, ctx, db, "record-get-binary-user")
 	recordsService := newIntegrationRecordsService(t, db)
 	requestCtx := authcontext.WithUserID(ctx, user.ID)
-	recordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_BINARY, "binary title")
+	recordID := createIntegrationBinaryRecord(t, ctx, db, user.ID, "binary title")
 	req := pb.GetRecordRequest_builder{RecordId: new(recordID.String())}.Build()
 
 	// Act
@@ -295,7 +452,7 @@ func TestRecordsService_GetRecord_Integration_Binary(t *testing.T) {
 	assert.NotNil(t, record.GetUpdatedAt())
 	assert.Nil(t, record.GetDeletedAt())
 	require.NotNil(t, record.GetFile())
-	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_PENDING, record.GetFile().GetUploadStatus())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADED, record.GetFile().GetUploadStatus())
 }
 
 // TestRecordsService_GetRecord_Integration_NotFoundForOtherUser проверяет, что пользователь не может получить чужую

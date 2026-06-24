@@ -15,6 +15,7 @@ import (
 	"zerogravity-82/goph-keeper/internal/auth"
 	"zerogravity-82/goph-keeper/internal/config"
 	"zerogravity-82/goph-keeper/internal/logging"
+	minioStorage "zerogravity-82/goph-keeper/internal/storage/minio"
 	"zerogravity-82/goph-keeper/internal/storage/postgres"
 	"zerogravity-82/goph-keeper/internal/transport/grpcserver"
 	"zerogravity-82/goph-keeper/internal/transport/grpcserver/service"
@@ -59,7 +60,7 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	recordUC, err := buildRecordUseCase(db)
+	recordUC, err := buildRecordUseCase(db, cfg.FileStorage)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -150,7 +151,7 @@ func buildRecordService(recordUC *usecase.RecordUseCase, logger *slog.Logger) (*
 	return recordsService, nil
 }
 
-func buildRecordUseCase(db *sqlx.DB) (*usecase.RecordUseCase, error) {
+func buildRecordUseCase(db *sqlx.DB, fileStorageCfg config.FileStorage) (*usecase.RecordUseCase, error) {
 	recordRepo, err := postgres.NewRecordRepository(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create record repository: %w", err)
@@ -159,11 +160,22 @@ func buildRecordUseCase(db *sqlx.DB) (*usecase.RecordUseCase, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create record file repository: %w", err)
 	}
+	fileStorage, err := minioStorage.NewMinIOStorage(
+		context.Background(),
+		fileStorageCfg.Endpoint,
+		fileStorageCfg.AccessKey,
+		fileStorageCfg.SecretKey,
+		fileStorageCfg.Bucket,
+		fileStorageCfg.UseSSL,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file storage: %w", err)
+	}
 	transactor, err := postgres.NewTransactor(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transactor: %w", err)
 	}
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, transactor)
+	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, fileStorage, transactor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create record use case: %w", err)
 	}
