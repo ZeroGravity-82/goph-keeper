@@ -87,3 +87,16 @@ func (s *MinIOStorage) Put(ctx context.Context, objectKey string, data io.Reader
 	}
 	return info.Size, nil
 }
+
+// Get возвращает поток для чтения объекта из файлового хранилища.
+func (s *MinIOStorage) Get(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+	if objectKey == "" {
+		return nil, errors.New("object key is not provided")
+	}
+
+	object, err := s.client.GetObject(ctx, s.bucket, objectKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object: %w", err)
+	}
+	return object, nil
+}

@@ -15,7 +15,7 @@ import (
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
 
-// TestRecordRepository_CreateAndGetByIDAndUserID проверяет создание и получение приватной записи без файла.
+// TestRecordRepository_CreateAndGetByIDAndUserID проверяет создание и получение записи пользователя без файла.
 func TestRecordRepository_CreateAndGetByIDAndUserID(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -41,7 +41,7 @@ func TestRecordRepository_CreateAndGetByIDAndUserID(t *testing.T) {
 	assert.Nil(t, got.File)
 }
 
-// TestRecordRepository_GetByIDAndUserID_WithFile проверяет получение приватной записи вместе с файлом.
+// TestRecordRepository_GetByIDAndUserID_WithFile проверяет получение записи пользователя вместе с файлом.
 func TestRecordRepository_GetByIDAndUserID_WithFile(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -86,7 +86,7 @@ func TestRecordRepository_GetByIDAndUserID_NotFound(t *testing.T) {
 	assert.True(t, errors.Is(err, model.ErrRecordNotFound))
 }
 
-// TestRecordRepository_ListByUserID проверяет получение списка приватных записей пользователя.
+// TestRecordRepository_ListByUserID проверяет получение списка записей пользователя.
 func TestRecordRepository_ListByUserID(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -137,7 +137,7 @@ func TestRecordRepository_ListByUserID(t *testing.T) {
 	assert.Nil(t, items[1].File)
 }
 
-// TestRecordFileRepository_UpdateUploadStatus проверяет обновление статуса загрузки файла приватной записи.
+// TestRecordFileRepository_UpdateUploadStatus проверяет обновление статуса загрузки файла записи пользователя.
 func TestRecordFileRepository_UpdateUploadStatus(t *testing.T) {
 	// Arrange
 	ctx := context.Background()

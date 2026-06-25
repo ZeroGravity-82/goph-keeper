@@ -25,7 +25,7 @@ func NewUserRepository(db *sqlx.DB) (*UserRepository, error) {
 	return &UserRepository{db: db}, nil
 }
 
-// Create сохраняет нового пользователя в БД.
+// Create сохраняет нового пользователя.
 func (r *UserRepository) Create(ctx context.Context, u model.User) error {
 	const q = `
 INSERT INTO app_user (id, login, password_hash, master_key_salt, registered_at, updated_at)

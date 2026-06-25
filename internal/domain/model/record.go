@@ -26,7 +26,7 @@ type EncryptedBlob struct {
 	Data []byte
 }
 
-// Record описывает приватную запись пользователя с зашифрованными данными и открытыми метаданными.
+// Record описывает запись пользователя с зашифрованными данными и открытыми метаданными.
 type Record struct {
 	ID               uuid.UUID
 	UserID           uuid.UUID
@@ -42,7 +42,7 @@ type Record struct {
 	File             *RecordFile
 }
 
-// RecordListItem описывает краткое представление приватной записи для списка записей пользователя.
+// RecordListItem описывает краткое представление записи пользователя для списка.
 type RecordListItem struct {
 	ID          uuid.UUID
 	Type        RecordType
@@ -87,7 +87,7 @@ type RecordFile struct {
 	UpdatedAt     time.Time
 }
 
-// RecordListItemFile описывает краткое представление файла приватной записи для списка записей пользователя.
+// RecordListItemFile описывает краткое представление файла записи пользователя для списка.
 type RecordListItemFile struct {
 	UploadStatus UploadStatus
 }

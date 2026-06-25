@@ -3,6 +3,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -26,7 +27,8 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-// TestRecordsService_CreateRecord_Integration_Text проверяет создание текстовой записи через реальные зависимости.
+// TestRecordsService_CreateRecord_Integration_Text проверяет создание текстовой записи через реальные зависимости,
+// кроме файлового хранилища.
 func TestRecordsService_CreateRecord_Integration_Text(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -92,13 +94,23 @@ func createIntegrationUser(t *testing.T, ctx context.Context, db *sqlx.DB, login
 func newIntegrationRecordsService(t *testing.T, db *sqlx.DB) *RecordsService {
 	t.Helper()
 
+	return newIntegrationRecordsServiceWithFileStorage(t, db, newFakeFileStorage())
+}
+
+func newIntegrationRecordsServiceWithFileStorage(
+	t *testing.T,
+	db *sqlx.DB,
+	fileStorage *fakeFileStorage,
+) *RecordsService {
+	t.Helper()
+
 	recordRepo, err := postgres.NewRecordRepository(db)
 	require.NoError(t, err)
 	recordFileRepo, err := postgres.NewRecordFileRepository(db)
 	require.NoError(t, err)
 	transactor, err := postgres.NewTransactor(db)
 	require.NoError(t, err)
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, newFakeFileStorage(), transactor)
+	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, fileStorage, transactor)
 	require.NoError(t, err)
 	recordsService, err := NewRecordsService(recordUC, logging.NopLogger())
 	require.NoError(t, err)
@@ -133,6 +145,17 @@ func (s *fakeFileStorage) Put(_ context.Context, objectKey string, data io.Reade
 
 	s.objects[objectKey] = copied
 	return int64(len(copied)), nil
+}
+
+func (s *fakeFileStorage) Get(_ context.Context, objectKey string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, ok := s.objects[objectKey]
+	if !ok {
+		return nil, fmt.Errorf("object %q not found", objectKey)
+	}
+	return io.NopCloser(bytes.NewReader(append([]byte(nil), data...))), nil
 }
 
 func getStoredRecord(t *testing.T, ctx context.Context, db *sqlx.DB, recordID uuid.UUID) dto.Record {
@@ -189,7 +212,8 @@ func TestRecordsService_CreateRecord_Integration_Binary(t *testing.T) {
 	assert.Equal(t, 0, recordCount)
 }
 
-// TestRecordsService_CreateBinaryRecord_Integration проверяет создание бинарной записи через реальные БД-зависимости.
+// TestRecordsService_CreateBinaryRecord_Integration проверяет создание бинарной записи через реальные зависимости,
+// кроме файлового хранилища.
 func TestRecordsService_CreateBinaryRecord_Integration(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -275,7 +299,7 @@ WHERE r.app_user_id = $1
 	assert.Equal(t, string(model.UploadStatusFailed), storedFile.UploadStatus)
 }
 
-// TestRecordsService_ListRecords_Integration проверяет получение списка приватных записей пользователя.
+// TestRecordsService_ListRecords_Integration проверяет получение списка записей пользователя.
 func TestRecordsService_ListRecords_Integration(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -456,7 +480,7 @@ func TestRecordsService_GetRecord_Integration_Binary(t *testing.T) {
 }
 
 // TestRecordsService_GetRecord_Integration_NotFoundForOtherUser проверяет, что пользователь не может получить чужую
-// приватную запись.
+// запись.
 func TestRecordsService_GetRecord_Integration_NotFoundForOtherUser(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -497,4 +521,35 @@ func TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord(t *testin
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// TestRecordsService_DownloadFile_Integration проверяет скачивание зашифрованного файла через реальные зависимости,
+// кроме файлового хранилища.
+func TestRecordsService_DownloadFile_Integration(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-download-file-user")
+	fileStorage := newFakeFileStorage()
+	recordsService := newIntegrationRecordsServiceWithFileStorage(t, db, fileStorage)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	encryptedFile := bytes.Repeat([]byte("a"), downloadChunkSize+10)
+	createStream := newCreateBinaryRecordTestStream(
+		requestCtx,
+		newCreateBinaryRecordMetadata("binary title", int64(len(encryptedFile))),
+		encryptedFile,
+	)
+	require.NoError(t, recordsService.CreateBinaryRecord(createStream))
+	recordID := createStream.response.GetRecordId()
+	downloadStream := newDownloadFileTestStream(requestCtx)
+	req := pb.DownloadFileRequest_builder{RecordId: &recordID}.Build()
+
+	// Act
+	err := recordsService.DownloadFile(req, downloadStream)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, downloadStream.chunks, 2)
+	assert.Equal(t, downloadChunkSize, len(downloadStream.chunks[0]))
+	assert.Equal(t, encryptedFile, bytes.Join(downloadStream.chunks, nil))
 }

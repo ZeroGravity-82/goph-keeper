@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -35,6 +36,9 @@ type recordsUseCaseStub struct {
 	getRecordInput           usecase.GetRecordInput
 	getRecordOutput          usecase.GetRecordOutput
 	getRecordErr             error
+	downloadFileInput        usecase.DownloadFileInput
+	downloadFileOutput       usecase.DownloadFileOutput
+	downloadFileErr          error
 }
 
 func (s *recordsUseCaseStub) CreateRecord(
@@ -76,7 +80,15 @@ func (s *recordsUseCaseStub) GetRecord(
 	return s.getRecordOutput, s.getRecordErr
 }
 
-// TestRecordsService_CreateRecord_OK проверяет успешное создание приватной записи через gRPC-обработчик.
+func (s *recordsUseCaseStub) DownloadFile(
+	_ context.Context,
+	in usecase.DownloadFileInput,
+) (usecase.DownloadFileOutput, error) {
+	s.downloadFileInput = in
+	return s.downloadFileOutput, s.downloadFileErr
+}
+
+// TestRecordsService_CreateRecord_OK проверяет успешное создание записи пользователя через gRPC-обработчик.
 func TestRecordsService_CreateRecord_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
@@ -351,7 +363,7 @@ func TestRecordsService_CreateBinaryRecord_FailWithUseCaseInvalidArgument(t *tes
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// TestRecordsService_ListRecords_OK проверяет успешное получение списка приватных записей через gRPC-обработчик.
+// TestRecordsService_ListRecords_OK проверяет успешное получение списка записей через gRPC-обработчик.
 func TestRecordsService_ListRecords_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
@@ -440,7 +452,7 @@ func TestRecordsService_ListRecords_FailWithInternalError(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
-// TestRecordsService_GetRecord_OK проверяет успешное получение приватной записи через gRPC-обработчик.
+// TestRecordsService_GetRecord_OK проверяет успешное получение записи пользователя через gRPC-обработчик.
 func TestRecordsService_GetRecord_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
@@ -565,6 +577,143 @@ func TestRecordsService_GetRecord_FailWithInternalError(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
+// TestRecordsService_DownloadFile_OK проверяет успешное скачивание файла чанками через gRPC-обработчик.
+func TestRecordsService_DownloadFile_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	encryptedFile := bytes.Repeat([]byte("a"), downloadChunkSize+10)
+	uc := &recordsUseCaseStub{downloadFileOutput: usecase.DownloadFileOutput{
+		EncryptedFile: io.NopCloser(bytes.NewReader(encryptedFile)),
+	}}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	stream := newDownloadFileTestStream(authcontext.WithUserID(context.Background(), userID))
+	req := pb.DownloadFileRequest_builder{RecordId: new(recordID.String())}.Build()
+
+	// Act
+	err = recordsService.DownloadFile(req, stream)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, userID, uc.downloadFileInput.UserID)
+	assert.Equal(t, recordID, uc.downloadFileInput.RecordID)
+	require.Len(t, stream.chunks, 2)
+	assert.Equal(t, downloadChunkSize, len(stream.chunks[0]))
+	assert.Equal(t, encryptedFile, bytes.Join(stream.chunks, nil))
+}
+
+// TestRecordsService_DownloadFile_FailWithUnauthenticated проверяет ошибку при отсутствии идентификатора пользователя
+// в контексте.
+func TestRecordsService_DownloadFile_FailWithUnauthenticated(t *testing.T) {
+	// Arrange
+	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+	require.NoError(t, err)
+	stream := newDownloadFileTestStream(context.Background())
+	req := pb.DownloadFileRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	err = recordsService.DownloadFile(req, stream)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestRecordsService_DownloadFile_FailWithInvalidArgument проверяет валидацию запроса на скачивание файла.
+func TestRecordsService_DownloadFile_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	tests := []struct {
+		name string
+		req  *pb.DownloadFileRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty record id", req: pb.DownloadFileRequest_builder{RecordId: new("")}.Build()},
+		{name: "invalid record id", req: pb.DownloadFileRequest_builder{RecordId: new("not-a-uuid")}.Build()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			stream := newDownloadFileTestStream(authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7())))
+
+			// Act
+			err = recordsService.DownloadFile(tt.req, stream)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+// TestRecordsService_DownloadFile_FailWithNotFound проверяет маппинг отсутствующей записи в код ошибки NotFound.
+func TestRecordsService_DownloadFile_FailWithNotFound(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{downloadFileErr: model.ErrRecordNotFound}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	stream := newDownloadFileTestStream(authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7())))
+	req := pb.DownloadFileRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	err = recordsService.DownloadFile(req, stream)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// TestRecordsService_DownloadFile_FailWithUseCaseError проверяет маппинг прикладных ошибок.
+func TestRecordsService_DownloadFile_FailWithUseCaseError(t *testing.T) {
+	// Arrange
+	tests := []struct {
+		name       string
+		usecaseErr error
+		code       codes.Code
+	}{
+		{name: "record is not binary", usecaseErr: usecase.ErrRecordIsNotBinary, code: codes.InvalidArgument},
+		{name: "file is not uploaded", usecaseErr: usecase.ErrRecordFileIsNotUploaded, code: codes.FailedPrecondition},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			uc := &recordsUseCaseStub{downloadFileErr: tt.usecaseErr}
+			recordsService, err := NewRecordsService(uc, logging.NopLogger())
+			require.NoError(t, err)
+			stream := newDownloadFileTestStream(authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7())))
+			req := pb.DownloadFileRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+			// Act
+			err = recordsService.DownloadFile(req, stream)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, tt.code, status.Code(err))
+		})
+	}
+}
+
+// TestRecordsService_DownloadFile_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
+func TestRecordsService_DownloadFile_FailWithInternalError(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{downloadFileErr: errors.New("some internal error")}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	stream := newDownloadFileTestStream(authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7())))
+	req := pb.DownloadFileRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	err = recordsService.DownloadFile(req, stream)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
 type createBinaryRecordTestStream struct {
 	ctx      context.Context
 	requests []*pb.CreateBinaryRecordRequest
@@ -638,5 +787,41 @@ func (s *createBinaryRecordTestStream) SendMsg(any) error {
 }
 
 func (s *createBinaryRecordTestStream) RecvMsg(any) error {
+	return nil
+}
+
+type downloadFileTestStream struct {
+	ctx    context.Context
+	chunks [][]byte
+}
+
+func newDownloadFileTestStream(ctx context.Context) *downloadFileTestStream {
+	return &downloadFileTestStream{ctx: ctx}
+}
+
+func (s *downloadFileTestStream) Send(resp *pb.DownloadFileResponse) error {
+	s.chunks = append(s.chunks, append([]byte(nil), resp.GetChunk()...))
+	return nil
+}
+
+func (s *downloadFileTestStream) SetHeader(metadata.MD) error {
+	return nil
+}
+
+func (s *downloadFileTestStream) SendHeader(metadata.MD) error {
+	return nil
+}
+
+func (s *downloadFileTestStream) SetTrailer(metadata.MD) {}
+
+func (s *downloadFileTestStream) Context() context.Context {
+	return s.ctx
+}
+
+func (s *downloadFileTestStream) SendMsg(any) error {
+	return nil
+}
+
+func (s *downloadFileTestStream) RecvMsg(any) error {
 	return nil
 }

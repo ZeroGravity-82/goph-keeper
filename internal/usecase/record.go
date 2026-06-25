@@ -22,7 +22,7 @@ func MaxEncryptedFileSize() int {
 	return maxEncryptedFileSize
 }
 
-// CreateRecordInput описывает входные данные сценария создания приватной записи.
+// CreateRecordInput описывает входные данные сценария создания записи пользователя.
 type CreateRecordInput struct {
 	UserID           uuid.UUID
 	Type             model.RecordType
@@ -32,13 +32,13 @@ type CreateRecordInput struct {
 	EncryptedPayload []byte
 }
 
-// CreateRecordOutput описывает результат создания приватной записи.
+// CreateRecordOutput описывает результат создания записи пользователя.
 type CreateRecordOutput struct {
 	RecordID uuid.UUID
 	Version  int64
 }
 
-// CreateBinaryRecordInput описывает входные данные сценария создания бинарной приватной записи.
+// CreateBinaryRecordInput описывает входные данные сценария создания бинарной записи пользователя.
 type CreateBinaryRecordInput struct {
 	UserID           uuid.UUID
 	Title            string
@@ -50,32 +50,43 @@ type CreateBinaryRecordInput struct {
 	UploadMode       model.UploadMode
 }
 
-// CreateBinaryRecordOutput описывает результат создания бинарной приватной записи.
+// CreateBinaryRecordOutput описывает результат создания бинарной записи пользователя.
 type CreateBinaryRecordOutput struct {
 	RecordID     uuid.UUID
 	Version      int64
 	UploadStatus model.UploadStatus
 }
 
-// ListRecordsInput описывает входные данные сценария получения списка приватных записей.
+// ListRecordsInput описывает входные данные сценария получения списка записей пользователя.
 type ListRecordsInput struct {
 	UserID uuid.UUID
 }
 
-// ListRecordsOutput описывает результат получения списка приватных записей.
+// ListRecordsOutput описывает результат получения списка записей пользователя.
 type ListRecordsOutput struct {
 	Items []model.RecordListItem
 }
 
-// GetRecordInput описывает входные данные сценария получения приватной записи.
+// GetRecordInput описывает входные данные сценария получения записи пользователя.
 type GetRecordInput struct {
 	RecordID uuid.UUID
 	UserID   uuid.UUID
 }
 
-// GetRecordOutput описывает результат получения приватной записи.
+// GetRecordOutput описывает результат получения записи пользователя.
 type GetRecordOutput struct {
 	Record model.Record
+}
+
+// DownloadFileInput описывает входные данные сценария скачивания зашифрованного файла.
+type DownloadFileInput struct {
+	UserID   uuid.UUID
+	RecordID uuid.UUID
+}
+
+// DownloadFileOutput описывает результат сценария скачивания зашифрованного файла.
+type DownloadFileOutput struct {
+	EncryptedFile io.ReadCloser
 }
 
 type recordRepository interface {
@@ -92,9 +103,10 @@ type recordFileRepository interface {
 type fileStorage interface {
 	ObjectKey(userID, recordID, fileID uuid.UUID) string
 	Put(ctx context.Context, objectKey string, data io.Reader, size int64) (int64, error)
+	Get(ctx context.Context, objectKey string) (io.ReadCloser, error)
 }
 
-// RecordUseCase реализует сценарии работы с приватными записями.
+// RecordUseCase реализует сценарии работы с записями пользователя.
 type RecordUseCase struct {
 	recordRepo     recordRepository
 	recordFileRepo recordFileRepository
@@ -130,8 +142,8 @@ func NewRecordUseCase(
 	}, nil
 }
 
-// CreateRecord создает приватную запись пользователя.
-// Бинарные записи создаются отдельным сценарием вместе с загрузкой файла.
+// CreateRecord создает запись пользователя.
+// Бинарные записи пользователя создаются отдельным сценарием вместе с загрузкой файла.
 func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput) (CreateRecordOutput, error) {
 	if in.Type == model.RecordTypeBinary {
 		return CreateRecordOutput{}, ErrBinaryRecordNotSupported
@@ -162,7 +174,7 @@ func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput)
 	return CreateRecordOutput{RecordID: record.ID, Version: record.Version}, nil
 }
 
-// CreateBinaryRecord создает бинарную приватную запись пользователя вместе с загрузкой зашифрованного файла.
+// CreateBinaryRecord создает бинарную запись пользователя вместе с загрузкой зашифрованного файла.
 func (uc *RecordUseCase) CreateBinaryRecord(
 	ctx context.Context,
 	in CreateBinaryRecordInput,
@@ -240,7 +252,7 @@ func (uc *RecordUseCase) CreateBinaryRecord(
 			return CreateBinaryRecordOutput{}, err
 		}
 
-		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to upload binary record file: %w", err)
+		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to upload record file: %w", err)
 	}
 	if written != in.EncryptedSize {
 		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
@@ -264,7 +276,7 @@ func (uc *RecordUseCase) CreateBinaryRecord(
 	}, nil
 }
 
-// ListRecords возвращает список приватных записей пользователя.
+// ListRecords возвращает список записей пользователя.
 func (uc *RecordUseCase) ListRecords(ctx context.Context, in ListRecordsInput) (ListRecordsOutput, error) {
 	items, err := uc.recordRepo.ListByUserID(ctx, in.UserID)
 	if err != nil {
@@ -273,7 +285,7 @@ func (uc *RecordUseCase) ListRecords(ctx context.Context, in ListRecordsInput) (
 	return ListRecordsOutput{Items: items}, nil
 }
 
-// GetRecord возвращает приватную запись пользователя.
+// GetRecord возвращает запись пользователя.
 func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetRecordOutput, error) {
 	record, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
 	if err != nil {
@@ -283,4 +295,27 @@ func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetR
 		return GetRecordOutput{}, fmt.Errorf("failed to get record: %w", err)
 	}
 	return GetRecordOutput{Record: record}, nil
+}
+
+// DownloadFile возвращает поток зашифрованного файла записи пользователя.
+func (uc *RecordUseCase) DownloadFile(ctx context.Context, in DownloadFileInput) (DownloadFileOutput, error) {
+	record, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
+	if err != nil {
+		if errors.Is(err, model.ErrRecordNotFound) {
+			return DownloadFileOutput{}, model.ErrRecordNotFound
+		}
+		return DownloadFileOutput{}, fmt.Errorf("failed to get record for file download: %w", err)
+	}
+	if record.Type != model.RecordTypeBinary {
+		return DownloadFileOutput{}, ErrRecordIsNotBinary
+	}
+	if record.File == nil || record.File.UploadStatus != model.UploadStatusUploaded {
+		return DownloadFileOutput{}, ErrRecordFileIsNotUploaded
+	}
+
+	encryptedFile, err := uc.fileStorage.Get(ctx, record.File.ObjectKey)
+	if err != nil {
+		return DownloadFileOutput{}, fmt.Errorf("failed to get record file: %w", err)
+	}
+	return DownloadFileOutput{EncryptedFile: encryptedFile}, nil
 }

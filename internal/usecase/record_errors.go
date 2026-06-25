@@ -13,3 +13,9 @@ var ErrBinaryEncryptedSizeMismatch = errors.New("binary encrypted size does not 
 
 // ErrUploadModeNotSupported возвращается, когда режим загрузки файла не поддерживается сценарием.
 var ErrUploadModeNotSupported = errors.New("upload mode is not supported")
+
+// ErrRecordIsNotBinary возвращается, когда файловую операцию пытаются выполнить для небинарной записи пользователя.
+var ErrRecordIsNotBinary = errors.New("record is not binary")
+
+// ErrRecordFileIsNotUploaded возвращается, когда файл записи пользователя еще не был успешно загружен.
+var ErrRecordFileIsNotUploaded = errors.New("record file is not uploaded")

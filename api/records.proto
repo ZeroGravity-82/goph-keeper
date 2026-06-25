@@ -141,6 +141,5 @@ service Records {
   rpc GetRecord(GetRecordRequest) returns (GetRecordResponse);
   rpc UpdateRecord(UpdateRecordRequest) returns (UpdateRecordResponse);
   rpc DeleteRecord(DeleteRecordRequest) returns (DeleteRecordResponse);
-
   rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
 }

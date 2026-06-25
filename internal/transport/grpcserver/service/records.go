@@ -26,15 +26,18 @@ var (
 	errReadBinaryRecordStream    = errors.New("failed to read binary record stream")
 )
 
-// recordsUseCase описывает сценарии работы с приватными записями, которые нужны gRPC-сервису.
+const downloadChunkSize = 64 * 1024
+
+// recordsUseCase описывает сценарии работы с записями пользователя, которые нужны gRPC-сервису.
 type recordsUseCase interface {
 	CreateRecord(ctx context.Context, in usecase.CreateRecordInput) (usecase.CreateRecordOutput, error)
 	CreateBinaryRecord(ctx context.Context, in usecase.CreateBinaryRecordInput) (usecase.CreateBinaryRecordOutput, error)
 	ListRecords(ctx context.Context, in usecase.ListRecordsInput) (usecase.ListRecordsOutput, error)
 	GetRecord(ctx context.Context, in usecase.GetRecordInput) (usecase.GetRecordOutput, error)
+	DownloadFile(ctx context.Context, in usecase.DownloadFileInput) (usecase.DownloadFileOutput, error)
 }
 
-// RecordsService реализует gRPC-сервис приватных записей.
+// RecordsService реализует gRPC-сервис записей пользователя.
 type RecordsService struct {
 	pb.UnimplementedRecordsServer
 
@@ -53,7 +56,7 @@ func NewRecordsService(uc recordsUseCase, logger *slog.Logger) (*RecordsService,
 	return &RecordsService{uc: uc, logger: logger}, nil
 }
 
-// CreateRecord создает приватную запись.
+// CreateRecord создает запись пользователя.
 func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordRequest) (*pb.CreateRecordResponse, error) {
 	in, err := createRecordInputFromRequest(ctx, req)
 	if err != nil {
@@ -76,7 +79,8 @@ func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordR
 	}.Build(), nil
 }
 
-// createRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария создания записи.
+// createRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария создания записи
+// пользователя.
 func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordRequest) (usecase.CreateRecordInput, error) {
 	if req == nil {
 		return usecase.CreateRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -125,7 +129,7 @@ func recordTypeFromProto(recordType pb.RecordType) (model.RecordType, bool) {
 	}
 }
 
-// CreateBinaryRecord создает бинарную приватную запись вместе с загрузкой зашифрованного файла в хранилище.
+// CreateBinaryRecord создает бинарную запись пользователя вместе с загрузкой зашифрованного файла в хранилище.
 func (s *RecordsService) CreateBinaryRecord(stream pb.Records_CreateBinaryRecordServer) error {
 	streamInput, err := createBinaryRecordInputFromStream(stream)
 	if err != nil {
@@ -225,8 +229,8 @@ func createBinaryRecordInputFromStream(
 	}, nil
 }
 
-// createBinaryRecordInputFromMetadata валидирует метаданные бинарной записи и преобразует их во входной DTO сценария
-// создания бинарной записи.
+// createBinaryRecordInputFromMetadata валидирует метаданные бинарной записи пользователя и преобразует их во входной
+// DTO сценария создания бинарной записи.
 func createBinaryRecordInputFromMetadata(
 	userID uuid.UUID,
 	metadata *pb.CreateBinaryRecordMetadata,
@@ -270,7 +274,8 @@ func uploadModeFromProto(uploadMode pb.UploadMode) (model.UploadMode, bool) {
 	}
 }
 
-// receiveBinaryRecordChunks принимает чанки зашифрованного файла из стрима и передает их в пайп писателя.
+// receiveBinaryRecordChunks принимает чанки зашифрованного файла из стрима и записывает их в пайп, из которого
+// читает usecase.
 func receiveBinaryRecordChunks(
 	stream pb.Records_CreateBinaryRecordServer,
 	fileWriter *io.PipeWriter,
@@ -318,7 +323,7 @@ func waitBinaryRecordChunksProducer(streamInput createBinaryRecordStreamInput) e
 	return err
 }
 
-// ListRecords возвращает список приватных записей.
+// ListRecords возвращает список записей пользователя.
 func (s *RecordsService) ListRecords(ctx context.Context, req *pb.ListRecordsRequest) (*pb.ListRecordsResponse, error) {
 	in, err := listRecordsInputFromRequest(ctx, req)
 	if err != nil {
@@ -339,7 +344,7 @@ func (s *RecordsService) ListRecords(ctx context.Context, req *pb.ListRecordsReq
 }
 
 // listRecordsInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения списка
-// приватных записей.
+// записей пользователя.
 func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest) (usecase.ListRecordsInput, error) {
 	if req == nil {
 		return usecase.ListRecordsInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -351,7 +356,7 @@ func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest
 	return usecase.ListRecordsInput{UserID: userID}, nil
 }
 
-// recordListItemToProto преобразует краткое представление записи в protobuf-модель.
+// recordListItemToProto преобразует краткое представление записи пользователя в protobuf-модель.
 func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
 	recordID := item.ID.String()
 	recordType := recordTypeToProto(item.Type)
@@ -385,7 +390,7 @@ func recordTypeToProto(recordType model.RecordType) pb.RecordType {
 	}
 }
 
-// recordListItemFileToProto преобразует краткое представление файла записи в protobuf-модель.
+// recordListItemFileToProto преобразует краткое представление файла записи пользователя в protobuf-модель.
 func recordListItemFileToProto(file *model.RecordListItemFile) *pb.RecordFile {
 	if file == nil {
 		return nil
@@ -408,7 +413,7 @@ func uploadStatusToProto(uploadStatus model.UploadStatus) pb.UploadStatus {
 	}
 }
 
-// GetRecord возвращает приватную запись.
+// GetRecord возвращает запись пользователя.
 func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest) (*pb.GetRecordResponse, error) {
 	in, err := getRecordInputFromRequest(ctx, req)
 	if err != nil {
@@ -427,7 +432,8 @@ func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest
 	return pb.GetRecordResponse_builder{Record: recordToProto(out.Record)}.Build(), nil
 }
 
-// getRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения записи.
+// getRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения записи
+// пользователя.
 func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (usecase.GetRecordInput, error) {
 	if req == nil {
 		return usecase.GetRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -443,7 +449,7 @@ func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (u
 	return usecase.GetRecordInput{RecordID: recordID, UserID: userID}, nil
 }
 
-// recordToProto преобразует доменную модель приватной записи в protobuf-модель.
+// recordToProto преобразует доменную модель записи пользователя в protobuf-модель.
 func recordToProto(record model.Record) *pb.Record {
 	recordID := record.ID.String()
 	recordType := recordTypeToProto(record.Type)
@@ -473,11 +479,79 @@ func timeToProto(t *time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(*t)
 }
 
-// recordFileToProto преобразует технические данные файла записи в protobuf-модель.
+// recordFileToProto преобразует технические данные файла записи пользователя в protobuf-модель.
 func recordFileToProto(file *model.RecordFile) *pb.RecordFile {
 	if file == nil {
 		return nil
 	}
 	uploadStatus := uploadStatusToProto(file.UploadStatus)
 	return pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build()
+}
+
+// DownloadFile возвращает зашифрованный файл записи пользователя чанками фиксированного размера.
+func (s *RecordsService) DownloadFile(req *pb.DownloadFileRequest, stream pb.Records_DownloadFileServer) error {
+	in, err := downloadFileInputFromRequest(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+
+	out, err := s.uc.DownloadFile(stream.Context(), in)
+	if err != nil {
+		if errors.Is(err, model.ErrRecordNotFound) {
+			return status.Error(codes.NotFound, "record not found")
+		}
+		if errors.Is(err, usecase.ErrRecordIsNotBinary) {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+		if errors.Is(err, usecase.ErrRecordFileIsNotUploaded) {
+			return status.Error(codes.FailedPrecondition, err.Error())
+		}
+		s.logger.Error("failed to download file", slog.Any("err", err))
+		return status.Error(codes.Internal, "internal error")
+	}
+	if out.EncryptedFile == nil {
+		s.logger.Error("failed to download file", slog.Any("err", "encrypted file reader is not provided"))
+		return status.Error(codes.Internal, "internal error")
+	}
+	defer func() {
+		if err = out.EncryptedFile.Close(); err != nil {
+			s.logger.Error("failed to close encrypted file reader", slog.Any("err", err))
+		}
+	}()
+
+	buffer := make([]byte, downloadChunkSize)
+	for {
+		n, readErr := out.EncryptedFile.Read(buffer)
+		if n > 0 {
+			chunk := make([]byte, n)
+			copy(chunk, buffer[:n])
+			if err = stream.Send(pb.DownloadFileResponse_builder{Chunk: chunk}.Build()); err != nil {
+				s.logger.Error("failed to send encrypted file chunk", slog.Any("err", err))
+				return status.Error(codes.Internal, "internal error")
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			return nil
+		}
+		if readErr != nil {
+			s.logger.Error("failed to read encrypted file", slog.Any("err", readErr))
+			return status.Error(codes.Internal, "internal error")
+		}
+	}
+}
+
+// downloadFileInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария скачивания файла.
+func downloadFileInputFromRequest(ctx context.Context, req *pb.DownloadFileRequest) (usecase.DownloadFileInput, error) {
+	if req == nil {
+		return usecase.DownloadFileInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, ok := authcontext.UserIDFromContext(ctx)
+	if !ok {
+		return usecase.DownloadFileInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+	recordID, err := uuid.Parse(req.GetRecordId())
+	if err != nil || recordID == uuid.Nil {
+		return usecase.DownloadFileInput{}, status.Error(codes.InvalidArgument, "record id is invalid")
+	}
+	return usecase.DownloadFileInput{RecordID: recordID, UserID: userID}, nil
 }
