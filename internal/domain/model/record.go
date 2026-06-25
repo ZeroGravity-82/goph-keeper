@@ -6,17 +6,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// RecordType представляет собой типизированный тип записи.
+// RecordType представляет собой типизированный тип приватной записи.
 type RecordType string
 
 const (
-	// RecordTypeCredential обозначает запись с парой логин/пароль.
+	// RecordTypeCredential обозначает приватную запись с парой логин/пароль.
 	RecordTypeCredential RecordType = "credential"
-	// RecordTypeText обозначает запись с произвольными текстовыми данными.
+	// RecordTypeText обозначает приватную запись с произвольными текстовыми данными.
 	RecordTypeText RecordType = "text"
-	// RecordTypeCard обозначает запись с данными банковской карты.
+	// RecordTypeCard обозначает приватную запись с данными банковской карты.
 	RecordTypeCard RecordType = "card"
-	// RecordTypeBinary обозначает запись с произвольными бинарными данными.
+	// RecordTypeBinary обозначает приватную запись с произвольными бинарными данными.
 	RecordTypeBinary RecordType = "binary"
 )
 
@@ -26,7 +26,7 @@ type EncryptedBlob struct {
 	Data []byte
 }
 
-// Record описывает запись пользователя с зашифрованными данными и открытыми метаданными.
+// Record описывает приватную запись с зашифрованными данными и открытыми метаданными.
 type Record struct {
 	ID               uuid.UUID
 	UserID           uuid.UUID
@@ -42,7 +42,7 @@ type Record struct {
 	File             *RecordFile
 }
 
-// RecordListItem описывает краткое представление записи пользователя для списка.
+// RecordListItem описывает краткое представление приватной записи для списка.
 type RecordListItem struct {
 	ID          uuid.UUID
 	Type        RecordType
@@ -87,7 +87,7 @@ type RecordFile struct {
 	UpdatedAt     time.Time
 }
 
-// RecordListItemFile описывает краткое представление файла записи пользователя для списка.
+// RecordListItemFile описывает краткое представление файла приватной записи для списка.
 type RecordListItemFile struct {
 	UploadStatus UploadStatus
 }

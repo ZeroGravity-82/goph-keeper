@@ -15,7 +15,7 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-// RecordRepository реализует доступ к записям пользователя в PostgreSQL.
+// RecordRepository реализует доступ к приватным записям пользователя в PostgreSQL.
 type RecordRepository struct {
 	db *sqlx.DB
 }
@@ -28,7 +28,7 @@ func NewRecordRepository(db *sqlx.DB) (*RecordRepository, error) {
 	return &RecordRepository{db: db}, nil
 }
 
-// Create сохраняет новую запись пользователя.
+// Create сохраняет новую приватную запись.
 func (r *RecordRepository) Create(ctx context.Context, record model.Record) error {
 	const q = `
 INSERT INTO record (
@@ -58,7 +58,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	return nil
 }
 
-// GetByIDAndUserID возвращает запись пользователя по ID записи.
+// GetByIDAndUserID возвращает приватную запись по ID записи.
 func (r *RecordRepository) GetByIDAndUserID(
 	ctx context.Context,
 	recordID uuid.UUID,
@@ -101,7 +101,7 @@ WHERE r.id = $1 AND r.app_user_id = $2 AND r.deleted_at IS NULL
 	return recordWithFileFromDTO(row), nil
 }
 
-// ListByUserID возвращает список записей пользователя.
+// ListByUserID возвращает список приватных записей.
 func (r *RecordRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error) {
 	const q = `
 SELECT r.id, r.type, r.title, r.description, r.created_at, r.updated_at, rf.upload_status
@@ -169,7 +169,7 @@ func recordWithFileFromDTO(row dto.RecordWithFile) model.Record {
 }
 
 // RecordFileRepository реализует доступ к техническим данным (ключ в объектном хранилище, размер зашифрованного файла,
-// режим загрузки на сервер, статус загрузки на сервер) файлов записей пользователя в PostgreSQL.
+// режим загрузки на сервер, статус загрузки на сервер) файлов приватных записей в PostgreSQL.
 type RecordFileRepository struct {
 	db *sqlx.DB
 }
@@ -182,7 +182,7 @@ func NewRecordFileRepository(db *sqlx.DB) (*RecordFileRepository, error) {
 	return &RecordFileRepository{db: db}, nil
 }
 
-// Create сохраняет техническую информацию о файле записи пользователя.
+// Create сохраняет техническую информацию о файле приватной записи.
 func (r *RecordFileRepository) Create(ctx context.Context, file model.RecordFile) error {
 	const q = `
 INSERT INTO record_file (id, record_id, object_key, encrypted_size, upload_mode, upload_status, created_at, updated_at)
@@ -207,7 +207,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	return nil
 }
 
-// UpdateUploadStatus обновляет статус загрузки файла записи пользователя.
+// UpdateUploadStatus обновляет статус загрузки файла приватной записи.
 func (r *RecordFileRepository) UpdateUploadStatus(
 	ctx context.Context,
 	fileID uuid.UUID,

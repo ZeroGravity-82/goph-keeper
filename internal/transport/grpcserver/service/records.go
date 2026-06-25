@@ -28,7 +28,7 @@ var (
 
 const downloadChunkSize = 64 * 1024
 
-// recordsUseCase описывает сценарии работы с записями пользователя, которые нужны gRPC-сервису.
+// recordsUseCase описывает сценарии работы с приватными записями, которые нужны gRPC-сервису.
 type recordsUseCase interface {
 	CreateRecord(ctx context.Context, in usecase.CreateRecordInput) (usecase.CreateRecordOutput, error)
 	CreateBinaryRecord(ctx context.Context, in usecase.CreateBinaryRecordInput) (usecase.CreateBinaryRecordOutput, error)
@@ -37,7 +37,7 @@ type recordsUseCase interface {
 	DownloadFile(ctx context.Context, in usecase.DownloadFileInput) (usecase.DownloadFileOutput, error)
 }
 
-// RecordsService реализует gRPC-сервис записей пользователя.
+// RecordsService реализует gRPC-сервис приватных записей.
 type RecordsService struct {
 	pb.UnimplementedRecordsServer
 
@@ -56,7 +56,7 @@ func NewRecordsService(uc recordsUseCase, logger *slog.Logger) (*RecordsService,
 	return &RecordsService{uc: uc, logger: logger}, nil
 }
 
-// CreateRecord создает запись пользователя.
+// CreateRecord создает приватную запись.
 func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordRequest) (*pb.CreateRecordResponse, error) {
 	in, err := createRecordInputFromRequest(ctx, req)
 	if err != nil {
@@ -79,8 +79,8 @@ func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordR
 	}.Build(), nil
 }
 
-// createRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария создания записи
-// пользователя.
+// createRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария создания приватной
+// записи.
 func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordRequest) (usecase.CreateRecordInput, error) {
 	if req == nil {
 		return usecase.CreateRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -113,7 +113,7 @@ func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordReque
 	}, nil
 }
 
-// recordTypeFromProto преобразует protobuf-тип записи в доменный тип записи.
+// recordTypeFromProto преобразует protobuf-тип приватной записи в ее доменный тип.
 func recordTypeFromProto(recordType pb.RecordType) (model.RecordType, bool) {
 	switch recordType {
 	case pb.RecordType_RECORD_TYPE_CREDENTIAL:
@@ -129,7 +129,7 @@ func recordTypeFromProto(recordType pb.RecordType) (model.RecordType, bool) {
 	}
 }
 
-// CreateBinaryRecord создает бинарную запись пользователя вместе с загрузкой зашифрованного файла в хранилище.
+// CreateBinaryRecord создает бинарную приватную запись вместе с загрузкой зашифрованного файла в хранилище.
 func (s *RecordsService) CreateBinaryRecord(stream pb.Records_CreateBinaryRecordServer) error {
 	streamInput, err := createBinaryRecordInputFromStream(stream)
 	if err != nil {
@@ -185,9 +185,9 @@ type createBinaryRecordStreamInput struct {
 
 // createBinaryRecordInputFromStream читает первое сообщение стрима, валидирует метаданные и готовит пайп для файла.
 //
-// Первое сообщение должно содержать метаданные, потому что серверу нужны параметры записи и файла до чтения чанков.
-// Все последующие сообщения должны содержать чанк с частью зашифрованного файла. Сервер передает чанки в файловое
-// хранилище потоково, не дожидаясь загрузки всего файла.
+// Первое сообщение должно содержать метаданные, потому что серверу нужны параметры приватной записи и файла до чтения
+// чанков. Все последующие сообщения должны содержать чанк с частью зашифрованного файла. Сервер передает чанки в
+// файловое хранилище потоково, не дожидаясь загрузки всего файла.
 func createBinaryRecordInputFromStream(
 	stream pb.Records_CreateBinaryRecordServer,
 ) (createBinaryRecordStreamInput, error) {
@@ -229,8 +229,8 @@ func createBinaryRecordInputFromStream(
 	}, nil
 }
 
-// createBinaryRecordInputFromMetadata валидирует метаданные бинарной записи пользователя и преобразует их во входной
-// DTO сценария создания бинарной записи.
+// createBinaryRecordInputFromMetadata валидирует метаданные бинарной приватной записи и преобразует их во входной
+// DTO сценария создания бинарной приватной записи.
 func createBinaryRecordInputFromMetadata(
 	userID uuid.UUID,
 	metadata *pb.CreateBinaryRecordMetadata,
@@ -323,7 +323,7 @@ func waitBinaryRecordChunksProducer(streamInput createBinaryRecordStreamInput) e
 	return err
 }
 
-// ListRecords возвращает список записей пользователя.
+// ListRecords возвращает список приватных записей.
 func (s *RecordsService) ListRecords(ctx context.Context, req *pb.ListRecordsRequest) (*pb.ListRecordsResponse, error) {
 	in, err := listRecordsInputFromRequest(ctx, req)
 	if err != nil {
@@ -344,7 +344,7 @@ func (s *RecordsService) ListRecords(ctx context.Context, req *pb.ListRecordsReq
 }
 
 // listRecordsInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения списка
-// записей пользователя.
+// приватных записей.
 func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest) (usecase.ListRecordsInput, error) {
 	if req == nil {
 		return usecase.ListRecordsInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -356,7 +356,7 @@ func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest
 	return usecase.ListRecordsInput{UserID: userID}, nil
 }
 
-// recordListItemToProto преобразует краткое представление записи пользователя в protobuf-модель.
+// recordListItemToProto преобразует краткое представление приватной записи в protobuf-модель.
 func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
 	recordID := item.ID.String()
 	recordType := recordTypeToProto(item.Type)
@@ -374,7 +374,7 @@ func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
 	}.Build()
 }
 
-// recordTypeToProto преобразует доменный тип записи в protobuf-тип записи.
+// recordTypeToProto преобразует доменный тип приватной записи в ее protobuf-тип.
 func recordTypeToProto(recordType model.RecordType) pb.RecordType {
 	switch recordType {
 	case model.RecordTypeCredential:
@@ -390,7 +390,7 @@ func recordTypeToProto(recordType model.RecordType) pb.RecordType {
 	}
 }
 
-// recordListItemFileToProto преобразует краткое представление файла записи пользователя в protobuf-модель.
+// recordListItemFileToProto преобразует краткое представление файла приватной записи в protobuf-модель.
 func recordListItemFileToProto(file *model.RecordListItemFile) *pb.RecordFile {
 	if file == nil {
 		return nil
@@ -413,7 +413,7 @@ func uploadStatusToProto(uploadStatus model.UploadStatus) pb.UploadStatus {
 	}
 }
 
-// GetRecord возвращает запись пользователя.
+// GetRecord возвращает приватную запись.
 func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest) (*pb.GetRecordResponse, error) {
 	in, err := getRecordInputFromRequest(ctx, req)
 	if err != nil {
@@ -432,8 +432,8 @@ func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest
 	return pb.GetRecordResponse_builder{Record: recordToProto(out.Record)}.Build(), nil
 }
 
-// getRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения записи
-// пользователя.
+// getRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария получения приватной
+// записи.
 func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (usecase.GetRecordInput, error) {
 	if req == nil {
 		return usecase.GetRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
@@ -449,7 +449,7 @@ func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (u
 	return usecase.GetRecordInput{RecordID: recordID, UserID: userID}, nil
 }
 
-// recordToProto преобразует доменную модель записи пользователя в protobuf-модель.
+// recordToProto преобразует доменную модель приватной записи в protobuf-модель.
 func recordToProto(record model.Record) *pb.Record {
 	recordID := record.ID.String()
 	recordType := recordTypeToProto(record.Type)
@@ -479,7 +479,7 @@ func timeToProto(t *time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(*t)
 }
 
-// recordFileToProto преобразует технические данные файла записи пользователя в protobuf-модель.
+// recordFileToProto преобразует технические данные файла приватной записи в protobuf-модель.
 func recordFileToProto(file *model.RecordFile) *pb.RecordFile {
 	if file == nil {
 		return nil

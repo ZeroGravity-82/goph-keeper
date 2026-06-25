@@ -22,7 +22,7 @@ func MaxEncryptedFileSize() int {
 	return maxEncryptedFileSize
 }
 
-// CreateRecordInput описывает входные данные сценария создания записи пользователя.
+// CreateRecordInput описывает входные данные сценария создания приватной записи.
 type CreateRecordInput struct {
 	UserID           uuid.UUID
 	Type             model.RecordType
@@ -32,13 +32,13 @@ type CreateRecordInput struct {
 	EncryptedPayload []byte
 }
 
-// CreateRecordOutput описывает результат создания записи пользователя.
+// CreateRecordOutput описывает результат создания приватной записи.
 type CreateRecordOutput struct {
 	RecordID uuid.UUID
 	Version  int64
 }
 
-// CreateBinaryRecordInput описывает входные данные сценария создания бинарной записи пользователя.
+// CreateBinaryRecordInput описывает входные данные сценария создания бинарной приватной записи.
 type CreateBinaryRecordInput struct {
 	UserID           uuid.UUID
 	Title            string
@@ -50,30 +50,30 @@ type CreateBinaryRecordInput struct {
 	UploadMode       model.UploadMode
 }
 
-// CreateBinaryRecordOutput описывает результат создания бинарной записи пользователя.
+// CreateBinaryRecordOutput описывает результат создания бинарной приватной записи.
 type CreateBinaryRecordOutput struct {
 	RecordID     uuid.UUID
 	Version      int64
 	UploadStatus model.UploadStatus
 }
 
-// ListRecordsInput описывает входные данные сценария получения списка записей пользователя.
+// ListRecordsInput описывает входные данные сценария получения списка приватных записей.
 type ListRecordsInput struct {
 	UserID uuid.UUID
 }
 
-// ListRecordsOutput описывает результат получения списка записей пользователя.
+// ListRecordsOutput описывает результат получения списка приватных записей.
 type ListRecordsOutput struct {
 	Items []model.RecordListItem
 }
 
-// GetRecordInput описывает входные данные сценария получения записи пользователя.
+// GetRecordInput описывает входные данные сценария получения приватной записи.
 type GetRecordInput struct {
 	RecordID uuid.UUID
 	UserID   uuid.UUID
 }
 
-// GetRecordOutput описывает результат получения записи пользователя.
+// GetRecordOutput описывает результат получения приватной записи.
 type GetRecordOutput struct {
 	Record model.Record
 }
@@ -106,7 +106,7 @@ type fileStorage interface {
 	Get(ctx context.Context, objectKey string) (io.ReadCloser, error)
 }
 
-// RecordUseCase реализует сценарии работы с записями пользователя.
+// RecordUseCase реализует сценарии работы с приватными записями.
 type RecordUseCase struct {
 	recordRepo     recordRepository
 	recordFileRepo recordFileRepository
@@ -142,8 +142,8 @@ func NewRecordUseCase(
 	}, nil
 }
 
-// CreateRecord создает запись пользователя.
-// Бинарные записи пользователя создаются отдельным сценарием вместе с загрузкой файла.
+// CreateRecord создает приватную запись.
+// Бинарные приватные записи создаются отдельным сценарием вместе с загрузкой файла.
 func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput) (CreateRecordOutput, error) {
 	if in.Type == model.RecordTypeBinary {
 		return CreateRecordOutput{}, ErrBinaryRecordNotSupported
@@ -174,7 +174,7 @@ func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput)
 	return CreateRecordOutput{RecordID: record.ID, Version: record.Version}, nil
 }
 
-// CreateBinaryRecord создает бинарную запись пользователя вместе с загрузкой зашифрованного файла.
+// CreateBinaryRecord создает бинарную приватную запись вместе с загрузкой зашифрованного файла.
 func (uc *RecordUseCase) CreateBinaryRecord(
 	ctx context.Context,
 	in CreateBinaryRecordInput,
@@ -276,7 +276,7 @@ func (uc *RecordUseCase) CreateBinaryRecord(
 	}, nil
 }
 
-// ListRecords возвращает список записей пользователя.
+// ListRecords возвращает список приватных записей.
 func (uc *RecordUseCase) ListRecords(ctx context.Context, in ListRecordsInput) (ListRecordsOutput, error) {
 	items, err := uc.recordRepo.ListByUserID(ctx, in.UserID)
 	if err != nil {
@@ -285,7 +285,7 @@ func (uc *RecordUseCase) ListRecords(ctx context.Context, in ListRecordsInput) (
 	return ListRecordsOutput{Items: items}, nil
 }
 
-// GetRecord возвращает запись пользователя.
+// GetRecord возвращает приватную запись.
 func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetRecordOutput, error) {
 	record, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
 	if err != nil {

@@ -21,7 +21,7 @@ type Record struct {
 	DeletedAt        *time.Time `db:"deleted_at"`
 }
 
-// RecordWithFile описывает строку выборки записи пользователя с опциональной связанной строкой record_file.
+// RecordWithFile описывает строку выборки приватной записи с опциональной связанной строкой record_file.
 type RecordWithFile struct {
 	ID               uuid.UUID  `db:"id"`
 	UserID           uuid.UUID  `db:"app_user_id"`
@@ -45,7 +45,7 @@ type RecordWithFile struct {
 	FileUpdatedAt     *time.Time `db:"file_updated_at"`
 }
 
-// RecordListItem описывает строку выборки списка записей пользователя из базы данных.
+// RecordListItem описывает строку выборки списка приватных записей из базы данных.
 type RecordListItem struct {
 	ID           uuid.UUID `db:"id"`
 	Type         string    `db:"type"`

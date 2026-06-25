@@ -27,8 +27,8 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-// TestRecordsService_CreateRecord_Integration_Text проверяет создание текстовой записи через реальные зависимости,
-// кроме файлового хранилища.
+// TestRecordsService_CreateRecord_Integration_Text проверяет создание приватной записи текстового типа через реальные
+// зависимости, кроме файлового хранилища.
 func TestRecordsService_CreateRecord_Integration_Text(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -182,7 +182,8 @@ WHERE id = $1
 	return record
 }
 
-// TestRecordsService_CreateRecord_Integration_Binary проверяет, что бинарная запись не создается обычным методом.
+// TestRecordsService_CreateRecord_Integration_Binary проверяет, что бинарная приватная запись не создается обычным
+// методом.
 func TestRecordsService_CreateRecord_Integration_Binary(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -212,8 +213,8 @@ func TestRecordsService_CreateRecord_Integration_Binary(t *testing.T) {
 	assert.Equal(t, 0, recordCount)
 }
 
-// TestRecordsService_CreateBinaryRecord_Integration проверяет создание бинарной записи через реальные зависимости,
-// кроме файлового хранилища.
+// TestRecordsService_CreateBinaryRecord_Integration проверяет создание бинарной приватной записи через реальные
+// зависимости, кроме файлового хранилища.
 func TestRecordsService_CreateBinaryRecord_Integration(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -266,8 +267,8 @@ WHERE record_id = $1
 	assert.Equal(t, string(model.UploadStatusUploaded), storedFile.UploadStatus)
 }
 
-// TestRecordsService_CreateBinaryRecord_Integration_SizeMismatch проверяет, что при несовпадении размера запись файла
-// получает статус failed.
+// TestRecordsService_CreateBinaryRecord_Integration_SizeMismatch проверяет, что при несовпадении размера приватная
+// запись файла получает статус failed.
 func TestRecordsService_CreateBinaryRecord_Integration_SizeMismatch(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -299,7 +300,7 @@ WHERE r.app_user_id = $1
 	assert.Equal(t, string(model.UploadStatusFailed), storedFile.UploadStatus)
 }
 
-// TestRecordsService_ListRecords_Integration проверяет получение списка записей пользователя.
+// TestRecordsService_ListRecords_Integration проверяет получение списка приватных записей.
 func TestRecordsService_ListRecords_Integration(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -446,8 +447,8 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	return recordID
 }
 
-// TestRecordsService_GetRecord_Integration_Binary проверяет получение бинарной записи с зашифрованными данными и
-// статусом файла.
+// TestRecordsService_GetRecord_Integration_Binary проверяет получение бинарной приватной записи с зашифрованными
+// данными и статусом файла.
 func TestRecordsService_GetRecord_Integration_Binary(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -480,7 +481,7 @@ func TestRecordsService_GetRecord_Integration_Binary(t *testing.T) {
 }
 
 // TestRecordsService_GetRecord_Integration_NotFoundForOtherUser проверяет, что пользователь не может получить чужую
-// запись.
+// приватную запись.
 func TestRecordsService_GetRecord_Integration_NotFoundForOtherUser(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -501,8 +502,8 @@ func TestRecordsService_GetRecord_Integration_NotFoundForOtherUser(t *testing.T)
 	assert.Equal(t, codes.NotFound, status.Code(err))
 }
 
-// TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord проверяет, что помеченная как удаленная запись не
-// отдается пользователю.
+// TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord проверяет, что помеченная как удаленная приватная
+// запись не отдается пользователю.
 func TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord(t *testing.T) {
 	// Arrange
 	ctx := context.Background()

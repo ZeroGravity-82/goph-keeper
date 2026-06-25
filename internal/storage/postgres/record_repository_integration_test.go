@@ -16,7 +16,7 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-// TestRecordRepository_CreateAndGetByIDAndUserID проверяет создание и получение записи пользователя без файла.
+// TestRecordRepository_CreateAndGetByIDAndUserID проверяет создание и получение приватной записи без файла.
 func TestRecordRepository_CreateAndGetByIDAndUserID(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -42,7 +42,7 @@ func TestRecordRepository_CreateAndGetByIDAndUserID(t *testing.T) {
 	assert.Nil(t, got.File)
 }
 
-// TestRecordRepository_GetByIDAndUserID_WithFile проверяет получение записи пользователя вместе с файлом.
+// TestRecordRepository_GetByIDAndUserID_WithFile проверяет получение приватной записи вместе с файлом.
 func TestRecordRepository_GetByIDAndUserID_WithFile(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -71,7 +71,7 @@ func TestRecordRepository_GetByIDAndUserID_WithFile(t *testing.T) {
 	assertRecordFileEqual(t, file, *got.File)
 }
 
-// TestRecordRepository_GetByIDAndUserID_NotFound проверяет ошибку при поиске отсутствующей или чужой записи.
+// TestRecordRepository_GetByIDAndUserID_NotFound проверяет ошибку при поиске отсутствующей или чужой приватной записи.
 func TestRecordRepository_GetByIDAndUserID_NotFound(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
@@ -87,7 +87,7 @@ func TestRecordRepository_GetByIDAndUserID_NotFound(t *testing.T) {
 	assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
 }
 
-// TestRecordRepository_ListByUserID проверяет получение списка записей пользователя.
+// TestRecordRepository_ListByUserID проверяет получение списка приватных записей.
 func TestRecordRepository_ListByUserID(t *testing.T) {
 	// Arrange
 	ctx := context.Background()

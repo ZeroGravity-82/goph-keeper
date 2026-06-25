@@ -57,7 +57,7 @@ func NewMinIOStorage(
 	return &MinIOStorage{client: client, bucket: bucket}, nil
 }
 
-// ObjectKey строит ключ объекта по идентификаторам пользователя, записи и файла.
+// ObjectKey строит ключ объекта по идентификаторам пользователя, приватной записи и файла.
 func (s *MinIOStorage) ObjectKey(userID, recordID, fileID uuid.UUID) string {
 	return fmt.Sprintf("users/%s/records/%s/files/%s/payload", userID, recordID, fileID)
 }

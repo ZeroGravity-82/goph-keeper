@@ -88,7 +88,7 @@ func (s *recordsUseCaseStub) DownloadFile(
 	return s.downloadFileOutput, s.downloadFileErr
 }
 
-// TestRecordsService_CreateRecord_OK проверяет успешное создание записи пользователя через gRPC-обработчик.
+// TestRecordsService_CreateRecord_OK проверяет успешное создание приватной записи через gRPC-обработчик.
 func TestRecordsService_CreateRecord_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
@@ -212,7 +212,8 @@ func TestRecordsService_CreateRecord_FailWithInternalError(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
-// TestRecordsService_CreateRecord_FailWithBinaryRecord проверяет, что бинарная запись не создается обычным методом.
+// TestRecordsService_CreateRecord_FailWithBinaryRecord проверяет, что бинарная приватная запись не создается обычным
+// методом.
 func TestRecordsService_CreateRecord_FailWithBinaryRecord(t *testing.T) {
 	// Arrange
 	uc := &recordsUseCaseStub{createRecordErr: usecase.ErrBinaryRecordNotSupported}
@@ -229,7 +230,8 @@ func TestRecordsService_CreateRecord_FailWithBinaryRecord(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// TestRecordsService_CreateBinaryRecord_OK проверяет успешное создание бинарной записи через client-stream обработчик.
+// TestRecordsService_CreateBinaryRecord_OK проверяет успешное создание бинарной приватной записи через client-stream
+// обработчик.
 func TestRecordsService_CreateBinaryRecord_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
@@ -363,7 +365,7 @@ func TestRecordsService_CreateBinaryRecord_FailWithUseCaseInvalidArgument(t *tes
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// TestRecordsService_ListRecords_OK проверяет успешное получение списка записей через gRPC-обработчик.
+// TestRecordsService_ListRecords_OK проверяет успешное получение списка приватных записей через gRPC-обработчик.
 func TestRecordsService_ListRecords_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
@@ -452,7 +454,7 @@ func TestRecordsService_ListRecords_FailWithInternalError(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(err))
 }
 
-// TestRecordsService_GetRecord_OK проверяет успешное получение записи пользователя через gRPC-обработчик.
+// TestRecordsService_GetRecord_OK проверяет успешное получение приватной записи через gRPC-обработчик.
 func TestRecordsService_GetRecord_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
@@ -543,7 +545,7 @@ func TestRecordsService_GetRecord_FailWithInvalidArgument(t *testing.T) {
 	}
 }
 
-// TestRecordsService_GetRecord_FailWithNotFound проверяет маппинг отсутствующей записи в код ошибки NotFound.
+// TestRecordsService_GetRecord_FailWithNotFound проверяет маппинг отсутствующей приватной записи в код ошибки NotFound.
 func TestRecordsService_GetRecord_FailWithNotFound(t *testing.T) {
 	// Arrange
 	uc := &recordsUseCaseStub{getRecordErr: usecase.ErrRecordNotFound}
@@ -649,7 +651,8 @@ func TestRecordsService_DownloadFile_FailWithInvalidArgument(t *testing.T) {
 	}
 }
 
-// TestRecordsService_DownloadFile_FailWithNotFound проверяет маппинг отсутствующей записи в код ошибки NotFound.
+// TestRecordsService_DownloadFile_FailWithNotFound проверяет маппинг отсутствующей приватной записи в код ошибки
+// NotFound.
 func TestRecordsService_DownloadFile_FailWithNotFound(t *testing.T) {
 	// Arrange
 	uc := &recordsUseCaseStub{downloadFileErr: usecase.ErrRecordNotFound}
