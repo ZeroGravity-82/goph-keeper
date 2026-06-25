@@ -192,6 +192,30 @@ SELECT EXISTS (
 	return exists, nil
 }
 
+// Delete помечает приватную запись удаленной (мягкое удаление).
+//
+// Если приватная запись не найдена, возвращает usecase.ErrRecordNotFound.
+func (r *RecordRepository) Delete(ctx context.Context, recordID uuid.UUID, userID uuid.UUID, deletedAt time.Time) error {
+	const q = `
+UPDATE record
+SET deleted_at = $1, updated_at = $1
+WHERE id = $2 AND app_user_id = $3 AND deleted_at IS NULL
+`
+	exec := executorFromContext(ctx, r.db)
+	result, err := exec.ExecContext(ctx, q, deletedAt, recordID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete record: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read affected rows count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return usecase.ErrRecordNotFound
+	}
+	return nil
+}
+
 func recordListItemFromDTO(row dto.RecordListItem) model.RecordListItem {
 	item := model.RecordListItem{
 		ID:          row.ID,

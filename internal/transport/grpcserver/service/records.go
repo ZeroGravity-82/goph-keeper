@@ -35,6 +35,7 @@ type recordsUseCase interface {
 	ListRecords(ctx context.Context, in usecase.ListRecordsInput) (usecase.ListRecordsOutput, error)
 	GetRecord(ctx context.Context, in usecase.GetRecordInput) (usecase.GetRecordOutput, error)
 	UpdateRecord(ctx context.Context, in usecase.UpdateRecordInput) (usecase.UpdateRecordOutput, error)
+	DeleteRecord(ctx context.Context, in usecase.DeleteRecordInput) (usecase.DeleteRecordOutput, error)
 	DownloadFile(ctx context.Context, in usecase.DownloadFileInput) (usecase.DownloadFileOutput, error)
 }
 
@@ -554,6 +555,46 @@ func updateRecordInputFromRequest(ctx context.Context, req *pb.UpdateRecordReque
 		EncryptedPayload: req.GetEncryptedPayload(),
 		ExpectedVersion:  req.GetExpectedVersion(),
 	}, nil
+}
+
+// DeleteRecord удаляет приватную запись.
+func (s *RecordsService) DeleteRecord(
+	ctx context.Context,
+	req *pb.DeleteRecordRequest,
+) (*pb.DeleteRecordResponse, error) {
+	in, err := deleteRecordInputFromRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.DeleteRecord(ctx, in)
+	if err != nil {
+		if errors.Is(err, usecase.ErrRecordNotFound) {
+			return nil, status.Error(codes.NotFound, "record not found")
+		}
+		s.logger.Error("failed to delete record", slog.Any("err", err))
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+
+	recordID := out.RecordID.String()
+	return pb.DeleteRecordResponse_builder{RecordId: &recordID}.Build(), nil
+}
+
+// deleteRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария удаления приватной
+// записи.
+func deleteRecordInputFromRequest(ctx context.Context, req *pb.DeleteRecordRequest) (usecase.DeleteRecordInput, error) {
+	if req == nil {
+		return usecase.DeleteRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, ok := authcontext.UserIDFromContext(ctx)
+	if !ok {
+		return usecase.DeleteRecordInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+	recordID, err := uuid.Parse(req.GetRecordId())
+	if err != nil || recordID == uuid.Nil {
+		return usecase.DeleteRecordInput{}, status.Error(codes.InvalidArgument, "record id is invalid")
+	}
+	return usecase.DeleteRecordInput{RecordID: recordID, UserID: userID}, nil
 }
 
 // DownloadFile возвращает зашифрованный файл приватной записи чанками фиксированного размера.

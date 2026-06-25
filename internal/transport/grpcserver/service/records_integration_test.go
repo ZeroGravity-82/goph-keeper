@@ -606,6 +606,63 @@ func TestRecordsService_UpdateRecord_Integration_NotFoundForOtherUser(t *testing
 	assert.Equal(t, int64(1), storedRecord.Version)
 }
 
+// TestRecordsService_DeleteRecord_Integration проверяет удаление приватной записи через реальные зависимости, кроме
+// файлового хранилища.
+func TestRecordsService_DeleteRecord_Integration(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-delete-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	recordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "delete title")
+	req := pb.DeleteRecordRequest_builder{RecordId: new(recordID.String())}.Build()
+
+	// Act
+	resp, err := recordsService.DeleteRecord(requestCtx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, recordID.String(), resp.GetRecordId())
+
+	storedRecord := getStoredRecord(t, ctx, db, recordID)
+	require.NotNil(t, storedRecord.DeletedAt)
+	assert.True(t, storedRecord.UpdatedAt.Equal(*storedRecord.DeletedAt))
+
+	_, err = recordsService.GetRecord(requestCtx, pb.GetRecordRequest_builder{RecordId: new(recordID.String())}.Build())
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+
+	listResp, err := recordsService.ListRecords(requestCtx, pb.ListRecordsRequest_builder{}.Build())
+	require.NoError(t, err)
+	assert.Empty(t, listResp.GetItems())
+}
+
+// TestRecordsService_DeleteRecord_Integration_NotFoundForOtherUser проверяет, что пользователь не может удалить чужую
+// приватную запись.
+func TestRecordsService_DeleteRecord_Integration_NotFoundForOtherUser(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	owner := createIntegrationUser(t, ctx, db, "record-delete-owner")
+	otherUser := createIntegrationUser(t, ctx, db, "record-delete-other-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	ownerCtx := authcontext.WithUserID(ctx, owner.ID)
+	otherUserCtx := authcontext.WithUserID(ctx, otherUser.ID)
+	recordID := createIntegrationRecord(t, ownerCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "delete title")
+	req := pb.DeleteRecordRequest_builder{RecordId: new(recordID.String())}.Build()
+
+	// Act
+	_, err := recordsService.DeleteRecord(otherUserCtx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+
+	storedRecord := getStoredRecord(t, ctx, db, recordID)
+	assert.Nil(t, storedRecord.DeletedAt)
+}
+
 // TestRecordsService_DownloadFile_Integration проверяет скачивание зашифрованного файла через реальные зависимости,
 // кроме файлового хранилища.
 func TestRecordsService_DownloadFile_Integration(t *testing.T) {

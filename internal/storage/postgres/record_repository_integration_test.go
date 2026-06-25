@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
+	"zerogravity-82/goph-keeper/internal/storage/postgres/dto"
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
@@ -258,6 +259,91 @@ func TestRecordRepository_Update_VersionConflict(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, originalTitle, got.Title)
 	assert.Equal(t, originalVersion, got.Version)
+}
+
+// TestRecordRepository_Delete проверяет мягкое удаление приватной записи.
+func TestRecordRepository_Delete(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-delete-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "delete title", time.Now().UTC())
+	deletedAt := time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond)
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, recordRepo.Create(ctx, record))
+
+	// Act
+	err = recordRepo.Delete(ctx, record.ID, user.ID, deletedAt)
+
+	// Assert
+	require.NoError(t, err)
+
+	var stored dto.Record
+	err = db.GetContext(ctx, &stored, `
+SELECT id, app_user_id, type, title, description, encrypted_dek, encrypted_payload, version, created_at, updated_at, deleted_at
+FROM record
+WHERE id = $1
+`, record.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.DeletedAt)
+	assert.True(t, stored.DeletedAt.Equal(deletedAt))
+	assert.True(t, stored.UpdatedAt.Equal(deletedAt))
+
+	_, err = recordRepo.GetByIDAndUserID(ctx, record.ID, user.ID)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
+
+	items, err := recordRepo.ListByUserID(ctx, user.ID)
+	require.NoError(t, err)
+	assert.Empty(t, items)
+}
+
+// TestRecordRepository_Delete_NotFound проверяет ошибку при удалении отсутствующей, чужой или уже удаленной записи.
+func TestRecordRepository_Delete_NotFound(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-delete-not-found-user")
+	otherUser := newTestUser(t, "record-delete-not-found-other-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "delete title", time.Now().UTC())
+	deletedRecord := newTestRecord(t, user.ID, model.RecordTypeText, "already deleted title", time.Now().UTC())
+	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	deletedRecord.DeletedAt = &deletedAt
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, userRepo.Create(ctx, otherUser))
+	require.NoError(t, recordRepo.Create(ctx, record))
+	require.NoError(t, recordRepo.Create(ctx, deletedRecord))
+
+	tests := []struct {
+		name     string
+		recordID uuid.UUID
+		userID   uuid.UUID
+	}{
+		{name: "missing record", recordID: uuid.New(), userID: user.ID},
+		{name: "other user", recordID: record.ID, userID: otherUser.ID},
+		{name: "already deleted", recordID: deletedRecord.ID, userID: user.ID},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Act
+			err := recordRepo.Delete(ctx, tt.recordID, tt.userID, time.Now().UTC())
+
+			// Assert
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
+		})
+	}
 }
 
 // TestRecordFileRepository_UpdateUploadStatus проверяет обновление статуса загрузки файла приватной записи.

@@ -95,6 +95,17 @@ type UpdateRecordOutput struct {
 	Version  int64
 }
 
+// DeleteRecordInput описывает входные данные сценария удаления приватной записи.
+type DeleteRecordInput struct {
+	RecordID uuid.UUID
+	UserID   uuid.UUID
+}
+
+// DeleteRecordOutput описывает результат удаления приватной записи.
+type DeleteRecordOutput struct {
+	RecordID uuid.UUID
+}
+
 // DownloadFileInput описывает входные данные сценария скачивания зашифрованного файла.
 type DownloadFileInput struct {
 	UserID   uuid.UUID
@@ -111,6 +122,7 @@ type recordRepository interface {
 	GetByIDAndUserID(ctx context.Context, recordID uuid.UUID, userID uuid.UUID) (model.Record, error)
 	ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error)
 	Update(ctx context.Context, record model.Record, expectedVersion int64) (int64, error)
+	Delete(ctx context.Context, recordID uuid.UUID, userID uuid.UUID, deletedAt time.Time) error
 }
 
 type recordFileRepository interface {
@@ -335,6 +347,18 @@ func (uc *RecordUseCase) UpdateRecord(ctx context.Context, in UpdateRecordInput)
 		return UpdateRecordOutput{}, fmt.Errorf("failed to update record: %w", err)
 	}
 	return UpdateRecordOutput{RecordID: in.RecordID, Version: version}, nil
+}
+
+// DeleteRecord удаляет приватную запись.
+func (uc *RecordUseCase) DeleteRecord(ctx context.Context, in DeleteRecordInput) (DeleteRecordOutput, error) {
+	now := time.Now().UTC()
+	if err := uc.recordRepo.Delete(ctx, in.RecordID, in.UserID, now); err != nil {
+		if errors.Is(err, ErrRecordNotFound) {
+			return DeleteRecordOutput{}, ErrRecordNotFound
+		}
+		return DeleteRecordOutput{}, fmt.Errorf("failed to delete record: %w", err)
+	}
+	return DeleteRecordOutput{RecordID: in.RecordID}, nil
 }
 
 // DownloadFile возвращает поток зашифрованного файла приватной записи.

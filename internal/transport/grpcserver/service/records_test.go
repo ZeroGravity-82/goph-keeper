@@ -39,6 +39,9 @@ type recordsUseCaseStub struct {
 	updateRecordInput        usecase.UpdateRecordInput
 	updateRecordOutput       usecase.UpdateRecordOutput
 	updateRecordErr          error
+	deleteRecordInput        usecase.DeleteRecordInput
+	deleteRecordOutput       usecase.DeleteRecordOutput
+	deleteRecordErr          error
 	downloadFileInput        usecase.DownloadFileInput
 	downloadFileOutput       usecase.DownloadFileOutput
 	downloadFileErr          error
@@ -89,6 +92,14 @@ func (s *recordsUseCaseStub) UpdateRecord(
 ) (usecase.UpdateRecordOutput, error) {
 	s.updateRecordInput = in
 	return s.updateRecordOutput, s.updateRecordErr
+}
+
+func (s *recordsUseCaseStub) DeleteRecord(
+	_ context.Context,
+	in usecase.DeleteRecordInput,
+) (usecase.DeleteRecordOutput, error) {
+	s.deleteRecordInput = in
+	return s.deleteRecordOutput, s.deleteRecordErr
 }
 
 func (s *recordsUseCaseStub) DownloadFile(
@@ -731,6 +742,106 @@ func TestRecordsService_UpdateRecord_FailWithInternalError(t *testing.T) {
 
 	// Act
 	_, err = recordsService.UpdateRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+// TestRecordsService_DeleteRecord_OK проверяет успешное удаление приватной записи через gRPC-обработчик.
+func TestRecordsService_DeleteRecord_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	uc := &recordsUseCaseStub{deleteRecordOutput: usecase.DeleteRecordOutput{RecordID: recordID}}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), userID)
+	req := pb.DeleteRecordRequest_builder{RecordId: new(recordID.String())}.Build()
+
+	// Act
+	resp, err := recordsService.DeleteRecord(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, recordID.String(), resp.GetRecordId())
+	assert.Equal(t, recordID, uc.deleteRecordInput.RecordID)
+	assert.Equal(t, userID, uc.deleteRecordInput.UserID)
+}
+
+// TestRecordsService_DeleteRecord_FailWithUnauthenticated проверяет ошибку при отсутствии идентификатора пользователя
+// в контексте.
+func TestRecordsService_DeleteRecord_FailWithUnauthenticated(t *testing.T) {
+	// Arrange
+	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+	require.NoError(t, err)
+	req := pb.DeleteRecordRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	_, err = recordsService.DeleteRecord(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestRecordsService_DeleteRecord_FailWithInvalidArgument проверяет валидацию запроса на удаление приватной записи.
+func TestRecordsService_DeleteRecord_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	tests := []struct {
+		name string
+		req  *pb.DeleteRecordRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty record id", req: pb.DeleteRecordRequest_builder{RecordId: new("")}.Build()},
+		{name: "invalid record id", req: pb.DeleteRecordRequest_builder{RecordId: new("not-a-uuid")}.Build()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+
+			// Act
+			_, err = recordsService.DeleteRecord(ctx, tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+// TestRecordsService_DeleteRecord_FailWithNotFound проверяет маппинг отсутствующей записи в код ошибки NotFound.
+func TestRecordsService_DeleteRecord_FailWithNotFound(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{deleteRecordErr: usecase.ErrRecordNotFound}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := pb.DeleteRecordRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	_, err = recordsService.DeleteRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// TestRecordsService_DeleteRecord_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
+func TestRecordsService_DeleteRecord_FailWithInternalError(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{deleteRecordErr: errors.New("some internal error")}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := pb.DeleteRecordRequest_builder{RecordId: new(uuid.Must(uuid.NewV7()).String())}.Build()
+
+	// Act
+	_, err = recordsService.DeleteRecord(ctx, req)
 
 	// Assert
 	require.Error(t, err)
