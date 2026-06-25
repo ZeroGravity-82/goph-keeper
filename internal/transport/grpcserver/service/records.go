@@ -34,6 +34,7 @@ type recordsUseCase interface {
 	CreateBinaryRecord(ctx context.Context, in usecase.CreateBinaryRecordInput) (usecase.CreateBinaryRecordOutput, error)
 	ListRecords(ctx context.Context, in usecase.ListRecordsInput) (usecase.ListRecordsOutput, error)
 	GetRecord(ctx context.Context, in usecase.GetRecordInput) (usecase.GetRecordOutput, error)
+	UpdateRecord(ctx context.Context, in usecase.UpdateRecordInput) (usecase.UpdateRecordOutput, error)
 	DownloadFile(ctx context.Context, in usecase.DownloadFileInput) (usecase.DownloadFileOutput, error)
 }
 
@@ -488,7 +489,74 @@ func recordFileToProto(file *model.RecordFile) *pb.RecordFile {
 	return pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build()
 }
 
-// DownloadFile возвращает зашифрованный файл записи пользователя чанками фиксированного размера.
+// UpdateRecord обновляет приватную запись.
+func (s *RecordsService) UpdateRecord(
+	ctx context.Context,
+	req *pb.UpdateRecordRequest,
+) (*pb.UpdateRecordResponse, error) {
+	in, err := updateRecordInputFromRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.UpdateRecord(ctx, in)
+	if err != nil {
+		if errors.Is(err, usecase.ErrRecordNotFound) {
+			return nil, status.Error(codes.NotFound, "record not found")
+		}
+		if errors.Is(err, usecase.ErrRecordVersionConflict) {
+			return nil, status.Error(codes.Aborted, "record version conflict")
+		}
+		s.logger.Error("failed to update record", slog.Any("err", err))
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+
+	recordID := out.RecordID.String()
+	return pb.UpdateRecordResponse_builder{
+		RecordId: &recordID,
+		Version:  &out.Version,
+	}.Build(), nil
+}
+
+// updateRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария обновления приватной
+// записи.
+func updateRecordInputFromRequest(ctx context.Context, req *pb.UpdateRecordRequest) (usecase.UpdateRecordInput, error) {
+	if req == nil {
+		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, ok := authcontext.UserIDFromContext(ctx)
+	if !ok {
+		return usecase.UpdateRecordInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+	recordID, err := uuid.Parse(req.GetRecordId())
+	if err != nil || recordID == uuid.Nil {
+		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "record id is invalid")
+	}
+	if strings.TrimSpace(req.GetTitle()) == "" {
+		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "title is required")
+	}
+	if len(req.GetEncryptedDek()) == 0 {
+		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "encrypted dek is required")
+	}
+	if len(req.GetEncryptedPayload()) == 0 {
+		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
+	}
+	if req.GetExpectedVersion() <= 0 {
+		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "expected version is invalid")
+	}
+
+	return usecase.UpdateRecordInput{
+		RecordID:         recordID,
+		UserID:           userID,
+		Title:            req.GetTitle(),
+		Description:      req.GetDescription(),
+		EncryptedDEK:     req.GetEncryptedDek(),
+		EncryptedPayload: req.GetEncryptedPayload(),
+		ExpectedVersion:  req.GetExpectedVersion(),
+	}, nil
+}
+
+// DownloadFile возвращает зашифрованный файл приватной записи чанками фиксированного размера.
 func (s *RecordsService) DownloadFile(req *pb.DownloadFileRequest, stream pb.Records_DownloadFileServer) error {
 	in, err := downloadFileInputFromRequest(stream.Context(), req)
 	if err != nil {

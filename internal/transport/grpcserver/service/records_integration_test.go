@@ -524,6 +524,88 @@ func TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord(t *testin
 	assert.Equal(t, codes.NotFound, status.Code(err))
 }
 
+// TestRecordsService_UpdateRecord_Integration проверяет обновление приватной записи через реальные зависимости, кроме
+// файлового хранилища.
+func TestRecordsService_UpdateRecord_Integration(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-update-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	recordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "old title")
+	req := newUpdateRecordRequest(recordID.String(), "new title", []byte("new-dek"), []byte("new-payload"), 1)
+
+	// Act
+	resp, err := recordsService.UpdateRecord(requestCtx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, recordID.String(), resp.GetRecordId())
+	assert.Equal(t, int64(2), resp.GetVersion())
+
+	storedRecord := getStoredRecord(t, ctx, db, recordID)
+	assert.Equal(t, "new title", storedRecord.Title)
+	assert.Equal(t, "description", storedRecord.Description)
+	assert.Equal(t, []byte("new-dek"), storedRecord.EncryptedDEK)
+	assert.Equal(t, []byte("new-payload"), storedRecord.EncryptedPayload)
+	assert.Equal(t, int64(2), storedRecord.Version)
+	assert.True(
+		t,
+		storedRecord.UpdatedAt.After(storedRecord.CreatedAt) || storedRecord.UpdatedAt.Equal(storedRecord.CreatedAt),
+	)
+}
+
+// TestRecordsService_UpdateRecord_Integration_VersionConflict проверяет конфликт версии при обновлении приватной
+// записи.
+func TestRecordsService_UpdateRecord_Integration_VersionConflict(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-update-conflict-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	recordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "old title")
+	req := newUpdateRecordRequest(recordID.String(), "new title", []byte("new-dek"), []byte("new-payload"), 999)
+
+	// Act
+	_, err := recordsService.UpdateRecord(requestCtx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Aborted, status.Code(err))
+
+	storedRecord := getStoredRecord(t, ctx, db, recordID)
+	assert.Equal(t, "old title", storedRecord.Title)
+	assert.Equal(t, int64(1), storedRecord.Version)
+}
+
+// TestRecordsService_UpdateRecord_Integration_NotFoundForOtherUser проверяет, что пользователь не может обновить чужую
+// приватную запись.
+func TestRecordsService_UpdateRecord_Integration_NotFoundForOtherUser(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	owner := createIntegrationUser(t, ctx, db, "record-update-owner")
+	otherUser := createIntegrationUser(t, ctx, db, "record-update-other-user")
+	recordsService := newIntegrationRecordsService(t, db)
+	ownerCtx := authcontext.WithUserID(ctx, owner.ID)
+	otherUserCtx := authcontext.WithUserID(ctx, otherUser.ID)
+	recordID := createIntegrationRecord(t, ownerCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "old title")
+	req := newUpdateRecordRequest(recordID.String(), "new title", []byte("new-dek"), []byte("new-payload"), 1)
+
+	// Act
+	_, err := recordsService.UpdateRecord(otherUserCtx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+
+	storedRecord := getStoredRecord(t, ctx, db, recordID)
+	assert.Equal(t, "old title", storedRecord.Title)
+	assert.Equal(t, int64(1), storedRecord.Version)
+}
+
 // TestRecordsService_DownloadFile_Integration проверяет скачивание зашифрованного файла через реальные зависимости,
 // кроме файлового хранилища.
 func TestRecordsService_DownloadFile_Integration(t *testing.T) {

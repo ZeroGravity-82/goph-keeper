@@ -124,6 +124,74 @@ ORDER BY r.updated_at DESC, r.id DESC
 	return items, nil
 }
 
+// Update обновляет приватную запись и возвращает новую версию.
+//
+// Если приватная запись не найдена, возвращает usecase.ErrRecordNotFound.
+// Если приватная запись существует, но ее версия отличается от ожидаемой, возвращает usecase.ErrRecordVersionConflict.
+func (r *RecordRepository) Update(ctx context.Context, record model.Record, expectedVersion int64) (int64, error) {
+	const updateQuery = `
+UPDATE record
+SET
+    title = $1,
+    description = $2,
+    encrypted_dek = $3,
+    encrypted_payload = $4,
+    version = version + 1,
+    updated_at = $5
+WHERE id = $6
+  AND app_user_id = $7
+  AND deleted_at IS NULL
+  AND version = $8
+RETURNING version
+`
+	exec := executorFromContext(ctx, r.db)
+	var version int64
+	err := exec.GetContext(
+		ctx,
+		&version,
+		updateQuery,
+		record.Title,
+		record.Description,
+		record.EncryptedDEK.Data,
+		record.EncryptedPayload.Data,
+		record.UpdatedAt,
+		record.ID,
+		record.UserID,
+		expectedVersion,
+	)
+	if err == nil {
+		return version, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("failed to update record: %w", err)
+	}
+
+	exists, err := r.exists(ctx, record.ID, record.UserID)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, usecase.ErrRecordNotFound
+	}
+	return 0, usecase.ErrRecordVersionConflict
+}
+
+func (r *RecordRepository) exists(ctx context.Context, recordID uuid.UUID, userID uuid.UUID) (bool, error) {
+	const q = `
+SELECT EXISTS (
+    SELECT 1
+    FROM record
+    WHERE id = $1 AND app_user_id = $2 AND deleted_at IS NULL
+)
+`
+	exec := executorFromContext(ctx, r.db)
+	var exists bool
+	if err := exec.GetContext(ctx, &exists, q, recordID, userID); err != nil {
+		return false, fmt.Errorf("failed to check record existence: %w", err)
+	}
+	return exists, nil
+}
+
 func recordListItemFromDTO(row dto.RecordListItem) model.RecordListItem {
 	item := model.RecordListItem{
 		ID:          row.ID,

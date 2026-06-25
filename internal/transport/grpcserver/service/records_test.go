@@ -36,6 +36,9 @@ type recordsUseCaseStub struct {
 	getRecordInput           usecase.GetRecordInput
 	getRecordOutput          usecase.GetRecordOutput
 	getRecordErr             error
+	updateRecordInput        usecase.UpdateRecordInput
+	updateRecordOutput       usecase.UpdateRecordOutput
+	updateRecordErr          error
 	downloadFileInput        usecase.DownloadFileInput
 	downloadFileOutput       usecase.DownloadFileOutput
 	downloadFileErr          error
@@ -78,6 +81,14 @@ func (s *recordsUseCaseStub) GetRecord(
 ) (usecase.GetRecordOutput, error) {
 	s.getRecordInput = in
 	return s.getRecordOutput, s.getRecordErr
+}
+
+func (s *recordsUseCaseStub) UpdateRecord(
+	_ context.Context,
+	in usecase.UpdateRecordInput,
+) (usecase.UpdateRecordOutput, error) {
+	s.updateRecordInput = in
+	return s.updateRecordOutput, s.updateRecordErr
 }
 
 func (s *recordsUseCaseStub) DownloadFile(
@@ -573,6 +584,153 @@ func TestRecordsService_GetRecord_FailWithInternalError(t *testing.T) {
 
 	// Act
 	_, err = recordsService.GetRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+// TestRecordsService_UpdateRecord_OK проверяет успешное обновление приватной записи через gRPC-обработчик.
+func TestRecordsService_UpdateRecord_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	uc := &recordsUseCaseStub{updateRecordOutput: usecase.UpdateRecordOutput{RecordID: recordID, Version: 2}}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), userID)
+	req := newUpdateRecordRequest(recordID.String(), "new title", []byte("new-dek"), []byte("new-payload"), 1)
+
+	// Act
+	resp, err := recordsService.UpdateRecord(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, recordID.String(), resp.GetRecordId())
+	assert.Equal(t, int64(2), resp.GetVersion())
+	assert.Equal(t, recordID, uc.updateRecordInput.RecordID)
+	assert.Equal(t, userID, uc.updateRecordInput.UserID)
+	assert.Equal(t, "new title", uc.updateRecordInput.Title)
+	assert.Equal(t, "description", uc.updateRecordInput.Description)
+	assert.Equal(t, []byte("new-dek"), uc.updateRecordInput.EncryptedDEK)
+	assert.Equal(t, []byte("new-payload"), uc.updateRecordInput.EncryptedPayload)
+	assert.Equal(t, int64(1), uc.updateRecordInput.ExpectedVersion)
+}
+
+// TestRecordsService_UpdateRecord_FailWithUnauthenticated проверяет ошибку при отсутствии идентификатора пользователя
+// в контексте.
+func TestRecordsService_UpdateRecord_FailWithUnauthenticated(t *testing.T) {
+	// Arrange
+	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+	require.NoError(t, err)
+	req := newUpdateRecordRequest(uuid.Must(uuid.NewV7()).String(), "title", []byte("dek"), []byte("payload"), 1)
+
+	// Act
+	_, err = recordsService.UpdateRecord(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestRecordsService_UpdateRecord_FailWithInvalidArgument проверяет валидацию запроса на обновление приватной записи.
+func TestRecordsService_UpdateRecord_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	recordID := uuid.Must(uuid.NewV7()).String()
+	tests := []struct {
+		name string
+		req  *pb.UpdateRecordRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty record id", req: newUpdateRecordRequest("", "title", []byte("dek"), []byte("payload"), 1)},
+		{name: "invalid record id", req: newUpdateRecordRequest("not-a-uuid", "title", []byte("dek"), []byte("payload"), 1)},
+		{name: "empty title", req: newUpdateRecordRequest(recordID, "", []byte("dek"), []byte("payload"), 1)},
+		{name: "blank title", req: newUpdateRecordRequest(recordID, "   ", []byte("dek"), []byte("payload"), 1)},
+		{name: "empty encrypted dek", req: newUpdateRecordRequest(recordID, "title", nil, []byte("payload"), 1)},
+		{name: "empty encrypted payload", req: newUpdateRecordRequest(recordID, "title", []byte("dek"), nil, 1)},
+		{name: "zero expected version", req: newUpdateRecordRequest(recordID, "title", []byte("dek"), []byte("payload"), 0)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+
+			// Act
+			_, err = recordsService.UpdateRecord(ctx, tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+func newUpdateRecordRequest(
+	recordID string,
+	title string,
+	encryptedDEK []byte,
+	encryptedPayload []byte,
+	expectedVersion int64,
+) *pb.UpdateRecordRequest {
+	return pb.UpdateRecordRequest_builder{
+		RecordId:         &recordID,
+		Title:            &title,
+		Description:      new("description"),
+		EncryptedDek:     encryptedDEK,
+		EncryptedPayload: encryptedPayload,
+		ExpectedVersion:  &expectedVersion,
+	}.Build()
+}
+
+// TestRecordsService_UpdateRecord_FailWithNotFound проверяет маппинг отсутствующей приватной записи в код ошибки
+// NotFound.
+func TestRecordsService_UpdateRecord_FailWithNotFound(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{updateRecordErr: usecase.ErrRecordNotFound}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := newUpdateRecordRequest(uuid.Must(uuid.NewV7()).String(), "title", []byte("dek"), []byte("payload"), 1)
+
+	// Act
+	_, err = recordsService.UpdateRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// TestRecordsService_UpdateRecord_FailWithVersionConflict проверяет маппинг конфликта версии в код ошибки Aborted.
+func TestRecordsService_UpdateRecord_FailWithVersionConflict(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{updateRecordErr: usecase.ErrRecordVersionConflict}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := newUpdateRecordRequest(uuid.Must(uuid.NewV7()).String(), "title", []byte("dek"), []byte("payload"), 1)
+
+	// Act
+	_, err = recordsService.UpdateRecord(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Aborted, status.Code(err))
+}
+
+// TestRecordsService_UpdateRecord_FailWithInternalError проверяет маппинг неизвестной ошибки в код ошибки Internal.
+func TestRecordsService_UpdateRecord_FailWithInternalError(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{updateRecordErr: errors.New("some internal error")}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	req := newUpdateRecordRequest(uuid.Must(uuid.NewV7()).String(), "title", []byte("dek"), []byte("payload"), 1)
+
+	// Act
+	_, err = recordsService.UpdateRecord(ctx, req)
 
 	// Assert
 	require.Error(t, err)

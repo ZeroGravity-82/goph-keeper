@@ -78,6 +78,23 @@ type GetRecordOutput struct {
 	Record model.Record
 }
 
+// UpdateRecordInput описывает входные данные сценария обновления приватной записи.
+type UpdateRecordInput struct {
+	RecordID         uuid.UUID
+	UserID           uuid.UUID
+	Title            string
+	Description      string
+	EncryptedDEK     []byte
+	EncryptedPayload []byte
+	ExpectedVersion  int64
+}
+
+// UpdateRecordOutput описывает результат обновления приватной записи.
+type UpdateRecordOutput struct {
+	RecordID uuid.UUID
+	Version  int64
+}
+
 // DownloadFileInput описывает входные данные сценария скачивания зашифрованного файла.
 type DownloadFileInput struct {
 	UserID   uuid.UUID
@@ -93,6 +110,7 @@ type recordRepository interface {
 	Create(ctx context.Context, record model.Record) error
 	GetByIDAndUserID(ctx context.Context, recordID uuid.UUID, userID uuid.UUID) (model.Record, error)
 	ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error)
+	Update(ctx context.Context, record model.Record, expectedVersion int64) (int64, error)
 }
 
 type recordFileRepository interface {
@@ -297,7 +315,29 @@ func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetR
 	return GetRecordOutput{Record: record}, nil
 }
 
-// DownloadFile возвращает поток зашифрованного файла записи пользователя.
+// UpdateRecord обновляет приватную запись с проверкой ожидаемой версии.
+func (uc *RecordUseCase) UpdateRecord(ctx context.Context, in UpdateRecordInput) (UpdateRecordOutput, error) {
+	now := time.Now().UTC()
+	record := model.Record{
+		ID:               in.RecordID,
+		UserID:           in.UserID,
+		Title:            in.Title,
+		Description:      in.Description,
+		EncryptedDEK:     model.EncryptedBlob{Data: in.EncryptedDEK},
+		EncryptedPayload: model.EncryptedBlob{Data: in.EncryptedPayload},
+		UpdatedAt:        now,
+	}
+	version, err := uc.recordRepo.Update(ctx, record, in.ExpectedVersion)
+	if err != nil {
+		if errors.Is(err, ErrRecordNotFound) || errors.Is(err, ErrRecordVersionConflict) {
+			return UpdateRecordOutput{}, err
+		}
+		return UpdateRecordOutput{}, fmt.Errorf("failed to update record: %w", err)
+	}
+	return UpdateRecordOutput{RecordID: in.RecordID, Version: version}, nil
+}
+
+// DownloadFile возвращает поток зашифрованного файла приватной записи.
 func (uc *RecordUseCase) DownloadFile(ctx context.Context, in DownloadFileInput) (DownloadFileOutput, error) {
 	record, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
 	if err != nil {

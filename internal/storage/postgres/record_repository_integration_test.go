@@ -138,7 +138,129 @@ func TestRecordRepository_ListByUserID(t *testing.T) {
 	assert.Nil(t, items[1].File)
 }
 
-// TestRecordFileRepository_UpdateUploadStatus проверяет обновление статуса загрузки файла записи пользователя.
+// TestRecordRepository_Update проверяет обновление приватной записи с увеличением версии.
+func TestRecordRepository_Update(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-update-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "old title", time.Now().UTC())
+	updatedAt := record.UpdatedAt.Add(time.Minute).UTC().Truncate(time.Microsecond)
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, recordRepo.Create(ctx, record))
+
+	record.Title = "new title"
+	record.Description = "new description"
+	record.EncryptedDEK = model.EncryptedBlob{Data: []byte("new-encrypted-dek")}
+	record.EncryptedPayload = model.EncryptedBlob{Data: []byte("new-encrypted-payload")}
+	record.UpdatedAt = updatedAt
+
+	// Act
+	version, err := recordRepo.Update(ctx, record, 1)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), version)
+
+	got, err := recordRepo.GetByIDAndUserID(ctx, record.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "new title", got.Title)
+	assert.Equal(t, "new description", got.Description)
+	assert.Equal(t, []byte("new-encrypted-dek"), got.EncryptedDEK.Data)
+	assert.Equal(t, []byte("new-encrypted-payload"), got.EncryptedPayload.Data)
+	assert.Equal(t, int64(2), got.Version)
+	assert.True(t, got.CreatedAt.Equal(record.CreatedAt))
+	assert.True(t, got.UpdatedAt.Equal(updatedAt))
+}
+
+// TestRecordRepository_Update_NotFound проверяет ошибку при обновлении отсутствующей, чужой или удаленной приватной
+// записи.
+func TestRecordRepository_Update_NotFound(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-update-not-found-user")
+	otherUser := newTestUser(t, "record-update-not-found-other-user")
+	deletedRecord := newTestRecord(t, user.ID, model.RecordTypeText, "deleted title", time.Now().UTC())
+	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	deletedRecord.DeletedAt = &deletedAt
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, userRepo.Create(ctx, otherUser))
+	require.NoError(t, recordRepo.Create(ctx, deletedRecord))
+
+	tests := []struct {
+		name   string
+		record model.Record
+	}{
+		{name: "missing record", record: newTestRecord(t, user.ID, model.RecordTypeText, "missing title", time.Now().UTC())},
+		{name: "other user", record: model.Record{ID: deletedRecord.ID, UserID: otherUser.ID}},
+		{name: "deleted record", record: model.Record{ID: deletedRecord.ID, UserID: user.ID}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			record := tt.record
+			record.Title = "new title"
+			record.Description = "new description"
+			record.EncryptedDEK = model.EncryptedBlob{Data: []byte("new-dek")}
+			record.EncryptedPayload = model.EncryptedBlob{Data: []byte("new-payload")}
+			record.UpdatedAt = time.Now().UTC()
+
+			// Act
+			_, err := recordRepo.Update(ctx, record, 1)
+
+			// Assert
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
+		})
+	}
+}
+
+// TestRecordRepository_Update_VersionConflict проверяет ошибку при несовпадении ожидаемой версии приватной записи.
+func TestRecordRepository_Update_VersionConflict(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-update-version-conflict-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "title", time.Now().UTC())
+	originalTitle := record.Title
+	originalVersion := record.Version
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, recordRepo.Create(ctx, record))
+
+	record.Title = "new title"
+	record.UpdatedAt = time.Now().UTC()
+
+	// Act
+	_, err = recordRepo.Update(ctx, record, 999)
+
+	// Assert
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, usecase.ErrRecordVersionConflict))
+
+	got, err := recordRepo.GetByIDAndUserID(ctx, record.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, originalTitle, got.Title)
+	assert.Equal(t, originalVersion, got.Version)
+}
+
+// TestRecordFileRepository_UpdateUploadStatus проверяет обновление статуса загрузки файла приватной записи.
 func TestRecordFileRepository_UpdateUploadStatus(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
