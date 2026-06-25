@@ -546,7 +546,7 @@ func TestRecordsService_GetRecord_FailWithInvalidArgument(t *testing.T) {
 // TestRecordsService_GetRecord_FailWithNotFound проверяет маппинг отсутствующей записи в код ошибки NotFound.
 func TestRecordsService_GetRecord_FailWithNotFound(t *testing.T) {
 	// Arrange
-	uc := &recordsUseCaseStub{getRecordErr: model.ErrRecordNotFound}
+	uc := &recordsUseCaseStub{getRecordErr: usecase.ErrRecordNotFound}
 	recordsService, err := NewRecordsService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
@@ -652,7 +652,7 @@ func TestRecordsService_DownloadFile_FailWithInvalidArgument(t *testing.T) {
 // TestRecordsService_DownloadFile_FailWithNotFound проверяет маппинг отсутствующей записи в код ошибки NotFound.
 func TestRecordsService_DownloadFile_FailWithNotFound(t *testing.T) {
 	// Arrange
-	uc := &recordsUseCaseStub{downloadFileErr: model.ErrRecordNotFound}
+	uc := &recordsUseCaseStub{downloadFileErr: usecase.ErrRecordNotFound}
 	recordsService, err := NewRecordsService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	stream := newDownloadFileTestStream(authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7())))

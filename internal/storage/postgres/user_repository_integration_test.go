@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"zerogravity-82/goph-keeper/internal/domain/model"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 // TestUserRepository_CreateAndGetByLogin проверяет создание пользователя и получение пользователя по логину.
@@ -51,7 +51,7 @@ func TestUserRepository_GetByLogin_NotFound(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrUserNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrUserNotFound))
 }
 
 // TestUserRepository_Create_DuplicateLogin проверяет маппинг нарушения уникальности логина в доменную ошибку.
@@ -71,5 +71,5 @@ func TestUserRepository_Create_DuplicateLogin(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrLoginAlreadyTaken))
+	assert.True(t, errors.Is(err, usecase.ErrLoginAlreadyTaken))
 }

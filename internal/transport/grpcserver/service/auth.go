@@ -9,7 +9,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/logging"
 	"zerogravity-82/goph-keeper/internal/pb"
 	"zerogravity-82/goph-keeper/internal/usecase"
@@ -88,15 +87,15 @@ func validateCredentials(login, password string) error {
 
 // isExpectedAuthError определяет ожидаемые ошибки аутентификации, которые не нужно логировать как внутренние ошибки.
 func isExpectedAuthError(err error) bool {
-	return errors.Is(err, model.ErrLoginAlreadyTaken) || errors.Is(err, model.ErrAuthenticationFailed)
+	return errors.Is(err, usecase.ErrLoginAlreadyTaken) || errors.Is(err, usecase.ErrAuthenticationFailed)
 }
 
 // authErrorToStatus преобразует ошибку сценария аутентификации в gRPC-статус.
 func authErrorToStatus(err error) error {
-	if errors.Is(err, model.ErrLoginAlreadyTaken) {
+	if errors.Is(err, usecase.ErrLoginAlreadyTaken) {
 		return status.Error(codes.AlreadyExists, "login already taken")
 	}
-	if errors.Is(err, model.ErrAuthenticationFailed) {
+	if errors.Is(err, usecase.ErrAuthenticationFailed) {
 		return status.Error(codes.Unauthenticated, "authentication failed")
 	}
 	return status.Error(codes.Internal, "internal error")

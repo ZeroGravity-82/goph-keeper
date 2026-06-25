@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 // TestRecordRepository_CreateAndGetByIDAndUserID проверяет создание и получение записи пользователя без файла.
@@ -83,7 +84,7 @@ func TestRecordRepository_GetByIDAndUserID_NotFound(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRecordNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
 }
 
 // TestRecordRepository_ListByUserID проверяет получение списка записей пользователя.
@@ -182,7 +183,7 @@ func TestRecordFileRepository_UpdateUploadStatus_NotFound(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRecordNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
 }
 
 func newTestRecord(

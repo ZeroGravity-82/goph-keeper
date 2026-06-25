@@ -12,6 +12,7 @@ import (
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/storage/postgres/dto"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 // RefreshTokenRepository реализует доступ к данным refresh-токенов в PostgreSQL.
@@ -53,7 +54,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 // FindActiveByHash возвращает активный refresh-токен по хешу и блокирует найденную строку до конца транзакции.
 //
 // Активным считается токен, который не отозван и срок действия которого еще не истек.
-// Если активный токен не найден, возвращает model.ErrRefreshTokenNotFound.
+// Если активный токен не найден, возвращает usecase.ErrRefreshTokenNotFound.
 func (r *RefreshTokenRepository) FindActiveByHash(
 	ctx context.Context,
 	tokenHash string,
@@ -69,7 +70,7 @@ FOR UPDATE
 	exec := executorFromContext(ctx, r.db)
 	if err := exec.GetContext(ctx, &token, q, tokenHash, now); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.RefreshToken{}, model.ErrRefreshTokenNotFound
+			return model.RefreshToken{}, usecase.ErrRefreshTokenNotFound
 		}
 		return model.RefreshToken{}, fmt.Errorf("failed to select active refresh token by hash: %w", err)
 	}
@@ -78,7 +79,7 @@ FOR UPDATE
 
 // Revoke отзывает refresh-токен.
 //
-// Если токен не найден, возвращает model.ErrRefreshTokenNotFound.
+// Если токен не найден, возвращает usecase.ErrRefreshTokenNotFound.
 func (r *RefreshTokenRepository) Revoke(ctx context.Context, tokenID uuid.UUID, revokedAt time.Time) error {
 	const q = `
 UPDATE refresh_token
@@ -96,7 +97,7 @@ WHERE id = $1
 		return fmt.Errorf("failed to get revoked refresh token count: %w", err)
 	}
 	if affected == 0 {
-		return model.ErrRefreshTokenNotFound
+		return usecase.ErrRefreshTokenNotFound
 	}
 	return nil
 }

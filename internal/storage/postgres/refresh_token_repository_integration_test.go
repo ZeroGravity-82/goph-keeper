@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"zerogravity-82/goph-keeper/internal/domain/model"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 // TestRefreshTokenRepository_CreateAndFindActiveByHash проверяет создание и получение активного refresh-токена.
@@ -58,7 +58,7 @@ func TestRefreshTokenRepository_FindActiveByHash_NotFound(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
 }
 
 // TestRefreshTokenRepository_FindActiveByHash_Expired проверяет, что истекший refresh-токен не считается активным.
@@ -83,7 +83,7 @@ func TestRefreshTokenRepository_FindActiveByHash_Expired(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
 }
 
 // TestRefreshTokenRepository_Revoke проверяет отзыв refresh-токена.
@@ -110,7 +110,7 @@ func TestRefreshTokenRepository_Revoke(t *testing.T) {
 	require.NoError(t, err)
 	_, err = tokenRepo.FindActiveByHash(ctx, token.TokenHash, revokedAt)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
 }
 
 // TestRefreshTokenRepository_Revoke_NotFound проверяет ошибку при отзыве отсутствующего refresh-токена.
@@ -126,5 +126,5 @@ func TestRefreshTokenRepository_Revoke_NotFound(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
 }

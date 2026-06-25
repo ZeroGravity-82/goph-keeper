@@ -422,7 +422,7 @@ func (s *RecordsService) GetRecord(ctx context.Context, req *pb.GetRecordRequest
 
 	out, err := s.uc.GetRecord(ctx, in)
 	if err != nil {
-		if errors.Is(err, model.ErrRecordNotFound) {
+		if errors.Is(err, usecase.ErrRecordNotFound) {
 			return nil, status.Error(codes.NotFound, "record not found")
 		}
 		s.logger.Error("failed to get record", slog.Any("err", err))
@@ -497,7 +497,7 @@ func (s *RecordsService) DownloadFile(req *pb.DownloadFileRequest, stream pb.Rec
 
 	out, err := s.uc.DownloadFile(stream.Context(), in)
 	if err != nil {
-		if errors.Is(err, model.ErrRecordNotFound) {
+		if errors.Is(err, usecase.ErrRecordNotFound) {
 			return status.Error(codes.NotFound, "record not found")
 		}
 		if errors.Is(err, usecase.ErrRecordIsNotBinary) {

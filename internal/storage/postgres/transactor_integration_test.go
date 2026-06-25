@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"zerogravity-82/goph-keeper/internal/domain/model"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 // TestTransactor_WithinTransaction_Commit проверяет фиксацию изменений после успешного выполнения callback.
@@ -82,9 +82,9 @@ func TestTransactor_WithinTransaction_Rollback(t *testing.T) {
 
 	_, err = userRepo.GetByLogin(ctx, user.Login)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrUserNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrUserNotFound))
 
 	_, err = tokenRepo.FindActiveByHash(ctx, token.TokenHash, token.IssuedAt)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
 }

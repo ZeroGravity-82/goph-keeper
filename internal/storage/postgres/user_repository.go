@@ -10,6 +10,7 @@ import (
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/storage/postgres/dto"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 // UserRepository реализует доступ к данным пользователя в PostgreSQL.
@@ -35,7 +36,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 	_, err := exec.ExecContext(ctx, q, u.ID, u.Login, u.PasswordHash, u.MasterKeySalt, u.RegisteredAt, u.UpdatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return model.ErrLoginAlreadyTaken
+			return usecase.ErrLoginAlreadyTaken
 		}
 		return fmt.Errorf("failed to persist new user: %w", err)
 	}
@@ -44,7 +45,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 
 // GetByLogin возвращает пользователя по логину.
 //
-// Если пользователь не найден, возвращает model.ErrUserNotFound.
+// Если пользователь не найден, возвращает usecase.ErrUserNotFound.
 func (r *UserRepository) GetByLogin(ctx context.Context, login string) (model.User, error) {
 	const q = `
 SELECT id, login, password_hash, master_key_salt, registered_at, updated_at
@@ -55,7 +56,7 @@ WHERE login = $1
 	exec := executorFromContext(ctx, r.db)
 	if err := exec.GetContext(ctx, &u, q, login); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.User{}, model.ErrUserNotFound
+			return model.User{}, usecase.ErrUserNotFound
 		}
 		return model.User{}, fmt.Errorf("failed to select user by login: %w", err)
 	}

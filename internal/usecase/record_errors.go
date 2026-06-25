@@ -19,3 +19,6 @@ var ErrRecordIsNotBinary = errors.New("record is not binary")
 
 // ErrRecordFileIsNotUploaded возвращается, когда файл записи пользователя еще не был успешно загружен.
 var ErrRecordFileIsNotUploaded = errors.New("record file is not uploaded")
+
+// ErrRecordNotFound возвращается, если запись пользователя не найдена.
+var ErrRecordNotFound = errors.New("record not found")

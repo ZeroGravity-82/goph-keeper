@@ -116,9 +116,9 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 	// Убеждаемся, что логин уникален
 	_, err := uc.userRepo.GetByLogin(ctx, in.Login)
 	if err == nil {
-		return RegisterOutput{}, model.ErrLoginAlreadyTaken
+		return RegisterOutput{}, ErrLoginAlreadyTaken
 	}
-	if !errors.Is(err, model.ErrUserNotFound) {
+	if !errors.Is(err, ErrUserNotFound) {
 		err = fmt.Errorf("failed to verify login uniqueness: %w", err)
 		return RegisterOutput{}, err
 	}
@@ -170,14 +170,14 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (LoginOutput, error) {
 	u, err := uc.userRepo.GetByLogin(ctx, in.Login)
 	if err != nil {
-		if errors.Is(err, model.ErrUserNotFound) {
-			return LoginOutput{}, model.ErrAuthenticationFailed
+		if errors.Is(err, ErrUserNotFound) {
+			return LoginOutput{}, ErrAuthenticationFailed
 		}
 		return LoginOutput{}, fmt.Errorf("failed to get user by login: %w", err)
 	}
 
 	if err = auth.CheckPasswordHash(in.Password, u.PasswordHash); err != nil {
-		return LoginOutput{}, model.ErrAuthenticationFailed
+		return LoginOutput{}, ErrAuthenticationFailed
 	}
 
 	now := time.Now().UTC()
@@ -202,8 +202,8 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, in RefreshInput) (RefreshOut
 	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
 		activeRefreshToken, err := uc.refreshTokenRepo.FindActiveByHash(ctx, activeRefreshHash, now)
 		if err != nil {
-			if errors.Is(err, model.ErrRefreshTokenNotFound) {
-				return model.ErrAuthenticationFailed
+			if errors.Is(err, ErrRefreshTokenNotFound) {
+				return ErrAuthenticationFailed
 			}
 			return fmt.Errorf("failed to find active refresh token: %w", err)
 		}
@@ -223,8 +223,8 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, in RefreshInput) (RefreshOut
 		tokens = newTokens
 		return nil
 	}); err != nil {
-		if errors.Is(err, model.ErrAuthenticationFailed) {
-			return RefreshOutput{}, model.ErrAuthenticationFailed
+		if errors.Is(err, ErrAuthenticationFailed) {
+			return RefreshOutput{}, ErrAuthenticationFailed
 		}
 		return RefreshOutput{}, fmt.Errorf("failed to refresh tokens: %w", err)
 	}
@@ -240,8 +240,8 @@ func (uc *AuthUseCase) Logout(ctx context.Context, in LogoutInput) error {
 	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
 		activeRefreshToken, err := uc.refreshTokenRepo.FindActiveByHash(ctx, activeRefreshHash, now)
 		if err != nil {
-			if errors.Is(err, model.ErrRefreshTokenNotFound) {
-				return model.ErrAuthenticationFailed
+			if errors.Is(err, ErrRefreshTokenNotFound) {
+				return ErrAuthenticationFailed
 			}
 			return fmt.Errorf("failed to find active refresh token: %w", err)
 		}
@@ -252,8 +252,8 @@ func (uc *AuthUseCase) Logout(ctx context.Context, in LogoutInput) error {
 
 		return nil
 	}); err != nil {
-		if errors.Is(err, model.ErrAuthenticationFailed) {
-			return model.ErrAuthenticationFailed
+		if errors.Is(err, ErrAuthenticationFailed) {
+			return ErrAuthenticationFailed
 		}
 		return fmt.Errorf("failed to logout user: %w", err)
 	}

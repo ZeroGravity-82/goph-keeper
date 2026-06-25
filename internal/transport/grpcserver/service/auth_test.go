@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/logging"
 	"zerogravity-82/goph-keeper/internal/pb"
 	"zerogravity-82/goph-keeper/internal/usecase"
@@ -113,7 +112,7 @@ func TestAuthService_Register_FailWithInvalidArgument(t *testing.T) {
 // TestAuthService_Register_FailWithAlreadyExists проверяет маппинг занятого логина в код ошибки AlreadyExists.
 func TestAuthService_Register_FailWithAlreadyExists(t *testing.T) {
 	// Arrange
-	uc := &authUseCaseStub{registerErr: model.ErrLoginAlreadyTaken}
+	uc := &authUseCaseStub{registerErr: usecase.ErrLoginAlreadyTaken}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	req := pb.RegisterRequest_builder{Login: new("user"), Password: new("password")}.Build()
@@ -202,7 +201,7 @@ func TestAuthService_Login_FailWithInvalidArgument(t *testing.T) {
 // TestAuthService_Login_FailWithUnauthenticated проверяет маппинг ошибки аутентификации.
 func TestAuthService_Login_FailWithUnauthenticated(t *testing.T) {
 	// Arrange
-	uc := &authUseCaseStub{loginErr: model.ErrAuthenticationFailed}
+	uc := &authUseCaseStub{loginErr: usecase.ErrAuthenticationFailed}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	req := pb.LoginRequest_builder{Login: new("user"), Password: new("password")}.Build()
@@ -285,7 +284,7 @@ func TestAuthService_Refresh_FailWithInvalidArgument(t *testing.T) {
 // TestAuthService_Refresh_FailWithUnauthenticated проверяет маппинг ошибки аутентификации.
 func TestAuthService_Refresh_FailWithUnauthenticated(t *testing.T) {
 	// Arrange
-	uc := &authUseCaseStub{refreshErr: model.ErrAuthenticationFailed}
+	uc := &authUseCaseStub{refreshErr: usecase.ErrAuthenticationFailed}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	req := pb.RefreshRequest_builder{RefreshToken: new("refresh-token")}.Build()
@@ -361,7 +360,7 @@ func TestAuthService_Logout_FailWithInvalidArgument(t *testing.T) {
 // TestAuthService_Logout_FailWithUnauthenticated проверяет маппинг ошибки аутентификации.
 func TestAuthService_Logout_FailWithUnauthenticated(t *testing.T) {
 	// Arrange
-	uc := &authUseCaseStub{logoutErr: model.ErrAuthenticationFailed}
+	uc := &authUseCaseStub{logoutErr: usecase.ErrAuthenticationFailed}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	req := pb.LogoutRequest_builder{RefreshToken: new("refresh-token")}.Build()

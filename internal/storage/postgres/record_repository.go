@@ -12,6 +12,7 @@ import (
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/storage/postgres/dto"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 // RecordRepository реализует доступ к записям пользователя в PostgreSQL.
@@ -93,7 +94,7 @@ WHERE r.id = $1 AND r.app_user_id = $2 AND r.deleted_at IS NULL
 	exec := executorFromContext(ctx, r.db)
 	if err := exec.GetContext(ctx, &row, q, recordID, userID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.Record{}, model.ErrRecordNotFound
+			return model.Record{}, usecase.ErrRecordNotFound
 		}
 		return model.Record{}, fmt.Errorf("failed to select record by ID and user ID: %w", err)
 	}
@@ -228,7 +229,7 @@ WHERE id = $3
 		return fmt.Errorf("failed to read affected rows count: %w", err)
 	}
 	if rowsAffected == 0 {
-		return model.ErrRecordNotFound
+		return usecase.ErrRecordNotFound
 	}
 	return nil
 }

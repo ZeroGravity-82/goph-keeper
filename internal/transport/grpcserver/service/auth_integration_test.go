@@ -18,7 +18,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/auth"
-	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/logging"
 	"zerogravity-82/goph-keeper/internal/pb"
 	"zerogravity-82/goph-keeper/internal/storage/postgres"
@@ -215,7 +214,7 @@ func TestAuthService_Refresh_Integration_OK(t *testing.T) {
 		time.Now().UTC(),
 	)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
 
 	storedRefreshToken, err := tokenRepo.FindActiveByHash(
 		ctx,
@@ -297,7 +296,7 @@ func TestAuthService_Logout_Integration_OK(t *testing.T) {
 		time.Now().UTC(),
 	)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, model.ErrRefreshTokenNotFound))
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
 }
 
 // TestAuthService_Logout_Integration_ReusedToken проверяет ошибку при повторном завершении той же сессии.

@@ -289,8 +289,8 @@ func (uc *RecordUseCase) ListRecords(ctx context.Context, in ListRecordsInput) (
 func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetRecordOutput, error) {
 	record, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
 	if err != nil {
-		if errors.Is(err, model.ErrRecordNotFound) {
-			return GetRecordOutput{}, model.ErrRecordNotFound
+		if errors.Is(err, ErrRecordNotFound) {
+			return GetRecordOutput{}, ErrRecordNotFound
 		}
 		return GetRecordOutput{}, fmt.Errorf("failed to get record: %w", err)
 	}
@@ -301,8 +301,8 @@ func (uc *RecordUseCase) GetRecord(ctx context.Context, in GetRecordInput) (GetR
 func (uc *RecordUseCase) DownloadFile(ctx context.Context, in DownloadFileInput) (DownloadFileOutput, error) {
 	record, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
 	if err != nil {
-		if errors.Is(err, model.ErrRecordNotFound) {
-			return DownloadFileOutput{}, model.ErrRecordNotFound
+		if errors.Is(err, ErrRecordNotFound) {
+			return DownloadFileOutput{}, ErrRecordNotFound
 		}
 		return DownloadFileOutput{}, fmt.Errorf("failed to get record for file download: %w", err)
 	}
