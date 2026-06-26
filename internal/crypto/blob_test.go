@@ -13,7 +13,7 @@ import (
 // TestEncryptDecrypt проверяет шифрование и расшифровку данных.
 func TestEncryptDecrypt(t *testing.T) {
 	// Arrange
-	key := testKey(t)
+	key := testDEK(t)
 	plaintext := []byte("secret payload")
 
 	// Act
@@ -31,7 +31,7 @@ func TestEncryptDecrypt(t *testing.T) {
 // TestEncryptDecrypt_EmptyPlaintext проверяет, что пустой plaintext допустим.
 func TestEncryptDecrypt_EmptyPlaintext(t *testing.T) {
 	// Arrange
-	key := testKey(t)
+	key := testDEK(t)
 
 	// Act
 	blob, err := Encrypt(nil, key)
@@ -47,7 +47,7 @@ func TestEncryptDecrypt_EmptyPlaintext(t *testing.T) {
 // TestEncrypt_UniqueNonce проверяет, что повторное шифрование одного plaintext дает разные blob.
 func TestEncrypt_UniqueNonce(t *testing.T) {
 	// Arrange
-	key := testKey(t)
+	key := testDEK(t)
 	plaintext := []byte("secret payload")
 
 	// Act
@@ -80,7 +80,7 @@ func TestEncryptDecrypt_FailWithInvalidKey(t *testing.T) {
 // TestDecrypt_FailWithWrongKey проверяет ошибку при попытке расшифровать blob другим ключом.
 func TestDecrypt_FailWithWrongKey(t *testing.T) {
 	// Arrange
-	key := testKey(t)
+	key := testDEK(t)
 	wrongKey := bytes.Repeat([]byte{2}, dekLength)
 	blob, err := Encrypt([]byte("secret payload"), key)
 	require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestDecrypt_FailWithWrongKey(t *testing.T) {
 // TestDecrypt_FailWithDamagedCiphertext проверяет ошибку при поврежденном ciphertext.
 func TestDecrypt_FailWithDamagedCiphertext(t *testing.T) {
 	// Arrange
-	key := testKey(t)
+	key := testDEK(t)
 	blob, err := Encrypt([]byte("secret payload"), key)
 	require.NoError(t, err)
 	blob.Data[len(blob.Data)-1] ^= 1
@@ -112,7 +112,7 @@ func TestDecrypt_FailWithDamagedCiphertext(t *testing.T) {
 // TestDecrypt_FailWithShortBlob проверяет ошибку при blob короче nonce.
 func TestDecrypt_FailWithShortBlob(t *testing.T) {
 	// Arrange
-	key := testKey(t)
+	key := testDEK(t)
 	blob := model.EncryptedBlob{Data: bytes.Repeat([]byte{1}, nonceLength-1)}
 
 	// Act
@@ -123,7 +123,7 @@ func TestDecrypt_FailWithShortBlob(t *testing.T) {
 	assert.Nil(t, decrypted)
 }
 
-func testKey(t *testing.T) []byte {
+func testDEK(t *testing.T) []byte {
 	t.Helper()
 	key, err := GenerateDEK()
 	require.NoError(t, err)

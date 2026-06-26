@@ -12,11 +12,14 @@ const (
 	// masterKeySaltLength задает длину пользовательской соли для вычисления KEK.
 	masterKeySaltLength = 16
 
-	// kekLength задает длину KEK для AES-256.
-	kekLength = 32
+	// aes256KeyLength задает длину ключа AES-256.
+	aes256KeyLength = 32
 
-	// dekLength задает длину DEK для AES-256.
-	dekLength = 32
+	// kekLength задает длину KEK, который используется как AES-256-ключ для шифрования DEK.
+	kekLength = aes256KeyLength
+
+	// dekLength задает длину DEK, который используется как AES-256-ключ для шифрования payload.
+	dekLength = aes256KeyLength
 
 	// argon2IDTime задает число проходов Argon2id.
 	argon2IDTime = 3

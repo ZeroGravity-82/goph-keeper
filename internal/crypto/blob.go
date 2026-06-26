@@ -16,7 +16,7 @@ const nonceLength = 12
 func Encrypt(plaintext []byte, key []byte) (model.EncryptedBlob, error) {
 	gcm, err := newGCM(key)
 	if err != nil {
-		return model.EncryptedBlob{}, err
+		return model.EncryptedBlob{}, fmt.Errorf("failed to prepare cipher for encryption: %w", err)
 	}
 
 	nonce := make([]byte, nonceLength)
@@ -32,8 +32,8 @@ func Encrypt(plaintext []byte, key []byte) (model.EncryptedBlob, error) {
 }
 
 func newGCM(key []byte) (cipher.AEAD, error) {
-	if len(key) != dekLength {
-		return nil, errors.New("encryption key has invalid length")
+	if len(key) != aes256KeyLength {
+		return nil, errors.New("AES-256 key has invalid length")
 	}
 
 	block, err := aes.NewCipher(key)
@@ -55,7 +55,7 @@ func Decrypt(blob model.EncryptedBlob, key []byte) ([]byte, error) {
 
 	gcm, err := newGCM(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to prepare cipher for decryption: %w", err)
 	}
 
 	nonce := blob.Data[:nonceLength]
