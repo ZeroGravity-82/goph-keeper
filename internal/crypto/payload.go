@@ -29,8 +29,22 @@ type binaryPayloadJSON struct {
 	Size        int64  `json:"size"`
 }
 
-// MarshalPayload сериализует незашифрованный payload приватной записи в стабильный JSON-формат.
-func MarshalPayload[T any](payload T) ([]byte, error) {
+// EncryptPayload сериализует payload приватной записи в JSON и шифрует его через DEK.
+func EncryptPayload[T any](payload T, dek []byte) (model.EncryptedBlob, error) {
+	data, err := marshalPayload(payload)
+	if err != nil {
+		return model.EncryptedBlob{}, err
+	}
+
+	encrypted, err := Encrypt(data, dek)
+	if err != nil {
+		return model.EncryptedBlob{}, fmt.Errorf("failed to encrypt payload: %w", err)
+	}
+	return encrypted, nil
+}
+
+// marshalPayload сериализует незашифрованный payload приватной записи в стабильный JSON-формат.
+func marshalPayload[T any](payload T) ([]byte, error) {
 	jsonPayload, err := payloadToJSON(payload)
 	if err != nil {
 		return nil, err
@@ -72,14 +86,30 @@ func payloadToJSON[T any](payload T) (any, error) {
 	}
 }
 
-// UnmarshalPayload десериализует payload приватной записи, заданный в JSON-формате, в доменную структуру.
-func UnmarshalPayload[T any](data []byte) (T, error) {
+// DecryptPayload расшифровывает payload приватной записи через DEK и десериализует JSON в доменную структуру.
+func DecryptPayload[T any](encrypted model.EncryptedBlob, dek []byte) (T, error) {
+	var payload T
+
+	data, err := Decrypt(encrypted, dek)
+	if err != nil {
+		return payload, fmt.Errorf("failed to decrypt payload: %w", err)
+	}
+
+	payload, err = unmarshalPayload[T](data)
+	if err != nil {
+		return payload, err
+	}
+	return payload, nil
+}
+
+// unmarshalPayload десериализует payload приватной записи, заданный в JSON-формате, в доменную структуру.
+func unmarshalPayload[T any](data []byte) (T, error) {
 	var payload T
 
 	switch any(payload).(type) {
 	case model.CredentialPayload:
 		var jsonPayload credentialPayloadJSON
-		if err := unmarshalPayload(data, &jsonPayload); err != nil {
+		if err := decodePayloadJSON(data, &jsonPayload); err != nil {
 			return payload, err
 		}
 		return any(model.CredentialPayload{
@@ -88,7 +118,7 @@ func UnmarshalPayload[T any](data []byte) (T, error) {
 		}).(T), nil
 	case model.TextPayload:
 		var jsonPayload textPayloadJSON
-		if err := unmarshalPayload(data, &jsonPayload); err != nil {
+		if err := decodePayloadJSON(data, &jsonPayload); err != nil {
 			return payload, err
 		}
 		return any(model.TextPayload{
@@ -96,7 +126,7 @@ func UnmarshalPayload[T any](data []byte) (T, error) {
 		}).(T), nil
 	case model.CardPayload:
 		var jsonPayload cardPayloadJSON
-		if err := unmarshalPayload(data, &jsonPayload); err != nil {
+		if err := decodePayloadJSON(data, &jsonPayload); err != nil {
 			return payload, err
 		}
 		return any(model.CardPayload{
@@ -107,7 +137,7 @@ func UnmarshalPayload[T any](data []byte) (T, error) {
 		}).(T), nil
 	case model.BinaryPayload:
 		var jsonPayload binaryPayloadJSON
-		if err := unmarshalPayload(data, &jsonPayload); err != nil {
+		if err := decodePayloadJSON(data, &jsonPayload); err != nil {
 			return payload, err
 		}
 		return any(model.BinaryPayload{
@@ -120,7 +150,7 @@ func UnmarshalPayload[T any](data []byte) (T, error) {
 	}
 }
 
-func unmarshalPayload(data []byte, payload any) error {
+func decodePayloadJSON(data []byte, payload any) error {
 	if err := json.Unmarshal(data, payload); err != nil {
 		return fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
