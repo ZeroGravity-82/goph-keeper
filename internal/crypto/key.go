@@ -1,7 +1,9 @@
 package crypto
 
 import (
+	"crypto/rand"
 	"errors"
+	"fmt"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -12,6 +14,9 @@ const (
 
 	// kekLength задает длину KEK для AES-256.
 	kekLength = 32
+
+	// dekLength задает длину DEK для AES-256.
+	dekLength = 32
 
 	// argon2IDTime задает число проходов Argon2id.
 	argon2IDTime = 3
@@ -40,5 +45,15 @@ func DeriveKEK(masterKey string, salt []byte) ([]byte, error) {
 		argon2IDParallelism,
 		kekLength,
 	)
+	return key, nil
+}
+
+// GenerateDEK генерирует ключ шифрования данных для приватной записи.
+func GenerateDEK() ([]byte, error) {
+	key := make([]byte, dekLength)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("failed to generate DEK: %w", err)
+	}
+
 	return key, nil
 }

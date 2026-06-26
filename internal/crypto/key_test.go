@@ -70,3 +70,26 @@ func TestDeriveKEK_FailWithInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+// TestGenerateDEK проверяет генерацию ключа шифрования данных.
+func TestGenerateDEK(t *testing.T) {
+	// Act
+	dek, err := GenerateDEK()
+
+	// Assert
+	require.NoError(t, err)
+	assert.Len(t, dek, dekLength)
+	assert.NotEqual(t, make([]byte, dekLength), dek)
+}
+
+// TestGenerateDEK_Unique проверяет, что два вызова генерируют разные DEK.
+func TestGenerateDEK_Unique(t *testing.T) {
+	// Act
+	firstDEK, err := GenerateDEK()
+	require.NoError(t, err)
+	secondDEK, err := GenerateDEK()
+	require.NoError(t, err)
+
+	// Assert
+	assert.False(t, bytes.Equal(firstDEK, secondDEK))
+}
