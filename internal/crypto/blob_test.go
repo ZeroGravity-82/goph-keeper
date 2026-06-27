@@ -10,16 +10,16 @@ import (
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
 
-// TestEncryptDecrypt проверяет шифрование и расшифровку данных.
-func TestEncryptDecrypt(t *testing.T) {
+// TestEncryptionRoundTrip проверяет шифрование и расшифровку данных.
+func TestEncryptionRoundTrip(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
 	plaintext := []byte("secret payload")
 
 	// Act
-	blob, err := Encrypt(plaintext, key)
+	blob, err := encrypt(plaintext, key)
 	require.NoError(t, err)
-	decrypted, err := Decrypt(blob, key)
+	decrypted, err := decrypt(blob, key)
 
 	// Assert
 	require.NoError(t, err)
@@ -28,15 +28,15 @@ func TestEncryptDecrypt(t *testing.T) {
 	assert.NotEqual(t, plaintext, blob.Data)
 }
 
-// TestEncryptDecrypt_EmptyPlaintext проверяет, что пустой plaintext допустим.
-func TestEncryptDecrypt_EmptyPlaintext(t *testing.T) {
+// TestEncryptionRoundTrip_EmptyPlaintext проверяет, что пустой plaintext допустим.
+func TestEncryptionRoundTrip_EmptyPlaintext(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
 
 	// Act
-	blob, err := Encrypt(nil, key)
+	blob, err := encrypt(nil, key)
 	require.NoError(t, err)
-	decrypted, err := Decrypt(blob, key)
+	decrypted, err := decrypt(blob, key)
 
 	// Assert
 	require.NoError(t, err)
@@ -44,31 +44,44 @@ func TestEncryptDecrypt_EmptyPlaintext(t *testing.T) {
 	assert.Len(t, blob.Data, nonceLength+16)
 }
 
-// TestEncrypt_UniqueNonce проверяет, что повторное шифрование одного plaintext дает разные blob.
-func TestEncrypt_UniqueNonce(t *testing.T) {
+// Test_encrypt_UniqueNonce проверяет, что повторное шифрование одного plaintext дает разные blob.
+func Test_encrypt_UniqueNonce(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
 	plaintext := []byte("secret payload")
 
 	// Act
-	firstBlob, err := Encrypt(plaintext, key)
+	firstBlob, err := encrypt(plaintext, key)
 	require.NoError(t, err)
-	secondBlob, err := Encrypt(plaintext, key)
+	secondBlob, err := encrypt(plaintext, key)
 	require.NoError(t, err)
 
 	// Assert
 	assert.False(t, bytes.Equal(firstBlob.Data, secondBlob.Data))
 }
 
-// TestEncryptDecrypt_FailWithInvalidKey проверяет ошибки при ключе некорректной длины.
-func TestEncryptDecrypt_FailWithInvalidKey(t *testing.T) {
+// Test_encrypt_FailWithInvalidKey проверяет ошибку шифрования при ключе некорректной длины.
+func Test_encrypt_FailWithInvalidKey(t *testing.T) {
+	// Arrange
+	invalidKey := []byte("short-key")
+
+	// Act
+	encrypted, encryptErr := encrypt([]byte("payload"), invalidKey)
+
+	// Assert
+	require.Error(t, encryptErr)
+	assert.Empty(t, encrypted.Data)
+}
+
+// Test_decrypt_FailWithInvalidKey проверяет ошибку расшифровывания при ключе некорректной длины.
+func Test_decrypt_FailWithInvalidKey(t *testing.T) {
 	// Arrange
 	invalidKey := []byte("short-key")
 	blob := model.EncryptedBlob{Data: bytes.Repeat([]byte{1}, nonceLength+16)}
+	encrypted, encryptErr := encrypt([]byte("payload"), invalidKey)
 
 	// Act
-	encrypted, encryptErr := Encrypt([]byte("payload"), invalidKey)
-	decrypted, decryptErr := Decrypt(blob, invalidKey)
+	decrypted, decryptErr := decrypt(blob, invalidKey)
 
 	// Assert
 	require.Error(t, encryptErr)
@@ -77,46 +90,46 @@ func TestEncryptDecrypt_FailWithInvalidKey(t *testing.T) {
 	assert.Nil(t, decrypted)
 }
 
-// TestDecrypt_FailWithWrongKey проверяет ошибку при попытке расшифровать blob другим ключом.
-func TestDecrypt_FailWithWrongKey(t *testing.T) {
+// Test_decrypt_FailWithWrongKey проверяет ошибку при попытке расшифровать blob другим ключом.
+func Test_decrypt_FailWithWrongKey(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
 	wrongKey := bytes.Repeat([]byte{2}, dekLength)
-	blob, err := Encrypt([]byte("secret payload"), key)
+	blob, err := encrypt([]byte("secret payload"), key)
 	require.NoError(t, err)
 
 	// Act
-	decrypted, err := Decrypt(blob, wrongKey)
+	decrypted, err := decrypt(blob, wrongKey)
 
 	// Assert
 	require.Error(t, err)
 	assert.Nil(t, decrypted)
 }
 
-// TestDecrypt_FailWithDamagedCiphertext проверяет ошибку при поврежденном ciphertext.
-func TestDecrypt_FailWithDamagedCiphertext(t *testing.T) {
+// Test_decrypt_FailWithDamagedCiphertext проверяет ошибку при поврежденном ciphertext.
+func Test_decrypt_FailWithDamagedCiphertext(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
-	blob, err := Encrypt([]byte("secret payload"), key)
+	blob, err := encrypt([]byte("secret payload"), key)
 	require.NoError(t, err)
 	blob.Data[len(blob.Data)-1] ^= 1
 
 	// Act
-	decrypted, err := Decrypt(blob, key)
+	decrypted, err := decrypt(blob, key)
 
 	// Assert
 	require.Error(t, err)
 	assert.Nil(t, decrypted)
 }
 
-// TestDecrypt_FailWithShortBlob проверяет ошибку при blob короче nonce.
-func TestDecrypt_FailWithShortBlob(t *testing.T) {
+// Test_decrypt_FailWithShortBlob проверяет ошибку при blob короче nonce.
+func Test_decrypt_FailWithShortBlob(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
 	blob := model.EncryptedBlob{Data: bytes.Repeat([]byte{1}, nonceLength-1)}
 
 	// Act
-	decrypted, err := Decrypt(blob, key)
+	decrypted, err := decrypt(blob, key)
 
 	// Assert
 	require.Error(t, err)
@@ -125,7 +138,7 @@ func TestDecrypt_FailWithShortBlob(t *testing.T) {
 
 func testDEK(t *testing.T) []byte {
 	t.Helper()
-	key, err := GenerateDEK()
+	key, err := generateDEK()
 	require.NoError(t, err)
 	return key
 }

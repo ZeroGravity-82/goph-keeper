@@ -31,8 +31,8 @@ const (
 	argon2IDParallelism = 2
 )
 
-// DeriveKEK вычисляет ключ шифрования ключей из мастер-ключа и пользовательской соли.
-func DeriveKEK(masterKey string, salt []byte) ([]byte, error) {
+// deriveKEK вычисляет ключ шифрования ключей из мастер-ключа и пользовательской соли.
+func deriveKEK(masterKey string, salt []byte) ([]byte, error) {
 	if masterKey == "" {
 		return nil, errors.New("master key is required")
 	}
@@ -51,8 +51,8 @@ func DeriveKEK(masterKey string, salt []byte) ([]byte, error) {
 	return key, nil
 }
 
-// GenerateDEK генерирует ключ шифрования данных для приватной записи.
-func GenerateDEK() ([]byte, error) {
+// generateDEK генерирует ключ шифрования данных для приватной записи.
+func generateDEK() ([]byte, error) {
 	key := make([]byte, dekLength)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("failed to generate DEK: %w", err)

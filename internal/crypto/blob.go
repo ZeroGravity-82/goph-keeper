@@ -12,8 +12,8 @@ import (
 
 const nonceLength = 12
 
-// Encrypt шифрует данные ключом AES-256-GCM и возвращает blob в формате nonce + ciphertext.
-func Encrypt(plaintext []byte, key []byte) (model.EncryptedBlob, error) {
+// encrypt шифрует данные ключом AES-256-GCM и возвращает blob в формате nonce + ciphertext.
+func encrypt(plaintext []byte, key []byte) (model.EncryptedBlob, error) {
 	gcm, err := newGCM(key)
 	if err != nil {
 		return model.EncryptedBlob{}, fmt.Errorf("failed to prepare cipher for encryption: %w", err)
@@ -47,8 +47,8 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	return gcm, nil
 }
 
-// Decrypt расшифровывает blob в формате nonce + ciphertext ключом AES-256-GCM.
-func Decrypt(blob model.EncryptedBlob, key []byte) ([]byte, error) {
+// decrypt расшифровывает blob в формате nonce + ciphertext ключом AES-256-GCM.
+func decrypt(blob model.EncryptedBlob, key []byte) ([]byte, error) {
 	if len(blob.Data) < nonceLength {
 		return nil, errors.New("encrypted blob is too short")
 	}

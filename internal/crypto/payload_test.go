@@ -83,16 +83,16 @@ func TestPayloadJSONRoundTrip_BinaryPayload(t *testing.T) {
 	assert.Equal(t, payload, decoded)
 }
 
-// TestEncryptDecryptPayload проверяет шифрование и расшифровку payload приватной записи.
-func TestEncryptDecryptPayload(t *testing.T) {
+// TestEncryptDecryptPayloadRoundTrip проверяет шифрование и расшифровку payload приватной записи.
+func TestEncryptDecryptPayloadRoundTrip(t *testing.T) {
 	// Arrange
 	payload := model.CredentialPayload{Login: "user", Password: "secret"}
 	dek := testDEK(t)
 
 	// Act
-	encrypted, err := EncryptPayload(payload, dek)
+	encrypted, err := encryptPayload(payload, dek)
 	require.NoError(t, err)
-	decrypted, err := DecryptPayload[model.CredentialPayload](encrypted, dek)
+	decrypted, err := decryptPayload[model.CredentialPayload](encrypted, dek)
 
 	// Assert
 	require.NoError(t, err)
@@ -100,8 +100,8 @@ func TestEncryptDecryptPayload(t *testing.T) {
 	assert.Equal(t, payload, decrypted)
 }
 
-// TestEncryptPayload_FailWithUnsupportedPayload проверяет ошибку шифрования неподдерживаемого payload.
-func TestEncryptPayload_FailWithUnsupportedPayload(t *testing.T) {
+// Test_encryptPayload_FailWithUnsupportedPayload проверяет ошибку шифрования неподдерживаемого payload.
+func Test_encryptPayload_FailWithUnsupportedPayload(t *testing.T) {
 	// Arrange
 	payload := struct {
 		Value string
@@ -109,67 +109,67 @@ func TestEncryptPayload_FailWithUnsupportedPayload(t *testing.T) {
 	dek := testDEK(t)
 
 	// Act
-	encrypted, err := EncryptPayload(payload, dek)
+	encrypted, err := encryptPayload(payload, dek)
 
 	// Assert
 	require.Error(t, err)
 	assert.Empty(t, encrypted.Data)
 }
 
-// TestEncryptPayload_FailWithInvalidDEK проверяет ошибку шифрования при DEK некорректной длины.
-func TestEncryptPayload_FailWithInvalidDEK(t *testing.T) {
+// Test_encryptPayload_FailWithInvalidDEK проверяет ошибку шифрования при DEK некорректной длины.
+func Test_encryptPayload_FailWithInvalidDEK(t *testing.T) {
 	// Arrange
 	payload := model.TextPayload{Text: "secret"}
 
 	// Act
-	encrypted, err := EncryptPayload(payload, []byte("short-dek"))
+	encrypted, err := encryptPayload(payload, []byte("short-dek"))
 
 	// Assert
 	require.Error(t, err)
 	assert.Empty(t, encrypted.Data)
 }
 
-// TestDecryptPayload_FailWithWrongDEK проверяет ошибку расшифровки payload неправильным DEK.
-func TestDecryptPayload_FailWithWrongDEK(t *testing.T) {
+// Test_decryptPayload_FailWithWrongDEK проверяет ошибку расшифровки payload неправильным DEK.
+func Test_decryptPayload_FailWithWrongDEK(t *testing.T) {
 	// Arrange
 	payload := model.TextPayload{Text: "secret"}
 	dek := testDEK(t)
 	wrongDEK := testDEK(t)
-	encrypted, err := EncryptPayload(payload, dek)
+	encrypted, err := encryptPayload(payload, dek)
 	require.NoError(t, err)
 
 	// Act
-	decrypted, err := DecryptPayload[model.TextPayload](encrypted, wrongDEK)
+	decrypted, err := decryptPayload[model.TextPayload](encrypted, wrongDEK)
 
 	// Assert
 	require.Error(t, err)
 	assert.Empty(t, decrypted)
 }
 
-// TestDecryptPayload_FailWithInvalidJSON проверяет ошибку, если расшифрованный payload не является корректным JSON.
-func TestDecryptPayload_FailWithInvalidJSON(t *testing.T) {
+// Test_decryptPayload_FailWithInvalidJSON проверяет ошибку, если расшифрованный payload не является корректным JSON.
+func Test_decryptPayload_FailWithInvalidJSON(t *testing.T) {
 	// Arrange
 	dek := testDEK(t)
-	encrypted, err := Encrypt([]byte("{"), dek)
+	encrypted, err := encrypt([]byte("{"), dek)
 	require.NoError(t, err)
 
 	// Act
-	decrypted, err := DecryptPayload[model.TextPayload](encrypted, dek)
+	decrypted, err := decryptPayload[model.TextPayload](encrypted, dek)
 
 	// Assert
 	require.Error(t, err)
 	assert.Empty(t, decrypted)
 }
 
-// TestDecryptPayload_FailWithUnsupportedPayload проверяет ошибку расшифровки в неподдерживаемый тип.
-func TestDecryptPayload_FailWithUnsupportedPayload(t *testing.T) {
+// Test_decryptPayload_FailWithUnsupportedPayload проверяет ошибку расшифровки в неподдерживаемый тип.
+func Test_decryptPayload_FailWithUnsupportedPayload(t *testing.T) {
 	// Arrange
 	dek := testDEK(t)
-	encrypted, err := Encrypt([]byte(`{"value":"unsupported"}`), dek)
+	encrypted, err := encrypt([]byte(`{"value":"unsupported"}`), dek)
 	require.NoError(t, err)
 
 	// Act
-	decrypted, err := DecryptPayload[struct{ Value string }](encrypted, dek)
+	decrypted, err := decryptPayload[struct{ Value string }](encrypted, dek)
 
 	// Assert
 	require.Error(t, err)
@@ -248,4 +248,156 @@ func Test_unmarshalPayload_FailWithInvalidJSON(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+// TestEncryptDecryptRecordData проверяет полный цикл шифрования и расшифровки данных приватной записи.
+func TestEncryptDecryptRecordData(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.CredentialPayload{Login: "user", Password: "secret"}
+
+	// Act
+	encrypted, err := EncryptRecordData(masterKey, salt, payload)
+	require.NoError(t, err)
+	decrypted, err := DecryptRecordData[model.CredentialPayload](masterKey, salt, encrypted)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotEmpty(t, encrypted.EncryptedDEK.Data)
+	assert.NotEmpty(t, encrypted.EncryptedPayload.Data)
+	assert.Equal(t, payload, decrypted)
+}
+
+// TestEncryptRecordData_FailWithInvalidMasterKey проверяет ошибку при некорректном мастер-ключе.
+func TestEncryptRecordData_FailWithInvalidMasterKey(t *testing.T) {
+	// Arrange
+	salt := []byte("1234567890abcdef")
+	payload := model.TextPayload{Text: "secret"}
+
+	// Act
+	encrypted, err := EncryptRecordData("", salt, payload)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, encrypted.EncryptedDEK.Data)
+	assert.Empty(t, encrypted.EncryptedPayload.Data)
+}
+
+// TestEncryptRecordData_FailWithInvalidSalt проверяет ошибку при соли некорректной длины.
+func TestEncryptRecordData_FailWithInvalidSalt(t *testing.T) {
+	// Arrange
+	payload := model.TextPayload{Text: "secret"}
+
+	// Act
+	encrypted, err := EncryptRecordData("master key", []byte("short"), payload)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, encrypted.EncryptedDEK.Data)
+	assert.Empty(t, encrypted.EncryptedPayload.Data)
+}
+
+// TestEncryptRecordData_FailWithUnsupportedPayload проверяет ошибку при неподдерживаемом payload.
+func TestEncryptRecordData_FailWithUnsupportedPayload(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := struct {
+		Value string
+	}{Value: "unsupported"}
+
+	// Act
+	encrypted, err := EncryptRecordData(masterKey, salt, payload)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, encrypted.EncryptedDEK.Data)
+	assert.Empty(t, encrypted.EncryptedPayload.Data)
+}
+
+// TestDecryptRecordData_FailWithWrongMasterKey проверяет ошибку расшифровки при неправильном мастер-ключе.
+func TestDecryptRecordData_FailWithWrongMasterKey(t *testing.T) {
+	// Arrange
+	salt := []byte("1234567890abcdef")
+	payload := model.TextPayload{Text: "secret"}
+	encrypted, err := EncryptRecordData("master key", salt, payload)
+	require.NoError(t, err)
+
+	// Act
+	decrypted, err := DecryptRecordData[model.TextPayload]("wrong master key", salt, encrypted)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, decrypted)
+}
+
+// TestDecryptRecordData_FailWithInvalidSalt проверяет ошибку при соли некорректной длины.
+func TestDecryptRecordData_FailWithInvalidSalt(t *testing.T) {
+	// Act
+	decrypted, err := DecryptRecordData[model.TextPayload](
+		"master key",
+		[]byte("short"),
+		EncryptedRecordData{
+			EncryptedDEK:     model.EncryptedBlob{Data: []byte("encrypted-dek")},
+			EncryptedPayload: model.EncryptedBlob{Data: []byte("encrypted-payload")},
+		},
+	)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, decrypted)
+}
+
+// TestDecryptRecordData_FailWithDamagedEncryptedDEK проверяет ошибку при поврежденном encrypted DEK.
+func TestDecryptRecordData_FailWithDamagedEncryptedDEK(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.TextPayload{Text: "secret"}
+	encrypted, err := EncryptRecordData(masterKey, salt, payload)
+	require.NoError(t, err)
+	encrypted.EncryptedDEK.Data[len(encrypted.EncryptedDEK.Data)-1] ^= 1
+
+	// Act
+	decrypted, err := DecryptRecordData[model.TextPayload](masterKey, salt, encrypted)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, decrypted)
+}
+
+// TestDecryptRecordData_FailWithDamagedEncryptedPayload проверяет ошибку при поврежденном encrypted payload.
+func TestDecryptRecordData_FailWithDamagedEncryptedPayload(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.TextPayload{Text: "secret"}
+	encrypted, err := EncryptRecordData(masterKey, salt, payload)
+	require.NoError(t, err)
+	encrypted.EncryptedPayload.Data[len(encrypted.EncryptedPayload.Data)-1] ^= 1
+
+	// Act
+	decrypted, err := DecryptRecordData[model.TextPayload](masterKey, salt, encrypted)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, decrypted)
+}
+
+// TestDecryptRecordData_FailWithUnsupportedPayload проверяет ошибку расшифровки в неподдерживаемый тип.
+func TestDecryptRecordData_FailWithUnsupportedPayload(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.TextPayload{Text: "secret"}
+	encrypted, err := EncryptRecordData(masterKey, salt, payload)
+	require.NoError(t, err)
+
+	// Act
+	decrypted, err := DecryptRecordData[struct{ Value string }](masterKey, salt, encrypted)
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, decrypted)
 }

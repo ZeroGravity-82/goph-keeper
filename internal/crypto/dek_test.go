@@ -8,17 +8,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestEncryptDecryptDEK проверяет шифрование и расшифровку DEK через KEK.
-func TestEncryptDecryptDEK(t *testing.T) {
+// TestEncryptDecryptDEKRoundTrip проверяет шифрование и расшифровку DEK через KEK.
+func TestEncryptDecryptDEKRoundTrip(t *testing.T) {
 	// Arrange
-	dek, err := GenerateDEK()
+	dek, err := generateDEK()
 	require.NoError(t, err)
 	kek := testKEK(t)
 
 	// Act
-	encryptedDEK, err := EncryptDEK(dek, kek)
+	encryptedDEK, err := encryptDEK(dek, kek)
 	require.NoError(t, err)
-	decryptedDEK, err := DecryptDEK(encryptedDEK, kek)
+	decryptedDEK, err := decryptDEK(encryptedDEK, kek)
 
 	// Assert
 	require.NoError(t, err)
@@ -26,46 +26,46 @@ func TestEncryptDecryptDEK(t *testing.T) {
 	assert.NotEqual(t, dek, encryptedDEK.Data)
 }
 
-// TestEncryptDEK_FailWithInvalidDEK проверяет ошибку при DEK некорректной длины.
-func TestEncryptDEK_FailWithInvalidDEK(t *testing.T) {
+// Test_encryptDEK_FailWithInvalidDEK проверяет ошибку при DEK некорректной длины.
+func Test_encryptDEK_FailWithInvalidDEK(t *testing.T) {
 	// Arrange
 	kek := testKEK(t)
 
 	// Act
-	encryptedDEK, err := EncryptDEK([]byte("short-dek"), kek)
+	encryptedDEK, err := encryptDEK([]byte("short-dek"), kek)
 
 	// Assert
 	require.Error(t, err)
 	assert.Empty(t, encryptedDEK.Data)
 }
 
-// TestDecryptDEK_FailWithWrongKEK проверяет ошибку при расшифровке DEK неправильным KEK.
-func TestDecryptDEK_FailWithWrongKEK(t *testing.T) {
+// Test_decryptDEK_FailWithWrongKEK проверяет ошибку при расшифровке DEK неправильным KEK.
+func Test_decryptDEK_FailWithWrongKEK(t *testing.T) {
 	// Arrange
-	dek, err := GenerateDEK()
+	dek, err := generateDEK()
 	require.NoError(t, err)
 	kek := testKEK(t)
 	wrongKEK := bytes.Repeat([]byte{2}, kekLength)
-	encryptedDEK, err := EncryptDEK(dek, kek)
+	encryptedDEK, err := encryptDEK(dek, kek)
 	require.NoError(t, err)
 
 	// Act
-	decryptedDEK, err := DecryptDEK(encryptedDEK, wrongKEK)
+	decryptedDEK, err := decryptDEK(encryptedDEK, wrongKEK)
 
 	// Assert
 	require.Error(t, err)
 	assert.Nil(t, decryptedDEK)
 }
 
-// TestDecryptDEK_FailWithInvalidPlaintextLength проверяет ошибку, если расшифрованное значение не похоже на DEK.
-func TestDecryptDEK_FailWithInvalidPlaintextLength(t *testing.T) {
+// Test_decryptDEK_FailWithInvalidPlaintextLength проверяет ошибку, если расшифрованное значение не похоже на DEK.
+func Test_decryptDEK_FailWithInvalidPlaintextLength(t *testing.T) {
 	// Arrange
 	kek := testKEK(t)
-	encryptedNotDEK, err := Encrypt([]byte("not-a-dek"), kek)
+	encryptedNotDEK, err := encrypt([]byte("not-a-dek"), kek)
 	require.NoError(t, err)
 
 	// Act
-	decryptedDEK, err := DecryptDEK(encryptedNotDEK, kek)
+	decryptedDEK, err := decryptDEK(encryptedNotDEK, kek)
 
 	// Assert
 	require.Error(t, err)

@@ -8,16 +8,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDeriveKEK проверяет детерминированность вычисления KEK из мастер-ключа и соли.
-func TestDeriveKEK(t *testing.T) {
+// Test_deriveKEK проверяет детерминированность вычисления KEK из мастер-ключа и соли.
+func Test_deriveKEK(t *testing.T) {
 	// Arrange
 	masterKey := "hive tune oust abe seem rich"
 	salt := []byte("1234567890abcdef")
 
 	// Act
-	firstKey, err := DeriveKEK(masterKey, salt)
+	firstKey, err := deriveKEK(masterKey, salt)
 	require.NoError(t, err)
-	secondKey, err := DeriveKEK(masterKey, salt)
+	secondKey, err := deriveKEK(masterKey, salt)
 	require.NoError(t, err)
 
 	// Assert
@@ -25,19 +25,19 @@ func TestDeriveKEK(t *testing.T) {
 	assert.Equal(t, firstKey, secondKey)
 }
 
-// TestDeriveKEK_DifferentInput проверяет, что разные входные данные дают разные KEK.
-func TestDeriveKEK_DifferentInput(t *testing.T) {
+// Test_deriveKEK_DifferentInput проверяет, что разные входные данные дают разные KEK.
+func Test_deriveKEK_DifferentInput(t *testing.T) {
 	// Arrange
 	masterKey := "hive tune oust abe seem rich"
 	salt := []byte("1234567890abcdef")
 	otherSalt := []byte("abcdef1234567890")
 
 	// Act
-	key, err := DeriveKEK(masterKey, salt)
+	key, err := deriveKEK(masterKey, salt)
 	require.NoError(t, err)
-	keyWithOtherSalt, err := DeriveKEK(masterKey, otherSalt)
+	keyWithOtherSalt, err := deriveKEK(masterKey, otherSalt)
 	require.NoError(t, err)
-	keyWithOtherMasterKey, err := DeriveKEK("other master key", salt)
+	keyWithOtherMasterKey, err := deriveKEK("other master key", salt)
 	require.NoError(t, err)
 
 	// Assert
@@ -45,8 +45,8 @@ func TestDeriveKEK_DifferentInput(t *testing.T) {
 	assert.False(t, bytes.Equal(key, keyWithOtherMasterKey))
 }
 
-// TestDeriveKEK_FailWithInvalidInput проверяет ошибки при некорректных входных данных.
-func TestDeriveKEK_FailWithInvalidInput(t *testing.T) {
+// Test_deriveKEK_FailWithInvalidInput проверяет ошибки при некорректных входных данных.
+func Test_deriveKEK_FailWithInvalidInput(t *testing.T) {
 	// Arrange
 	tests := []struct {
 		name      string
@@ -62,7 +62,7 @@ func TestDeriveKEK_FailWithInvalidInput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Act
-			key, err := DeriveKEK(tt.masterKey, tt.salt)
+			key, err := deriveKEK(tt.masterKey, tt.salt)
 
 			// Assert
 			require.Error(t, err)
@@ -71,10 +71,10 @@ func TestDeriveKEK_FailWithInvalidInput(t *testing.T) {
 	}
 }
 
-// TestGenerateDEK проверяет генерацию ключа шифрования данных.
-func TestGenerateDEK(t *testing.T) {
+// Test_generateDEK проверяет генерацию ключа шифрования данных.
+func Test_generateDEK(t *testing.T) {
 	// Act
-	dek, err := GenerateDEK()
+	dek, err := generateDEK()
 
 	// Assert
 	require.NoError(t, err)
@@ -82,12 +82,12 @@ func TestGenerateDEK(t *testing.T) {
 	assert.NotEqual(t, make([]byte, dekLength), dek)
 }
 
-// TestGenerateDEK_Unique проверяет, что два вызова генерируют разные DEK.
-func TestGenerateDEK_Unique(t *testing.T) {
+// Test_generateDEK_Unique проверяет, что два вызова генерируют разные DEK.
+func Test_generateDEK_Unique(t *testing.T) {
 	// Act
-	firstDEK, err := GenerateDEK()
+	firstDEK, err := generateDEK()
 	require.NoError(t, err)
-	secondDEK, err := GenerateDEK()
+	secondDEK, err := generateDEK()
 	require.NoError(t, err)
 
 	// Assert
