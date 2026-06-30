@@ -3,35 +3,18 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net"
 	"os"
-	"strings"
 
-	"github.com/knadh/koanf/parsers/yaml"
-	"github.com/knadh/koanf/providers/confmap"
-	"github.com/knadh/koanf/providers/env"
-	"github.com/knadh/koanf/providers/file"
-	"github.com/knadh/koanf/providers/posflag"
-	"github.com/knadh/koanf/v2"
 	"github.com/spf13/pflag"
 )
 
-var (
-	// ErrHelp возвращается, когда пользователь запросил справку по флагам командной строки.
-	ErrHelp = pflag.ErrHelp
-)
-
 const (
-	envPrefix = "GOPHKEEPER_"
-	keyDelim  = "."
-
 	defaultLoggingLevel      = "info"
 	defaultLoggingFormat     = "json"
 	defaultLoggingAddSource  = false
 	defaultGRPCServerAddr    = "localhost:3201"
 	defaultTLSCertPath       = "certs/server.crt"
 	defaultTLSKeyPath        = "certs/server.key"
-	defaultCACertPath        = "certs/ca.crt"
 	defaultFileStorageUseSSL = false
 )
 
@@ -67,7 +50,7 @@ type FileStorage struct {
 	UseSSL    bool   `koanf:"use_ssl"`
 }
 
-// Config описывает конфигурацию сервиса.
+// ServerConfig описывает конфигурацию сервиса.
 //
 // GRPCServerAddr - адрес gRPC-сервера в формате host:port.
 //
@@ -82,7 +65,7 @@ type FileStorage struct {
 // FileStorage - настройки S3-совместимого хранилища файлов.
 //
 // Logging - настройки логирования сервиса.
-type Config struct {
+type ServerConfig struct {
 	GRPCServerAddr string      `koanf:"grpc_address"`
 	TLSCertPath    string      `koanf:"tls_cert"`
 	TLSKeyPath     string      `koanf:"tls_key"`
@@ -92,38 +75,20 @@ type Config struct {
 	Logging        Logging     `koanf:"logging"`
 }
 
-// Load читает конфигурацию с учетом приоритета "дефолтное значение < значение из конфигурационного файла < флаг
-// командной строки < переменная окружения".
-func Load() (Config, error) {
+// LoadServer читает конфигурацию сервера с учетом приоритета "дефолтное значение < значение из конфигурационного
+// файла < флаг командной строки < переменная окружения".
+func LoadServer() (ServerConfig, error) {
 	flags, configPath, err := parseFlags(os.Args[1:])
 	if err != nil {
-		return Config{}, err
+		return ServerConfig{}, err
 	}
 
-	k := koanf.New(keyDelim)
-	if err = loadDefaults(k); err != nil {
-		return Config{}, err
-	}
-	if configPath != "" {
-		if err = k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
-			return Config{}, fmt.Errorf("failed to load config file %q: %w", configPath, err)
-		}
-	}
-	if err = k.Load(posflag.ProviderWithFlag(flags, keyDelim, k, mapFlag(flags)), nil); err != nil {
-		return Config{}, fmt.Errorf("failed to load CLI flags: %w", err)
-	}
-	if err = k.Load(env.Provider(envPrefix, keyDelim, mapEnvKey), nil); err != nil {
-		return Config{}, fmt.Errorf("failed to load environment variables: %w", err)
-	}
-
-	var cfg Config
-	if err = k.Unmarshal("", &cfg); err != nil {
-		return Config{}, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-	if err = validate(cfg); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
+	return loadConfig[ServerConfig](loadOptions[ServerConfig]{
+		Flags:      flags,
+		ConfigPath: configPath,
+		Defaults:   serverDefaults(),
+		Validate:   validateServerConfig,
+	})
 }
 
 func parseFlags(args []string) (*pflag.FlagSet, string, error) {
@@ -172,16 +137,8 @@ func grpcServerAddrFlagParser(grpcServerAddr *string) func(string) error {
 	}
 }
 
-func validateServerAddr(v string) error {
-	host, port, err := net.SplitHostPort(v)
-	if host == "" || port == "" || err != nil {
-		return errors.New("server address must be in the format host:port (without specifying a scheme)")
-	}
-	return nil
-}
-
-func loadDefaults(k *koanf.Koanf) error {
-	defaults := map[string]any{
+func serverDefaults() map[string]any {
+	return map[string]any{
 		configKey("logging", "format"):       defaultLoggingFormat,
 		configKey("logging", "level"):        defaultLoggingLevel,
 		configKey("logging", "add_source"):   defaultLoggingAddSource,
@@ -190,36 +147,9 @@ func loadDefaults(k *koanf.Koanf) error {
 		configKey("tls_key"):                 defaultTLSKeyPath,
 		configKey("file_storage", "use_ssl"): defaultFileStorageUseSSL,
 	}
-	if err := k.Load(confmap.Provider(defaults, keyDelim), nil); err != nil {
-		return fmt.Errorf("failed to load default config: %w", err)
-	}
-	return nil
 }
 
-func configKey(parts ...string) string {
-	return strings.Join(parts, keyDelim)
-}
-
-func mapFlag(flags *pflag.FlagSet) func(*pflag.Flag) (string, interface{}) {
-	return func(flag *pflag.Flag) (string, interface{}) {
-		key := strings.ReplaceAll(flag.Name, "-", "_")
-		return key, posflag.FlagVal(flags, flag)
-	}
-}
-
-func mapEnvKey(key string) string {
-	key = strings.TrimPrefix(key, envPrefix)
-	key = strings.ToLower(key)
-	if strings.HasPrefix(key, "logging_") {
-		return configKey("logging", strings.TrimPrefix(key, "logging_"))
-	}
-	if strings.HasPrefix(key, "file_storage_") {
-		return configKey("file_storage", strings.TrimPrefix(key, "file_storage_"))
-	}
-	return key
-}
-
-func validate(cfg Config) error {
+func validateServerConfig(cfg ServerConfig) error {
 	if cfg.DatabaseURI == "" {
 		return errors.New("database URI is required")
 	}

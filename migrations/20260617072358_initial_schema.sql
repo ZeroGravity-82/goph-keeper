@@ -1,12 +1,13 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS app_user
 (
-    id              UUID PRIMARY KEY,
-    login           TEXT        NOT NULL UNIQUE,
-    password_hash   TEXT        NOT NULL,
-    master_key_salt BYTEA       NOT NULL,
-    registered_at   TIMESTAMPTZ NOT NULL,
-    updated_at      TIMESTAMPTZ NOT NULL
+    id                  UUID PRIMARY KEY,
+    login               TEXT        NOT NULL UNIQUE,
+    password_hash       TEXT        NOT NULL,
+    master_key_salt     BYTEA       NOT NULL,
+    master_key_verifier BYTEA       NOT NULL,
+    registered_at       TIMESTAMPTZ NOT NULL,
+    updated_at          TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS refresh_token

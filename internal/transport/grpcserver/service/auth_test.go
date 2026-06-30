@@ -60,15 +60,12 @@ func TestAuthService_Register_OK(t *testing.T) {
 			AccessToken:  "access-token",
 			RefreshToken: "refresh-token",
 		},
-		MasterKeySalt: []byte("salt"),
+		MasterKeySalt: []byte("1234567890abcdef"),
 	}}
 
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
-	req := pb.RegisterRequest_builder{
-		Login:    new("user"),
-		Password: new("password"),
-	}.Build()
+	req := registerRequest("user", "password")
 
 	// Act
 	resp, err := authService.Register(context.Background(), req)
@@ -77,7 +74,11 @@ func TestAuthService_Register_OK(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "access-token", resp.GetAccessToken())
 	assert.Equal(t, "refresh-token", resp.GetRefreshToken())
-	assert.Equal(t, []byte("salt"), resp.GetMasterKeySalt())
+	assert.Equal(t, []byte("1234567890abcdef"), resp.GetMasterKeySalt())
+	assert.Equal(t, "user", uc.registerInput.Login)
+	assert.Equal(t, "password", uc.registerInput.Password)
+	assert.Equal(t, []byte("1234567890abcdef"), uc.registerInput.MasterKeySalt)
+	assert.Equal(t, []byte("verifier"), uc.registerInput.MasterKeyVerifier)
 }
 
 // TestAuthService_Register_FailWithInvalidArgument проверяет валидацию обязательных полей запроса.
@@ -88,9 +89,11 @@ func TestAuthService_Register_FailWithInvalidArgument(t *testing.T) {
 		req  *pb.RegisterRequest
 	}{
 		{name: "nil request", req: nil},
-		{name: "empty login", req: pb.RegisterRequest_builder{Login: new(""), Password: new("password")}.Build()},
-		{name: "blank login", req: pb.RegisterRequest_builder{Login: new("   "), Password: new("password")}.Build()},
-		{name: "empty password", req: pb.RegisterRequest_builder{Login: new("user"), Password: new("")}.Build()},
+		{name: "empty login", req: registerRequest("", "password")},
+		{name: "blank login", req: registerRequest("   ", "password")},
+		{name: "empty password", req: registerRequest("user", "")},
+		{name: "empty salt", req: registerRequestWithMasterKeyData("user", "password", nil, []byte("verifier"))},
+		{name: "empty verifier", req: registerRequestWithMasterKeyData("user", "password", []byte("1234567890abcdef"), nil)},
 	}
 
 	for _, tt := range tests {
@@ -109,13 +112,29 @@ func TestAuthService_Register_FailWithInvalidArgument(t *testing.T) {
 	}
 }
 
+// TestAuthService_Register_FailWithInvalidMasterKeySalt проверяет маппинг некорректной соли в InvalidArgument.
+func TestAuthService_Register_FailWithInvalidMasterKeySalt(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{registerErr: usecase.ErrInvalidMasterKeySalt}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	req := registerRequest("user", "password")
+
+	// Act
+	_, err = authService.Register(context.Background(), req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
 // TestAuthService_Register_FailWithAlreadyExists проверяет маппинг занятого логина в код ошибки AlreadyExists.
 func TestAuthService_Register_FailWithAlreadyExists(t *testing.T) {
 	// Arrange
 	uc := &authUseCaseStub{registerErr: usecase.ErrLoginAlreadyTaken}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
-	req := pb.RegisterRequest_builder{Login: new("user"), Password: new("password")}.Build()
+	req := registerRequest("user", "password")
 
 	// Act
 	_, err = authService.Register(context.Background(), req)
@@ -131,7 +150,7 @@ func TestAuthService_Register_FailWithInternalError(t *testing.T) {
 	uc := &authUseCaseStub{registerErr: errors.New("some internal error")}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
-	req := pb.RegisterRequest_builder{Login: new("user"), Password: new("password")}.Build()
+	req := registerRequest("user", "password")
 
 	// Act
 	_, err = authService.Register(context.Background(), req)
@@ -149,7 +168,8 @@ func TestAuthService_Login_OK(t *testing.T) {
 			AccessToken:  "access-token",
 			RefreshToken: "refresh-token",
 		},
-		MasterKeySalt: []byte("salt"),
+		MasterKeySalt:     []byte("salt"),
+		MasterKeyVerifier: []byte("verifier"),
 	}}
 
 	authService, err := NewAuthService(uc, logging.NopLogger())
@@ -167,6 +187,7 @@ func TestAuthService_Login_OK(t *testing.T) {
 	assert.Equal(t, "access-token", resp.GetAccessToken())
 	assert.Equal(t, "refresh-token", resp.GetRefreshToken())
 	assert.Equal(t, []byte("salt"), resp.GetMasterKeySalt())
+	assert.Equal(t, []byte("verifier"), resp.GetMasterKeyVerifier())
 }
 
 // TestAuthService_Login_FailWithInvalidArgument проверяет валидацию обязательных полей запроса.

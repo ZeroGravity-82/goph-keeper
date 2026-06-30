@@ -71,7 +71,18 @@ func registerInputFromRequest(req *pb.RegisterRequest) (usecase.RegisterInput, e
 	if err := validateCredentials(req.GetLogin(), req.GetPassword()); err != nil {
 		return usecase.RegisterInput{}, err
 	}
-	return usecase.RegisterInput{Login: req.GetLogin(), Password: req.GetPassword()}, nil
+	if len(req.GetMasterKeySalt()) == 0 {
+		return usecase.RegisterInput{}, status.Error(codes.InvalidArgument, "master key salt is required")
+	}
+	if len(req.GetMasterKeyVerifier()) == 0 {
+		return usecase.RegisterInput{}, status.Error(codes.InvalidArgument, "master key verifier is required")
+	}
+	return usecase.RegisterInput{
+		Login:             req.GetLogin(),
+		Password:          req.GetPassword(),
+		MasterKeySalt:     req.GetMasterKeySalt(),
+		MasterKeyVerifier: req.GetMasterKeyVerifier(),
+	}, nil
 }
 
 // validateCredentials проверяет обязательные учетные данные пользователя.
@@ -87,7 +98,10 @@ func validateCredentials(login, password string) error {
 
 // isExpectedAuthError определяет ожидаемые ошибки аутентификации, которые не нужно логировать как внутренние ошибки.
 func isExpectedAuthError(err error) bool {
-	return errors.Is(err, usecase.ErrLoginAlreadyTaken) || errors.Is(err, usecase.ErrAuthenticationFailed)
+	return errors.Is(err, usecase.ErrLoginAlreadyTaken) ||
+		errors.Is(err, usecase.ErrAuthenticationFailed) ||
+		errors.Is(err, usecase.ErrUserNotFound) ||
+		errors.Is(err, usecase.ErrInvalidMasterKeySalt)
 }
 
 // authErrorToStatus преобразует ошибку сценария аутентификации в gRPC-статус.
@@ -97,6 +111,12 @@ func authErrorToStatus(err error) error {
 	}
 	if errors.Is(err, usecase.ErrAuthenticationFailed) {
 		return status.Error(codes.Unauthenticated, "authentication failed")
+	}
+	if errors.Is(err, usecase.ErrUserNotFound) {
+		return status.Error(codes.NotFound, "user not found")
+	}
+	if errors.Is(err, usecase.ErrInvalidMasterKeySalt) {
+		return status.Error(codes.InvalidArgument, "master key salt has invalid length")
 	}
 	return status.Error(codes.Internal, "internal error")
 }
@@ -117,13 +137,14 @@ func (s *AuthService) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Logi
 	}
 
 	return pb.LoginResponse_builder{
-		AccessToken:   &out.AuthTokens.AccessToken,
-		RefreshToken:  &out.AuthTokens.RefreshToken,
-		MasterKeySalt: out.MasterKeySalt,
+		AccessToken:       &out.AuthTokens.AccessToken,
+		RefreshToken:      &out.AuthTokens.RefreshToken,
+		MasterKeySalt:     out.MasterKeySalt,
+		MasterKeyVerifier: out.MasterKeyVerifier,
 	}.Build(), nil
 }
 
-// loginInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария входа.
+// loginInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария входа в аккаунт.
 func loginInputFromRequest(req *pb.LoginRequest) (usecase.LoginInput, error) {
 	if req == nil {
 		return usecase.LoginInput{}, status.Error(codes.InvalidArgument, "request is required")

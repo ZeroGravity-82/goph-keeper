@@ -10,22 +10,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLoad_HelpReturnsErrHelp проверяет, что запрос справки возвращает специальную ошибку.
-func TestLoad_HelpReturnsErrHelp(t *testing.T) {
+// TestLoadServer_HelpReturnsErrHelp проверяет, что запрос справки возвращает специальную ошибку.
+func TestLoadServer_HelpReturnsErrHelp(t *testing.T) {
 	// Arrange
 	setArgs(t, "server", "-h")
 	unsetConfigEnv(t)
 
 	// Act
-	_, err := Load()
+	_, err := LoadServer()
 
 	// Assert
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrHelp))
 }
 
-// TestLoad_RequiresDatabaseURI проверяет обязательность строки подключения к БД.
-func TestLoad_RequiresDatabaseURI(t *testing.T) {
+// TestLoadServer_RequiresDatabaseURI проверяет обязательность строки подключения к БД.
+func TestLoadServer_RequiresDatabaseURI(t *testing.T) {
 	// Arrange
 	setArgs(t, "server")
 	unsetConfigEnv(t)
@@ -36,15 +36,15 @@ func TestLoad_RequiresDatabaseURI(t *testing.T) {
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
 
 	// Act
-	_, err := Load()
+	_, err := LoadServer()
 
 	// Assert
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database URI is required")
 }
 
-// TestLoad_RequiresJWTSecret проверяет обязательность JWT-секрета.
-func TestLoad_RequiresJWTSecret(t *testing.T) {
+// TestLoadServer_RequiresJWTSecret проверяет обязательность JWT-секрета.
+func TestLoadServer_RequiresJWTSecret(t *testing.T) {
 	// Arrange
 	setArgs(t, "server")
 	unsetConfigEnv(t)
@@ -55,15 +55,15 @@ func TestLoad_RequiresJWTSecret(t *testing.T) {
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
 
 	// Act
-	_, err := Load()
+	_, err := LoadServer()
 
 	// Assert
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "JWT secret is required")
 }
 
-// TestLoad_LoadsDefaults проверяет значения по умолчанию.
-func TestLoad_LoadsDefaults(t *testing.T) {
+// TestLoadServer_LoadsDefaults проверяет значения по умолчанию.
+func TestLoadServer_LoadsDefaults(t *testing.T) {
 	// Arrange
 	setArgs(t, "server")
 	unsetConfigEnv(t)
@@ -75,7 +75,7 @@ func TestLoad_LoadsDefaults(t *testing.T) {
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
 
 	// Act
-	cfg, err := Load()
+	cfg, err := LoadServer()
 
 	// Assert
 	require.NoError(t, err)
@@ -92,9 +92,9 @@ func TestLoad_LoadsDefaults(t *testing.T) {
 	assert.Equal(t, false, cfg.Logging.AddSource)
 }
 
-// TestLoad_Priority проверяет приоритет "дефолтное значение < значение из конфигурационного файла < флаг командной
+// TestLoadServer_Priority проверяет приоритет "дефолтное значение < значение из конфигурационного файла < флаг командной
 // строки < переменная окружения".
-func TestLoad_Priority(t *testing.T) {
+func TestLoadServer_Priority(t *testing.T) {
 	// Arrange
 	configPath := writeTempConfig(t, `
 database_uri: postgres://file-db
@@ -138,7 +138,7 @@ logging:
 	t.Setenv("GOPHKEEPER_LOGGING_LEVEL", "error")
 
 	// Act
-	cfg, err := Load()
+	cfg, err := LoadServer()
 
 	// Assert
 	require.NoError(t, err)
@@ -157,9 +157,9 @@ logging:
 	assert.True(t, cfg.Logging.AddSource)
 }
 
-// TestLoad_EmptyEnvironmentValueOverridesLowerPrioritySources проверяет, что пустая переменная окружения не
+// TestLoadServer_EmptyEnvironmentValueOverridesLowerPrioritySources проверяет, что пустая переменная окружения не
 // откатывается к нижестоящему источнику.
-func TestLoad_EmptyEnvironmentValueOverridesLowerPrioritySources(t *testing.T) {
+func TestLoadServer_EmptyEnvironmentValueOverridesLowerPrioritySources(t *testing.T) {
 	// Arrange
 	configPath := writeTempConfig(t, `
 database_uri: postgres://file-db
@@ -179,21 +179,11 @@ file_storage:
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "")
 
 	// Act
-	_, err := Load()
+	_, err := LoadServer()
 
 	// Assert
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "JWT secret is required")
-}
-
-func setArgs(t *testing.T, args ...string) {
-	t.Helper()
-
-	oldArgs := os.Args
-	os.Args = args
-	t.Cleanup(func() {
-		os.Args = oldArgs
-	})
 }
 
 func unsetConfigEnv(t *testing.T) {
@@ -205,6 +195,7 @@ func unsetConfigEnv(t *testing.T) {
 		"GOPHKEEPER_GRPC_ADDRESS",
 		"GOPHKEEPER_TLS_CERT",
 		"GOPHKEEPER_TLS_KEY",
+		"GOPHKEEPER_CA_CERT",
 		"GOPHKEEPER_FILE_STORAGE_ENDPOINT",
 		"GOPHKEEPER_FILE_STORAGE_ACCESS_KEY",
 		"GOPHKEEPER_FILE_STORAGE_SECRET_KEY",

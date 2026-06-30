@@ -1,0 +1,54 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+
+	clientApp "zerogravity-82/goph-keeper/internal/app/client"
+)
+
+// register регистрирует пользователя, проверяет мастер-ключ и сразу открывает клиентскую сессию.
+func register(
+	ctx context.Context,
+	app *clientApp.App,
+	reader *bufio.Reader,
+	in io.Reader,
+	out io.Writer,
+) (bool, error) {
+	login, err := promptRequired(reader, out, "Логин: ")
+	if err != nil {
+		return false, err
+	}
+	password, err := promptSecretConfirmed(reader, in, out, "Пароль: ", "Повторите пароль: ")
+	if err != nil {
+		return false, err
+	}
+	if password == "" {
+		return false, errors.New("пароль обязателен")
+	}
+
+	masterKey, err := promptMasterKeyConfirmed(reader, in, out)
+	if err != nil {
+		return false, err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	session, err := app.Register(callCtx, login, password, masterKey)
+	cancel()
+	if err != nil {
+		return false, err
+	}
+	if err = app.StartSession(session, masterKey); err != nil {
+		return false, err
+	}
+
+	_, err = fmt.Fprintf(out, "пользователь зарегистрирован, выполнен вход: %q\n", login)
+	if err != nil {
+		return false, err
+	}
+	printWelcome(out, login)
+	return true, err
+}

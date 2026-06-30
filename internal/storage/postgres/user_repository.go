@@ -29,11 +29,21 @@ func NewUserRepository(db *sqlx.DB) (*UserRepository, error) {
 // Create сохраняет нового пользователя.
 func (r *UserRepository) Create(ctx context.Context, u model.User) error {
 	const q = `
-INSERT INTO app_user (id, login, password_hash, master_key_salt, registered_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO app_user (id, login, password_hash, master_key_salt, master_key_verifier, registered_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 	exec := executorFromContext(ctx, r.db)
-	_, err := exec.ExecContext(ctx, q, u.ID, u.Login, u.PasswordHash, u.MasterKeySalt, u.RegisteredAt, u.UpdatedAt)
+	_, err := exec.ExecContext(
+		ctx,
+		q,
+		u.ID,
+		u.Login,
+		u.PasswordHash,
+		u.MasterKeySalt,
+		u.MasterKeyVerifier,
+		u.RegisteredAt,
+		u.UpdatedAt,
+	)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return usecase.ErrLoginAlreadyTaken
@@ -48,7 +58,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 // Если пользователь не найден, возвращает usecase.ErrUserNotFound.
 func (r *UserRepository) GetByLogin(ctx context.Context, login string) (model.User, error) {
 	const q = `
-SELECT id, login, password_hash, master_key_salt, registered_at, updated_at
+SELECT id, login, password_hash, master_key_salt, master_key_verifier, registered_at, updated_at
 FROM app_user
 WHERE login = $1
 `
@@ -61,11 +71,12 @@ WHERE login = $1
 		return model.User{}, fmt.Errorf("failed to select user by login: %w", err)
 	}
 	return model.User{
-		ID:            u.ID,
-		Login:         u.Login,
-		PasswordHash:  u.PasswordHash,
-		MasterKeySalt: u.MasterKeySalt,
-		RegisteredAt:  u.RegisteredAt,
-		UpdatedAt:     u.UpdatedAt,
+		ID:                u.ID,
+		Login:             u.Login,
+		PasswordHash:      u.PasswordHash,
+		MasterKeySalt:     u.MasterKeySalt,
+		MasterKeyVerifier: u.MasterKeyVerifier,
+		RegisteredAt:      u.RegisteredAt,
+		UpdatedAt:         u.UpdatedAt,
 	}, nil
 }

@@ -65,12 +65,13 @@ func newTestUser(t *testing.T, login string) model.User {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
 	return model.User{
-		ID:            id,
-		Login:         login,
-		PasswordHash:  "password-hash",
-		MasterKeySalt: []byte("master-key-salt"),
-		RegisteredAt:  now,
-		UpdatedAt:     now,
+		ID:                id,
+		Login:             login,
+		PasswordHash:      "password-hash",
+		MasterKeySalt:     []byte("1234567890abcdef"),
+		MasterKeyVerifier: []byte("master-key-verifier"),
+		RegisteredAt:      now,
+		UpdatedAt:         now,
 	}
 }
 

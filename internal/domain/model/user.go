@@ -8,10 +8,11 @@ import (
 
 // User описывает учетную запись пользователя.
 type User struct {
-	ID            uuid.UUID
-	Login         string
-	PasswordHash  string
-	MasterKeySalt []byte
-	RegisteredAt  time.Time
-	UpdatedAt     time.Time
+	ID                uuid.UUID
+	Login             string
+	PasswordHash      string
+	MasterKeySalt     []byte
+	MasterKeyVerifier []byte
+	RegisteredAt      time.Time
+	UpdatedAt         time.Time
 }

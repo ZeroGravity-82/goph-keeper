@@ -2,8 +2,20 @@ package crypto
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 )
+
+// masterKeySaltLength задает длину пользовательской соли для вычисления KEK.
+const masterKeySaltLength = 16
+
+// ValidateMasterKeySalt проверяет длину соли мастер-ключа.
+func ValidateMasterKeySalt(salt []byte) error {
+	if len(salt) != masterKeySaltLength {
+		return errors.New("master key salt has invalid length")
+	}
+	return nil
+}
 
 // GenerateMasterKeySalt генерирует соль для мастер-ключа.
 func GenerateMasterKeySalt() ([]byte, error) {

@@ -15,10 +15,10 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	cfg, err := config.LoadServer()
 	if err != nil {
-		// Пользователь запросил справку по флагам командной строки; это штатное завершение.
 		if errors.Is(err, config.ErrHelp) {
+			// Пользователь запросил справку по флагам командной строки; это штатное завершение.
 			return
 		}
 
@@ -39,7 +39,7 @@ func main() {
 	logger.Info("service stopped (graceful)")
 }
 
-func run(cfg config.Config, logger *slog.Logger) error {
+func run(cfg config.ServerConfig, logger *slog.Logger) error {
 	application, err := serverApp.New(cfg, logger)
 	if err != nil {
 		return fmt.Errorf("app init error: %w", err)

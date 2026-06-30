@@ -14,6 +14,7 @@ import (
 
 	"zerogravity-82/goph-keeper/internal/auth"
 	"zerogravity-82/goph-keeper/internal/config"
+	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/logging"
 	minioStorage "zerogravity-82/goph-keeper/internal/storage/minio"
 	"zerogravity-82/goph-keeper/internal/storage/postgres"
@@ -35,7 +36,7 @@ type App struct {
 }
 
 // New создает App - подключается к БД и настраивает прикладные сервисы.
-func New(cfg config.Config, logger *slog.Logger) (*App, error) {
+func New(cfg config.ServerConfig, logger *slog.Logger) (*App, error) {
 	if logger == nil {
 		logger = logging.NopLogger()
 	}
@@ -135,6 +136,7 @@ func buildAuthUseCase(db *sqlx.DB, tokenManager *auth.TokenManager) (*usecase.Au
 		refreshTokenRepo,
 		transactor,
 		tokenManager,
+		crypto.ValidateMasterKeySalt,
 		refreshTokenTTL,
 	)
 	if err != nil {

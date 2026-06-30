@@ -141,9 +141,24 @@ func newTestAuthUseCase(t *testing.T) (
 	refreshRepo := &refreshTokenRepositoryStub{}
 	tx := &transactorStub{}
 	issuer := &sessionTokenIssuerStub{accessToken: "access-token", refreshToken: "refresh-token"}
-	uc, err := NewAuthUseCase(userRepo, refreshRepo, tx, issuer, time.Hour)
+	validateMasterKeySalt := func(salt []byte) error {
+		if len(salt) != 16 {
+			return errTest
+		}
+		return nil
+	}
+	uc, err := NewAuthUseCase(userRepo, refreshRepo, tx, issuer, validateMasterKeySalt, time.Hour)
 	require.NoError(t, err)
 	return uc, userRepo, refreshRepo, tx, issuer
+}
+
+func testRegisterInput() RegisterInput {
+	return RegisterInput{
+		Login:             "user",
+		Password:          "password",
+		MasterKeySalt:     []byte("1234567890abcdef"),
+		MasterKeyVerifier: []byte("verifier"),
+	}
 }
 
 // TestAuthUseCase_Register проверяет успешную регистрацию пользователя.
@@ -152,7 +167,7 @@ func TestAuthUseCase_Register(t *testing.T) {
 	uc, userRepo, refreshRepo, tx, _ := newTestAuthUseCase(t)
 
 	// Act
-	out, err := uc.Register(context.Background(), RegisterInput{Login: "user", Password: "password"})
+	out, err := uc.Register(context.Background(), testRegisterInput())
 
 	// Assert
 	require.NoError(t, err)
@@ -165,6 +180,7 @@ func TestAuthUseCase_Register(t *testing.T) {
 	assert.Equal(t, "user", userRepo.created[0].Login)
 	assert.NotEmpty(t, userRepo.created[0].PasswordHash)
 	assert.Equal(t, out.MasterKeySalt, userRepo.created[0].MasterKeySalt)
+	assert.Equal(t, []byte("verifier"), userRepo.created[0].MasterKeyVerifier)
 	assert.Equal(t, userRepo.created[0].ID, refreshRepo.created[0].UserID)
 	assert.Equal(t, auth.HashRefreshToken("refresh-token"), refreshRepo.created[0].TokenHash)
 	assert.True(t, userRepo.createdInTx[0])
@@ -178,7 +194,7 @@ func TestAuthUseCase_Register_FailWithTakenLogin(t *testing.T) {
 	userRepo.usersByLogin = map[string]model.User{"user": {ID: uuid.MustParse("018f6b7c-0000-7000-8000-000000000001")}}
 
 	// Act
-	out, err := uc.Register(context.Background(), RegisterInput{Login: "user", Password: "password"})
+	out, err := uc.Register(context.Background(), testRegisterInput())
 
 	// Assert
 	require.ErrorIs(t, err, ErrLoginAlreadyTaken)
@@ -194,7 +210,7 @@ func TestAuthUseCase_Register_FailWithLoginLookupError(t *testing.T) {
 	userRepo.getErr = errTest
 
 	// Act
-	_, err := uc.Register(context.Background(), RegisterInput{Login: "user", Password: "password"})
+	_, err := uc.Register(context.Background(), testRegisterInput())
 
 	// Assert
 	require.ErrorIs(t, err, errTest)
@@ -206,13 +222,46 @@ func TestAuthUseCase_Register_FailWithEmptyPassword(t *testing.T) {
 	// Arrange
 	uc, _, _, tx, _ := newTestAuthUseCase(t)
 
+	in := testRegisterInput()
+	in.Password = ""
+
 	// Act
-	_, err := uc.Register(context.Background(), RegisterInput{Login: "user", Password: ""})
+	_, err := uc.Register(context.Background(), in)
 
 	// Assert
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to hash password")
 	assert.Zero(t, tx.calls)
+}
+
+// TestAuthUseCase_Register_FailWithInvalidMasterKeyData проверяет ошибки крипто-данных мастер-ключа при регистрации.
+func TestAuthUseCase_Register_FailWithInvalidMasterKeyData(t *testing.T) {
+	tests := []struct {
+		name string
+		edit func(in *RegisterInput)
+	}{
+		{name: "invalid salt", edit: func(in *RegisterInput) { in.MasterKeySalt = []byte("short") }},
+		{name: "empty verifier", edit: func(in *RegisterInput) { in.MasterKeyVerifier = nil }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			uc, _, _, tx, _ := newTestAuthUseCase(t)
+			in := testRegisterInput()
+			tt.edit(&in)
+
+			// Act
+			_, err := uc.Register(context.Background(), in)
+
+			// Assert
+			require.Error(t, err)
+			if tt.name == "invalid salt" {
+				require.ErrorIs(t, err, ErrInvalidMasterKeySalt)
+			}
+			assert.Zero(t, tx.calls)
+		})
+	}
 }
 
 // TestAuthUseCase_Register_FailWithTokenIssueError проверяет ошибки выпуска токенов.
@@ -234,7 +283,7 @@ func TestAuthUseCase_Register_FailWithTokenIssueError(t *testing.T) {
 			issuer.refreshErr = tt.refreshErr
 
 			// Act
-			_, err := uc.Register(context.Background(), RegisterInput{Login: "user", Password: "password"})
+			_, err := uc.Register(context.Background(), testRegisterInput())
 
 			// Assert
 			require.ErrorIs(t, err, errTest)
@@ -250,7 +299,7 @@ func TestAuthUseCase_Register_FailWithCreateUserError(t *testing.T) {
 	userRepo.createErr = errTest
 
 	// Act
-	_, err := uc.Register(context.Background(), RegisterInput{Login: "user", Password: "password"})
+	_, err := uc.Register(context.Background(), testRegisterInput())
 
 	// Assert
 	require.ErrorIs(t, err, errTest)
@@ -265,7 +314,7 @@ func TestAuthUseCase_Register_FailWithCreateRefreshTokenError(t *testing.T) {
 	refreshRepo.createErr = errTest
 
 	// Act
-	_, err := uc.Register(context.Background(), RegisterInput{Login: "user", Password: "password"})
+	_, err := uc.Register(context.Background(), testRegisterInput())
 
 	// Assert
 	require.ErrorIs(t, err, errTest)
@@ -281,7 +330,13 @@ func TestAuthUseCase_Login(t *testing.T) {
 	require.NoError(t, err)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-000000000002")
 	userRepo.usersByLogin = map[string]model.User{
-		"user": {ID: userID, Login: "user", PasswordHash: passwordHash, MasterKeySalt: []byte("1234567890abcdef")},
+		"user": {
+			ID:                userID,
+			Login:             "user",
+			PasswordHash:      passwordHash,
+			MasterKeySalt:     []byte("1234567890abcdef"),
+			MasterKeyVerifier: []byte("verifier"),
+		},
 	}
 
 	// Act
@@ -292,6 +347,7 @@ func TestAuthUseCase_Login(t *testing.T) {
 	assert.Equal(t, "access-token", out.AuthTokens.AccessToken)
 	assert.Equal(t, "refresh-token", out.AuthTokens.RefreshToken)
 	assert.Equal(t, []byte("1234567890abcdef"), out.MasterKeySalt)
+	assert.Equal(t, []byte("verifier"), out.MasterKeyVerifier)
 	require.Len(t, refreshRepo.created, 1)
 	assert.Equal(t, userID, refreshRepo.created[0].UserID)
 }

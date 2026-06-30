@@ -1,0 +1,2 @@
+grpc_address: localhost:3202
+ca_cert: certs/ca.crt

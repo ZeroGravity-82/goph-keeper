@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/auth"
+	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/logging"
 	"zerogravity-82/goph-keeper/internal/pb"
 	"zerogravity-82/goph-keeper/internal/storage/postgres"
@@ -31,10 +32,7 @@ func TestAuthService_Register_Integration_OK(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
 	authService, tokenManager, userRepo, tokenRepo := newIntegrationAuthService(t, db)
-	req := pb.RegisterRequest_builder{
-		Login:    new("alice"),
-		Password: new("password"),
-	}.Build()
+	req := registerRequest("alice", "password")
 
 	// Act
 	resp, err := authService.Register(ctx, req)
@@ -68,10 +66,7 @@ func TestAuthService_Register_Integration_DuplicateLogin(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
 	authService, _, _, _ := newIntegrationAuthService(t, db)
-	req := pb.RegisterRequest_builder{
-		Login:    new("duplicate"),
-		Password: new("password"),
-	}.Build()
+	req := registerRequest("duplicate", "password")
 
 	_, err := authService.Register(ctx, req)
 	require.NoError(t, err)
@@ -91,10 +86,7 @@ func TestAuthService_Login_Integration_OK(t *testing.T) {
 	db := openTestDB(t, ctx)
 	authService, tokenManager, userRepo, tokenRepo := newIntegrationAuthService(t, db)
 
-	registerReq := pb.RegisterRequest_builder{
-		Login:    new("login-user"),
-		Password: new("password"),
-	}.Build()
+	registerReq := registerRequest("login-user", "password")
 	registerResp, err := authService.Register(ctx, registerReq)
 	require.NoError(t, err)
 
@@ -116,6 +108,7 @@ func TestAuthService_Login_Integration_OK(t *testing.T) {
 	user, err := userRepo.GetByLogin(ctx, "login-user")
 	require.NoError(t, err)
 	assert.Equal(t, user.MasterKeySalt, loginResp.GetMasterKeySalt())
+	assert.Equal(t, user.MasterKeyVerifier, loginResp.GetMasterKeyVerifier())
 
 	claims, err := tokenManager.ParseAccessToken(loginResp.GetAccessToken())
 	require.NoError(t, err)
@@ -137,10 +130,7 @@ func TestAuthService_Login_Integration_WrongPassword(t *testing.T) {
 	db := openTestDB(t, ctx)
 	authService, _, _, _ := newIntegrationAuthService(t, db)
 
-	registerReq := pb.RegisterRequest_builder{
-		Login:    new("login-user"),
-		Password: new("password"),
-	}.Build()
+	registerReq := registerRequest("login-user", "password")
 	_, err := authService.Register(ctx, registerReq)
 	require.NoError(t, err)
 
@@ -183,10 +173,7 @@ func TestAuthService_Refresh_Integration_OK(t *testing.T) {
 	db := openTestDB(t, ctx)
 	authService, tokenManager, userRepo, tokenRepo := newIntegrationAuthService(t, db)
 
-	registerReq := pb.RegisterRequest_builder{
-		Login:    new("refresh-user"),
-		Password: new("password"),
-	}.Build()
+	registerReq := registerRequest("refresh-user", "password")
 	registerResp, err := authService.Register(ctx, registerReq)
 	require.NoError(t, err)
 
@@ -232,10 +219,7 @@ func TestAuthService_Refresh_Integration_ReusedToken(t *testing.T) {
 	db := openTestDB(t, ctx)
 	authService, _, _, _ := newIntegrationAuthService(t, db)
 
-	registerReq := pb.RegisterRequest_builder{
-		Login:    new("reused-refresh"),
-		Password: new("password"),
-	}.Build()
+	registerReq := registerRequest("reused-refresh", "password")
 	registerResp, err := authService.Register(ctx, registerReq)
 	require.NoError(t, err)
 
@@ -274,10 +258,7 @@ func TestAuthService_Logout_Integration_OK(t *testing.T) {
 	db := openTestDB(t, ctx)
 	authService, _, _, tokenRepo := newIntegrationAuthService(t, db)
 
-	registerReq := pb.RegisterRequest_builder{
-		Login:    new("logout-user"),
-		Password: new("password"),
-	}.Build()
+	registerReq := registerRequest("logout-user", "password")
 	registerResp, err := authService.Register(ctx, registerReq)
 	require.NoError(t, err)
 
@@ -306,10 +287,7 @@ func TestAuthService_Logout_Integration_ReusedToken(t *testing.T) {
 	db := openTestDB(t, ctx)
 	authService, _, _, _ := newIntegrationAuthService(t, db)
 
-	registerReq := pb.RegisterRequest_builder{
-		Login:    new("reused-logout"),
-		Password: new("password"),
-	}.Build()
+	registerReq := registerRequest("reused-logout", "password")
 	registerResp, err := authService.Register(ctx, registerReq)
 	require.NoError(t, err)
 
@@ -360,6 +338,7 @@ func newIntegrationAuthService(
 		refreshTokenRepo,
 		transactor,
 		tokenManager,
+		crypto.ValidateMasterKeySalt,
 		30*24*time.Hour,
 	)
 	require.NoError(t, err)

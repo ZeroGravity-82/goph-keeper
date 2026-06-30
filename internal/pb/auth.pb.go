@@ -21,13 +21,15 @@ const (
 )
 
 type RegisterRequest struct {
-	state                  protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Login       *string                `protobuf:"bytes,1,opt,name=login"`
-	xxx_hidden_Password    *string                `protobuf:"bytes,2,opt,name=password"`
-	XXX_raceDetectHookData protoimpl.RaceDetectHookData
-	XXX_presence           [1]uint32
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state                        protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Login             *string                `protobuf:"bytes,1,opt,name=login"`
+	xxx_hidden_Password          *string                `protobuf:"bytes,2,opt,name=password"`
+	xxx_hidden_MasterKeySalt     []byte                 `protobuf:"bytes,3,opt,name=master_key_salt,json=masterKeySalt"`
+	xxx_hidden_MasterKeyVerifier []byte                 `protobuf:"bytes,4,opt,name=master_key_verifier,json=masterKeyVerifier"`
+	XXX_raceDetectHookData       protoimpl.RaceDetectHookData
+	XXX_presence                 [1]uint32
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *RegisterRequest) Reset() {
@@ -75,14 +77,44 @@ func (x *RegisterRequest) GetPassword() string {
 	return ""
 }
 
+func (x *RegisterRequest) GetMasterKeySalt() []byte {
+	if x != nil {
+		return x.xxx_hidden_MasterKeySalt
+	}
+	return nil
+}
+
+func (x *RegisterRequest) GetMasterKeyVerifier() []byte {
+	if x != nil {
+		return x.xxx_hidden_MasterKeyVerifier
+	}
+	return nil
+}
+
 func (x *RegisterRequest) SetLogin(v string) {
 	x.xxx_hidden_Login = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 4)
 }
 
 func (x *RegisterRequest) SetPassword(v string) {
 	x.xxx_hidden_Password = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 4)
+}
+
+func (x *RegisterRequest) SetMasterKeySalt(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_MasterKeySalt = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 4)
+}
+
+func (x *RegisterRequest) SetMasterKeyVerifier(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_MasterKeyVerifier = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
 }
 
 func (x *RegisterRequest) HasLogin() bool {
@@ -99,6 +131,20 @@ func (x *RegisterRequest) HasPassword() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
 }
 
+func (x *RegisterRequest) HasMasterKeySalt() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *RegisterRequest) HasMasterKeyVerifier() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
 func (x *RegisterRequest) ClearLogin() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_Login = nil
@@ -109,11 +155,23 @@ func (x *RegisterRequest) ClearPassword() {
 	x.xxx_hidden_Password = nil
 }
 
+func (x *RegisterRequest) ClearMasterKeySalt() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_MasterKeySalt = nil
+}
+
+func (x *RegisterRequest) ClearMasterKeyVerifier() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_MasterKeyVerifier = nil
+}
+
 type RegisterRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Login    *string
-	Password *string
+	Login             *string
+	Password          *string
+	MasterKeySalt     []byte
+	MasterKeyVerifier []byte
 }
 
 func (b0 RegisterRequest_builder) Build() *RegisterRequest {
@@ -121,12 +179,20 @@ func (b0 RegisterRequest_builder) Build() *RegisterRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.Login != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 4)
 		x.xxx_hidden_Login = b.Login
 	}
 	if b.Password != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 4)
 		x.xxx_hidden_Password = b.Password
+	}
+	if b.MasterKeySalt != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 4)
+		x.xxx_hidden_MasterKeySalt = b.MasterKeySalt
+	}
+	if b.MasterKeyVerifier != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
+		x.xxx_hidden_MasterKeyVerifier = b.MasterKeyVerifier
 	}
 	return m0
 }
@@ -387,14 +453,15 @@ func (b0 LoginRequest_builder) Build() *LoginRequest {
 }
 
 type LoginResponse struct {
-	state                    protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_AccessToken   *string                `protobuf:"bytes,1,opt,name=access_token,json=accessToken"`
-	xxx_hidden_RefreshToken  *string                `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken"`
-	xxx_hidden_MasterKeySalt []byte                 `protobuf:"bytes,3,opt,name=master_key_salt,json=masterKeySalt"`
-	XXX_raceDetectHookData   protoimpl.RaceDetectHookData
-	XXX_presence             [1]uint32
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                        protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_AccessToken       *string                `protobuf:"bytes,1,opt,name=access_token,json=accessToken"`
+	xxx_hidden_RefreshToken      *string                `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken"`
+	xxx_hidden_MasterKeySalt     []byte                 `protobuf:"bytes,3,opt,name=master_key_salt,json=masterKeySalt"`
+	xxx_hidden_MasterKeyVerifier []byte                 `protobuf:"bytes,4,opt,name=master_key_verifier,json=masterKeyVerifier"`
+	XXX_raceDetectHookData       protoimpl.RaceDetectHookData
+	XXX_presence                 [1]uint32
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *LoginResponse) Reset() {
@@ -449,14 +516,21 @@ func (x *LoginResponse) GetMasterKeySalt() []byte {
 	return nil
 }
 
+func (x *LoginResponse) GetMasterKeyVerifier() []byte {
+	if x != nil {
+		return x.xxx_hidden_MasterKeyVerifier
+	}
+	return nil
+}
+
 func (x *LoginResponse) SetAccessToken(v string) {
 	x.xxx_hidden_AccessToken = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 4)
 }
 
 func (x *LoginResponse) SetRefreshToken(v string) {
 	x.xxx_hidden_RefreshToken = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 4)
 }
 
 func (x *LoginResponse) SetMasterKeySalt(v []byte) {
@@ -464,7 +538,15 @@ func (x *LoginResponse) SetMasterKeySalt(v []byte) {
 		v = []byte{}
 	}
 	x.xxx_hidden_MasterKeySalt = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 4)
+}
+
+func (x *LoginResponse) SetMasterKeyVerifier(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_MasterKeyVerifier = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
 }
 
 func (x *LoginResponse) HasAccessToken() bool {
@@ -488,6 +570,13 @@ func (x *LoginResponse) HasMasterKeySalt() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
+func (x *LoginResponse) HasMasterKeyVerifier() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
 func (x *LoginResponse) ClearAccessToken() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_AccessToken = nil
@@ -503,12 +592,18 @@ func (x *LoginResponse) ClearMasterKeySalt() {
 	x.xxx_hidden_MasterKeySalt = nil
 }
 
+func (x *LoginResponse) ClearMasterKeyVerifier() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_MasterKeyVerifier = nil
+}
+
 type LoginResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	AccessToken   *string
-	RefreshToken  *string
-	MasterKeySalt []byte
+	AccessToken       *string
+	RefreshToken      *string
+	MasterKeySalt     []byte
+	MasterKeyVerifier []byte
 }
 
 func (b0 LoginResponse_builder) Build() *LoginResponse {
@@ -516,16 +611,20 @@ func (b0 LoginResponse_builder) Build() *LoginResponse {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.AccessToken != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 4)
 		x.xxx_hidden_AccessToken = b.AccessToken
 	}
 	if b.RefreshToken != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 4)
 		x.xxx_hidden_RefreshToken = b.RefreshToken
 	}
 	if b.MasterKeySalt != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 4)
 		x.xxx_hidden_MasterKeySalt = b.MasterKeySalt
+	}
+	if b.MasterKeyVerifier != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
+		x.xxx_hidden_MasterKeyVerifier = b.MasterKeyVerifier
 	}
 	return m0
 }
@@ -844,21 +943,24 @@ var File_api_auth_proto protoreflect.FileDescriptor
 
 const file_api_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x0eapi/auth.proto\x12\rgophkeeper.v1\"C\n" +
+	"\x0eapi/auth.proto\x12\rgophkeeper.v1\"\x9b\x01\n" +
 	"\x0fRegisterRequest\x12\x14\n" +
 	"\x05login\x18\x01 \x01(\tR\x05login\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x82\x01\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\x12&\n" +
+	"\x0fmaster_key_salt\x18\x03 \x01(\fR\rmasterKeySalt\x12.\n" +
+	"\x13master_key_verifier\x18\x04 \x01(\fR\x11masterKeyVerifier\"\x82\x01\n" +
 	"\x10RegisterResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12&\n" +
 	"\x0fmaster_key_salt\x18\x03 \x01(\fR\rmasterKeySalt\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05login\x18\x01 \x01(\tR\x05login\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x7f\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\xaf\x01\n" +
 	"\rLoginResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12&\n" +
-	"\x0fmaster_key_salt\x18\x03 \x01(\fR\rmasterKeySalt\"5\n" +
+	"\x0fmaster_key_salt\x18\x03 \x01(\fR\rmasterKeySalt\x12.\n" +
+	"\x13master_key_verifier\x18\x04 \x01(\fR\x11masterKeyVerifier\"5\n" +
 	"\x0eRefreshRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"Y\n" +
 	"\x0fRefreshResponse\x12!\n" +

@@ -8,10 +8,11 @@ import (
 
 // User описывает строку таблицы app_user, представляющую model.User в базе данных.
 type User struct {
-	ID            uuid.UUID `db:"id"`
-	Login         string    `db:"login"`
-	PasswordHash  string    `db:"password_hash"`
-	MasterKeySalt []byte    `db:"master_key_salt"`
-	RegisteredAt  time.Time `db:"registered_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
+	ID                uuid.UUID `db:"id"`
+	Login             string    `db:"login"`
+	PasswordHash      string    `db:"password_hash"`
+	MasterKeySalt     []byte    `db:"master_key_salt"`
+	MasterKeyVerifier []byte    `db:"master_key_verifier"`
+	RegisteredAt      time.Time `db:"registered_at"`
+	UpdatedAt         time.Time `db:"updated_at"`
 }

@@ -9,9 +9,6 @@ import (
 )
 
 const (
-	// masterKeySaltLength задает длину пользовательской соли для вычисления KEK.
-	masterKeySaltLength = 16
-
 	// aes256KeyLength задает длину ключа AES-256.
 	aes256KeyLength = 32
 

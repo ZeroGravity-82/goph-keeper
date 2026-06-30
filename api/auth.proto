@@ -7,6 +7,8 @@ option go_package = "zerogravity-82/goph-keeper/internal/pb;pb";
 message RegisterRequest {
   string login = 1;
   string password = 2;
+  bytes master_key_salt = 3;
+  bytes master_key_verifier = 4;
 }
 
 message RegisterResponse {
@@ -24,6 +26,7 @@ message LoginResponse {
   string access_token = 1;
   string refresh_token = 2;
   bytes master_key_salt = 3;
+  bytes master_key_verifier = 4;
 }
 
 message RefreshRequest {

@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	"zerogravity-82/goph-keeper/internal/auth"
-	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
 
@@ -19,8 +18,10 @@ type AuthTokens struct {
 }
 
 type RegisterInput struct {
-	Login    string
-	Password string
+	Login             string
+	Password          string
+	MasterKeySalt     []byte
+	MasterKeyVerifier []byte
 }
 
 type RegisterOutput struct {
@@ -34,8 +35,9 @@ type LoginInput struct {
 }
 
 type LoginOutput struct {
-	AuthTokens    AuthTokens
-	MasterKeySalt []byte
+	AuthTokens        AuthTokens
+	MasterKeySalt     []byte
+	MasterKeyVerifier []byte
 }
 
 type RefreshInput struct {
@@ -70,12 +72,15 @@ type sessionTokenIssuer interface {
 	GenerateRefreshToken() (string, error)
 }
 
+type masterKeySaltValidator func(salt []byte) error
+
 type AuthUseCase struct {
-	userRepo         userRepository
-	refreshTokenRepo refreshTokenRepository
-	transactor       transactor
-	tokenIssuer      sessionTokenIssuer
-	refreshTokenTTL  time.Duration
+	userRepo              userRepository
+	refreshTokenRepo      refreshTokenRepository
+	transactor            transactor
+	tokenIssuer           sessionTokenIssuer
+	validateMasterKeySalt masterKeySaltValidator
+	refreshTokenTTL       time.Duration
 }
 
 // NewAuthUseCase создает AuthUseCase.
@@ -84,6 +89,7 @@ func NewAuthUseCase(
 	refreshTokenRepo refreshTokenRepository,
 	transactor transactor,
 	tokenIssuer sessionTokenIssuer,
+	validateMasterKeySalt masterKeySaltValidator,
 	refreshTokenTTL time.Duration,
 ) (*AuthUseCase, error) {
 	if userRepo == nil {
@@ -98,16 +104,20 @@ func NewAuthUseCase(
 	if tokenIssuer == nil {
 		return nil, errors.New("session token issuer is not provided")
 	}
+	if validateMasterKeySalt == nil {
+		return nil, errors.New("master key salt validator is not provided")
+	}
 	if refreshTokenTTL <= 0 {
 		return nil, errors.New("refresh token TTL must be positive")
 	}
 
 	return &AuthUseCase{
-		userRepo:         userRepo,
-		refreshTokenRepo: refreshTokenRepo,
-		transactor:       transactor,
-		tokenIssuer:      tokenIssuer,
-		refreshTokenTTL:  refreshTokenTTL,
+		userRepo:              userRepo,
+		refreshTokenRepo:      refreshTokenRepo,
+		transactor:            transactor,
+		tokenIssuer:           tokenIssuer,
+		validateMasterKeySalt: validateMasterKeySalt,
+		refreshTokenTTL:       refreshTokenTTL,
 	}, nil
 }
 
@@ -128,9 +138,11 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 		return RegisterOutput{}, fmt.Errorf("failed to hash password for new user: %w", err)
 	}
 
-	salt, err := crypto.GenerateMasterKeySalt()
-	if err != nil {
-		return RegisterOutput{}, fmt.Errorf("failed to generate master key salt for new user: %w", err)
+	if err = uc.validateMasterKeySalt(in.MasterKeySalt); err != nil {
+		return RegisterOutput{}, fmt.Errorf("%w: %v", ErrInvalidMasterKeySalt, err)
+	}
+	if len(in.MasterKeyVerifier) == 0 {
+		return RegisterOutput{}, errors.New("master key verifier is required")
 	}
 
 	uuidV7, err := uuid.NewV7()
@@ -139,12 +151,13 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 	}
 	now := time.Now().UTC()
 	u := model.User{
-		ID:            uuidV7,
-		Login:         in.Login,
-		PasswordHash:  h,
-		MasterKeySalt: salt,
-		RegisteredAt:  now,
-		UpdatedAt:     now,
+		ID:                uuidV7,
+		Login:             in.Login,
+		PasswordHash:      h,
+		MasterKeySalt:     in.MasterKeySalt,
+		MasterKeyVerifier: in.MasterKeyVerifier,
+		RegisteredAt:      now,
+		UpdatedAt:         now,
 	}
 
 	tokens, rt, err := uc.issueTokens(u.ID, now)
@@ -163,7 +176,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 		return RegisterOutput{}, fmt.Errorf("failed to register user: %w", err)
 	}
 
-	return RegisterOutput{AuthTokens: tokens, MasterKeySalt: salt}, nil
+	return RegisterOutput{AuthTokens: tokens, MasterKeySalt: in.MasterKeySalt}, nil
 }
 
 // Login аутентифицирует пользователя и возвращает пару токенов (access/refresh) и соль для мастер-ключа.
@@ -190,7 +203,11 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (LoginOutput, e
 		return LoginOutput{}, fmt.Errorf("failed to save login session: %w", err)
 	}
 
-	return LoginOutput{AuthTokens: tokens, MasterKeySalt: u.MasterKeySalt}, nil
+	return LoginOutput{
+		AuthTokens:        tokens,
+		MasterKeySalt:     u.MasterKeySalt,
+		MasterKeyVerifier: u.MasterKeyVerifier,
+	}, nil
 }
 
 // Refresh обновляет пару токенов по активному refresh-токену.

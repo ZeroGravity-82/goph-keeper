@@ -34,6 +34,7 @@ func TestUserRepository_CreateAndGetByLogin(t *testing.T) {
 	assert.Equal(t, u.Login, got.Login)
 	assert.Equal(t, u.PasswordHash, got.PasswordHash)
 	assert.Equal(t, u.MasterKeySalt, got.MasterKeySalt)
+	assert.Equal(t, u.MasterKeyVerifier, got.MasterKeyVerifier)
 	assert.True(t, got.RegisteredAt.Equal(u.RegisteredAt))
 	assert.True(t, got.UpdatedAt.Equal(u.UpdatedAt))
 }
