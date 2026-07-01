@@ -299,6 +299,49 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	return nil
 }
 
+// Replace заменяет технические данные файла приватной записи при обновлении бинарной приватной записи.
+func (r *RecordFileRepository) Replace(ctx context.Context, file model.RecordFile) error {
+	const q = `
+UPDATE record_file
+SET
+    id = $1,
+    object_key = $2,
+    encrypted_size = $3,
+    upload_mode = $4,
+    upload_status = $5,
+    updated_at = $6
+WHERE record_id = $7
+`
+	exec := executorFromContext(ctx, r.db)
+	var uploadMode *string
+	if file.UploadMode != nil {
+		v := string(*file.UploadMode)
+		uploadMode = &v
+	}
+	result, err := exec.ExecContext(
+		ctx,
+		q,
+		file.ID,
+		file.ObjectKey,
+		file.EncryptedSize,
+		uploadMode,
+		string(file.UploadStatus),
+		file.UpdatedAt,
+		file.RecordID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to replace record file: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read affected rows count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return usecase.ErrRecordNotFound
+	}
+	return nil
+}
+
 // UpdateUploadStatus обновляет статус загрузки файла приватной записи.
 func (r *RecordFileRepository) UpdateUploadStatus(
 	ctx context.Context,

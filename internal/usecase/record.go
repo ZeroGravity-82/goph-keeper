@@ -57,6 +57,27 @@ type CreateBinaryRecordOutput struct {
 	UploadStatus model.UploadStatus
 }
 
+// UpdateBinaryRecordInput описывает входные данные сценария обновления бинарной приватной записи.
+type UpdateBinaryRecordInput struct {
+	RecordID         uuid.UUID
+	UserID           uuid.UUID
+	Title            string
+	Description      string
+	EncryptedDEK     []byte
+	EncryptedPayload []byte
+	EncryptedFile    io.Reader
+	EncryptedSize    int64
+	UploadMode       model.UploadMode
+	ExpectedVersion  int64
+}
+
+// UpdateBinaryRecordOutput описывает результат обновления бинарной приватной записи.
+type UpdateBinaryRecordOutput struct {
+	RecordID     uuid.UUID
+	Version      int64
+	UploadStatus model.UploadStatus
+}
+
 // ListRecordsInput описывает входные данные сценария получения списка приватных записей.
 type ListRecordsInput struct {
 	UserID uuid.UUID
@@ -127,6 +148,7 @@ type recordRepository interface {
 
 type recordFileRepository interface {
 	Create(ctx context.Context, file model.RecordFile) error
+	Replace(ctx context.Context, file model.RecordFile) error
 	UpdateUploadStatus(ctx context.Context, fileID uuid.UUID, status model.UploadStatus, updatedAt time.Time) error
 }
 
@@ -302,6 +324,120 @@ func (uc *RecordUseCase) CreateBinaryRecord(
 	return CreateBinaryRecordOutput{
 		RecordID:     recordID,
 		Version:      initialRecordVersion,
+		UploadStatus: model.UploadStatusUploaded,
+	}, nil
+}
+
+// UpdateBinaryRecord обновляет бинарную приватную запись вместе с заменой зашифрованного файла.
+func (uc *RecordUseCase) UpdateBinaryRecord(
+	ctx context.Context,
+	in UpdateBinaryRecordInput,
+) (UpdateBinaryRecordOutput, error) {
+	if in.UploadMode != model.UploadModeSinglePart {
+		return UpdateBinaryRecordOutput{}, ErrUploadModeNotSupported
+	}
+	if in.EncryptedSize <= 0 || in.EncryptedSize > maxEncryptedFileSize {
+		return UpdateBinaryRecordOutput{}, ErrInvalidBinaryEncryptedSize
+	}
+
+	currentRecord, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
+	if err != nil {
+		if errors.Is(err, ErrRecordNotFound) {
+			return UpdateBinaryRecordOutput{}, ErrRecordNotFound
+		}
+		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to get record for binary update: %w", err)
+	}
+	if currentRecord.Type != model.RecordTypeBinary {
+		return UpdateBinaryRecordOutput{}, ErrRecordIsNotBinary
+	}
+	if currentRecord.File == nil {
+		return UpdateBinaryRecordOutput{}, ErrRecordFileIsNotUploaded
+	}
+
+	fileID, err := uuid.NewV7()
+	if err != nil {
+		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to generate ID for record file: %w", err)
+	}
+
+	now := time.Now().UTC()
+	encryptedSize := in.EncryptedSize
+	uploadMode := in.UploadMode
+	record := model.Record{
+		ID:               in.RecordID,
+		UserID:           in.UserID,
+		Title:            in.Title,
+		Description:      in.Description,
+		EncryptedDEK:     model.EncryptedBlob{Data: in.EncryptedDEK},
+		EncryptedPayload: model.EncryptedBlob{Data: in.EncryptedPayload},
+		UpdatedAt:        now,
+	}
+	objectKey := uc.fileStorage.ObjectKey(in.UserID, in.RecordID, fileID)
+	file := model.RecordFile{
+		ID:            fileID,
+		RecordID:      in.RecordID,
+		ObjectKey:     objectKey,
+		EncryptedSize: &encryptedSize,
+		UploadMode:    &uploadMode,
+		UploadStatus:  model.UploadStatusUploading,
+		CreatedAt:     currentRecord.File.CreatedAt,
+		UpdatedAt:     now,
+	}
+
+	var version int64
+	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		version, err = uc.recordRepo.Update(ctx, record, in.ExpectedVersion)
+		if err != nil {
+			return err
+		}
+		if err = uc.recordFileRepo.Replace(ctx, file); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, ErrRecordNotFound) ||
+			errors.Is(err, ErrRecordVersionConflict) ||
+			errors.Is(err, ErrRecordIsNotBinary) {
+			return UpdateBinaryRecordOutput{}, err
+		}
+		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to update binary record metadata: %w", err)
+	}
+
+	written, err := uc.fileStorage.Put(ctx, objectKey, in.EncryptedFile, in.EncryptedSize)
+	now = time.Now().UTC()
+	if err != nil {
+		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
+		if statusErr != nil {
+			return UpdateBinaryRecordOutput{}, fmt.Errorf(
+				"failed to mark binary record upload as failed after upload error %q: %w",
+				err.Error(),
+				statusErr,
+			)
+		}
+
+		if errors.Is(err, ErrBinaryEncryptedSizeMismatch) {
+			return UpdateBinaryRecordOutput{}, err
+		}
+
+		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to upload record file: %w", err)
+	}
+	if written != in.EncryptedSize {
+		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
+		if statusErr != nil {
+			return UpdateBinaryRecordOutput{}, fmt.Errorf(
+				"failed to mark binary record upload as failed after encrypted size mismatch: %w",
+				statusErr,
+			)
+		}
+
+		return UpdateBinaryRecordOutput{}, ErrBinaryEncryptedSizeMismatch
+	}
+	if err = uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusUploaded, now); err != nil {
+		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to mark binary record upload as uploaded: %w", err)
+	}
+
+	return UpdateBinaryRecordOutput{
+		RecordID:     in.RecordID,
+		Version:      version,
 		UploadStatus: model.UploadStatusUploaded,
 	}, nil
 }

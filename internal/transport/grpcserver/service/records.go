@@ -35,6 +35,7 @@ type recordsUseCase interface {
 	ListRecords(ctx context.Context, in usecase.ListRecordsInput) (usecase.ListRecordsOutput, error)
 	GetRecord(ctx context.Context, in usecase.GetRecordInput) (usecase.GetRecordOutput, error)
 	UpdateRecord(ctx context.Context, in usecase.UpdateRecordInput) (usecase.UpdateRecordOutput, error)
+	UpdateBinaryRecord(ctx context.Context, in usecase.UpdateBinaryRecordInput) (usecase.UpdateBinaryRecordOutput, error)
 	DeleteRecord(ctx context.Context, in usecase.DeleteRecordInput) (usecase.DeleteRecordOutput, error)
 	DownloadFile(ctx context.Context, in usecase.DownloadFileInput) (usecase.DownloadFileOutput, error)
 }
@@ -318,6 +319,194 @@ func receiveBinaryRecordChunks(
 
 // waitBinaryRecordChunksProducer дожидается завершения горутины, принимающей чанки файла.
 func waitBinaryRecordChunksProducer(streamInput createBinaryRecordStreamInput) error {
+	if streamInput.producerErrCh == nil {
+		return nil
+	}
+	err := <-streamInput.producerErrCh
+	return err
+}
+
+// UpdateBinaryRecord обновляет бинарную приватную запись вместе с заменой зашифрованного файла в хранилище.
+func (s *RecordsService) UpdateBinaryRecord(stream pb.Records_UpdateBinaryRecordServer) error {
+	streamInput, err := updateBinaryRecordInputFromStream(stream)
+	if err != nil {
+		return err
+	}
+
+	out, usecaseErr := s.uc.UpdateBinaryRecord(stream.Context(), streamInput.in)
+	if usecaseErr != nil {
+		_ = streamInput.fileReader.CloseWithError(usecaseErr)
+	} else {
+		_ = streamInput.fileReader.Close()
+	}
+
+	producerErr := waitUpdateBinaryRecordChunksProducer(streamInput)
+	if producerErr != nil {
+		if errors.Is(producerErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
+			errors.Is(producerErr, errInvalidBinaryRecordStream) {
+			return status.Error(codes.InvalidArgument, producerErr.Error())
+		}
+		if usecaseErr == nil {
+			s.logger.Error("failed to receive binary record chunks", slog.Any("err", producerErr))
+			return status.Error(codes.Internal, "internal error")
+		}
+	}
+	if usecaseErr != nil {
+		if errors.Is(usecaseErr, usecase.ErrRecordNotFound) {
+			return status.Error(codes.NotFound, "record not found")
+		}
+		if errors.Is(usecaseErr, usecase.ErrRecordVersionConflict) {
+			return status.Error(codes.Aborted, "record version conflict")
+		}
+		if errors.Is(usecaseErr, usecase.ErrRecordIsNotBinary) ||
+			errors.Is(usecaseErr, usecase.ErrInvalidBinaryEncryptedSize) ||
+			errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
+			errors.Is(usecaseErr, usecase.ErrUploadModeNotSupported) {
+			return status.Error(codes.InvalidArgument, usecaseErr.Error())
+		}
+		s.logger.Error("failed to update binary record", slog.Any("err", usecaseErr))
+		return status.Error(codes.Internal, "internal error")
+	}
+
+	recordID := out.RecordID.String()
+	uploadStatus := uploadStatusToProto(out.UploadStatus)
+	return stream.SendAndClose(pb.UpdateBinaryRecordResponse_builder{
+		RecordId:     &recordID,
+		Version:      &out.Version,
+		UploadStatus: &uploadStatus,
+	}.Build())
+}
+
+// updateBinaryRecordStreamInput содержит входные данные сценария и служебные объекты для чтения файла из стрима.
+type updateBinaryRecordStreamInput struct {
+	in            usecase.UpdateBinaryRecordInput
+	fileReader    *io.PipeReader
+	producerErrCh <-chan error
+}
+
+// updateBinaryRecordInputFromStream читает первое сообщение стрима, валидирует метаданные и готовит пайп для файла.
+func updateBinaryRecordInputFromStream(
+	stream pb.Records_UpdateBinaryRecordServer,
+) (updateBinaryRecordStreamInput, error) {
+	userID, ok := authcontext.UserIDFromContext(stream.Context())
+	if !ok {
+		return updateBinaryRecordStreamInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+
+	first, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return updateBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "metadata is required")
+	}
+	if err != nil {
+		return updateBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "failed to receive metadata")
+	}
+	if first.WhichPayload() != pb.UpdateBinaryRecordRequest_Metadata_case {
+		return updateBinaryRecordStreamInput{}, status.Error(
+			codes.InvalidArgument, "first message must contain metadata",
+		)
+	}
+	metadata := first.GetMetadata()
+	in, err := updateBinaryRecordInputFromMetadata(userID, metadata)
+	if err != nil {
+		return updateBinaryRecordStreamInput{}, err
+	}
+
+	fileReader, fileWriter := io.Pipe()
+	producerErrCh := make(chan error, 1)
+	go func() {
+		producerErrCh <- receiveUpdatedBinaryRecordChunks(stream, fileWriter, in.EncryptedSize)
+	}()
+	in.EncryptedFile = fileReader
+
+	return updateBinaryRecordStreamInput{
+		in:            in,
+		fileReader:    fileReader,
+		producerErrCh: producerErrCh,
+	}, nil
+}
+
+// updateBinaryRecordInputFromMetadata валидирует метаданные и преобразует их во входной DTO сценария.
+func updateBinaryRecordInputFromMetadata(
+	userID uuid.UUID,
+	metadata *pb.UpdateBinaryRecordMetadata,
+) (usecase.UpdateBinaryRecordInput, error) {
+	if metadata == nil {
+		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "metadata is required")
+	}
+	recordID, err := uuid.Parse(metadata.GetRecordId())
+	if err != nil || recordID == uuid.Nil {
+		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "record id is invalid")
+	}
+	if strings.TrimSpace(metadata.GetTitle()) == "" {
+		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "title is required")
+	}
+	if len(metadata.GetEncryptedDek()) == 0 {
+		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted dek is required")
+	}
+	if len(metadata.GetEncryptedPayload()) == 0 {
+		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
+	}
+	uploadMode, ok := uploadModeFromProto(metadata.GetUploadMode())
+	if !ok {
+		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "upload mode is invalid")
+	}
+	if metadata.GetExpectedVersion() <= 0 {
+		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "expected version is invalid")
+	}
+	return usecase.UpdateBinaryRecordInput{
+		RecordID:         recordID,
+		UserID:           userID,
+		Title:            metadata.GetTitle(),
+		Description:      metadata.GetDescription(),
+		EncryptedDEK:     metadata.GetEncryptedDek(),
+		EncryptedPayload: metadata.GetEncryptedPayload(),
+		EncryptedSize:    metadata.GetEncryptedSize(),
+		UploadMode:       uploadMode,
+		ExpectedVersion:  metadata.GetExpectedVersion(),
+	}, nil
+}
+
+// receiveUpdatedBinaryRecordChunks принимает чанки нового зашифрованного файла из стрима и записывает их в пайп.
+func receiveUpdatedBinaryRecordChunks(
+	stream pb.Records_UpdateBinaryRecordServer,
+	fileWriter *io.PipeWriter,
+	expectedSize int64,
+) error {
+	var receivedSize int64
+	for {
+		req, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			if receivedSize != expectedSize {
+				_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
+				return usecase.ErrBinaryEncryptedSizeMismatch
+			}
+			return fileWriter.Close()
+		}
+		if err != nil {
+			closeErr := fmt.Errorf("failed to receive file chunk: %w", errInvalidBinaryRecordStream)
+			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
+			return closeErr
+		}
+		if req.WhichPayload() != pb.UpdateBinaryRecordRequest_Chunk_case {
+			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
+			return errInvalidBinaryRecordStream
+		}
+
+		chunk := req.GetChunk()
+		receivedSize += int64(len(chunk))
+		if receivedSize > int64(usecase.MaxEncryptedFileSize()) || receivedSize > expectedSize {
+			_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
+			return usecase.ErrBinaryEncryptedSizeMismatch
+		}
+		if _, err = fileWriter.Write(chunk); err != nil {
+			_ = fileWriter.CloseWithError(err)
+			return err
+		}
+	}
+}
+
+// waitUpdateBinaryRecordChunksProducer дожидается завершения горутины, принимающей чанки нового файла.
+func waitUpdateBinaryRecordChunksProducer(streamInput updateBinaryRecordStreamInput) error {
 	if streamInput.producerErrCh == nil {
 		return nil
 	}

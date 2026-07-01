@@ -24,6 +24,7 @@ const (
 	Records_ListRecords_FullMethodName        = "/gophkeeper.v1.Records/ListRecords"
 	Records_GetRecord_FullMethodName          = "/gophkeeper.v1.Records/GetRecord"
 	Records_UpdateRecord_FullMethodName       = "/gophkeeper.v1.Records/UpdateRecord"
+	Records_UpdateBinaryRecord_FullMethodName = "/gophkeeper.v1.Records/UpdateBinaryRecord"
 	Records_DeleteRecord_FullMethodName       = "/gophkeeper.v1.Records/DeleteRecord"
 	Records_DownloadFile_FullMethodName       = "/gophkeeper.v1.Records/DownloadFile"
 )
@@ -37,6 +38,7 @@ type RecordsClient interface {
 	ListRecords(ctx context.Context, in *ListRecordsRequest, opts ...grpc.CallOption) (*ListRecordsResponse, error)
 	GetRecord(ctx context.Context, in *GetRecordRequest, opts ...grpc.CallOption) (*GetRecordResponse, error)
 	UpdateRecord(ctx context.Context, in *UpdateRecordRequest, opts ...grpc.CallOption) (*UpdateRecordResponse, error)
+	UpdateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse], error)
 	DeleteRecord(ctx context.Context, in *DeleteRecordRequest, opts ...grpc.CallOption) (*DeleteRecordResponse, error)
 	DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadFileResponse], error)
 }
@@ -102,6 +104,19 @@ func (c *recordsClient) UpdateRecord(ctx context.Context, in *UpdateRecordReques
 	return out, nil
 }
 
+func (c *recordsClient) UpdateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[1], Records_UpdateBinaryRecord_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Records_UpdateBinaryRecordClient = grpc.ClientStreamingClient[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]
+
 func (c *recordsClient) DeleteRecord(ctx context.Context, in *DeleteRecordRequest, opts ...grpc.CallOption) (*DeleteRecordResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteRecordResponse)
@@ -114,7 +129,7 @@ func (c *recordsClient) DeleteRecord(ctx context.Context, in *DeleteRecordReques
 
 func (c *recordsClient) DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadFileResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[1], Records_DownloadFile_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[2], Records_DownloadFile_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +155,7 @@ type RecordsServer interface {
 	ListRecords(context.Context, *ListRecordsRequest) (*ListRecordsResponse, error)
 	GetRecord(context.Context, *GetRecordRequest) (*GetRecordResponse, error)
 	UpdateRecord(context.Context, *UpdateRecordRequest) (*UpdateRecordResponse, error)
+	UpdateBinaryRecord(grpc.ClientStreamingServer[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]) error
 	DeleteRecord(context.Context, *DeleteRecordRequest) (*DeleteRecordResponse, error)
 	DownloadFile(*DownloadFileRequest, grpc.ServerStreamingServer[DownloadFileResponse]) error
 	mustEmbedUnimplementedRecordsServer()
@@ -166,6 +182,9 @@ func (UnimplementedRecordsServer) GetRecord(context.Context, *GetRecordRequest) 
 }
 func (UnimplementedRecordsServer) UpdateRecord(context.Context, *UpdateRecordRequest) (*UpdateRecordResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateRecord not implemented")
+}
+func (UnimplementedRecordsServer) UpdateBinaryRecord(grpc.ClientStreamingServer[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]) error {
+	return status.Error(codes.Unimplemented, "method UpdateBinaryRecord not implemented")
 }
 func (UnimplementedRecordsServer) DeleteRecord(context.Context, *DeleteRecordRequest) (*DeleteRecordResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteRecord not implemented")
@@ -273,6 +292,13 @@ func _Records_UpdateRecord_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Records_UpdateBinaryRecord_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(RecordsServer).UpdateBinaryRecord(&grpc.GenericServerStream[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Records_UpdateBinaryRecordServer = grpc.ClientStreamingServer[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]
+
 func _Records_DeleteRecord_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteRecordRequest)
 	if err := dec(in); err != nil {
@@ -334,6 +360,11 @@ var Records_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "CreateBinaryRecord",
 			Handler:       _Records_CreateBinaryRecord_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "UpdateBinaryRecord",
+			Handler:       _Records_UpdateBinaryRecord_Handler,
 			ClientStreams: true,
 		},
 		{

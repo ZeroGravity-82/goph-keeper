@@ -78,8 +78,10 @@ func (r *recordRepositoryStub) Delete(_ context.Context, recordID uuid.UUID, _ u
 
 type recordFileRepositoryStub struct {
 	createErr   error
+	replaceErr  error
 	updateErr   error
 	created     []model.RecordFile
+	replaced    []model.RecordFile
 	createdInTx []bool
 	updates     []recordFileStatusUpdate
 }
@@ -90,6 +92,14 @@ func (r *recordFileRepositoryStub) Create(ctx context.Context, file model.Record
 	}
 	r.created = append(r.created, file)
 	r.createdInTx = append(r.createdInTx, ctx.Value(txContextKey{}) == true)
+	return nil
+}
+
+func (r *recordFileRepositoryStub) Replace(_ context.Context, file model.RecordFile) error {
+	if r.replaceErr != nil {
+		return r.replaceErr
+	}
+	r.replaced = append(r.replaced, file)
 	return nil
 }
 
@@ -419,6 +429,168 @@ func TestRecordUseCase_CreateBinaryRecord_FailWithUpdateUploadedStatusError(t *t
 
 	// Assert
 	require.ErrorIs(t, err, errTest)
+}
+
+// TestRecordUseCase_UpdateBinaryRecord проверяет успешное обновление бинарной приватной записи и замену файла.
+func TestRecordUseCase_UpdateBinaryRecord(t *testing.T) {
+	// Arrange
+	uc, recordRepo, recordFileRepo, storage, tx := newTestRecordUseCase(t)
+	storage.objectKey = "users/user/records/record/files/new-file/payload"
+	recordRepo.version = 3
+	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000003")
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000004")
+	oldFileCreatedAt := time.Date(2026, time.June, 25, 10, 0, 0, 0, time.UTC)
+	recordRepo.record = model.Record{
+		ID:     recordID,
+		UserID: userID,
+		Type:   model.RecordTypeBinary,
+		File: &model.RecordFile{
+			ID:           uuid.MustParse("018f6b7c-0000-7000-8000-100000000005"),
+			RecordID:     recordID,
+			ObjectKey:    "old-object-key",
+			UploadStatus: model.UploadStatusUploaded,
+			CreatedAt:    oldFileCreatedAt,
+		},
+	}
+	fileData := []byte("new-file")
+
+	// Act
+	out, err := uc.UpdateBinaryRecord(context.Background(), UpdateBinaryRecordInput{
+		RecordID:         recordID,
+		UserID:           userID,
+		Title:            "new binary",
+		Description:      "new description",
+		EncryptedDEK:     []byte("new-encrypted-dek"),
+		EncryptedPayload: []byte("new-encrypted-payload"),
+		EncryptedFile:    bytes.NewReader(fileData),
+		EncryptedSize:    int64(len(fileData)),
+		UploadMode:       model.UploadModeSinglePart,
+		ExpectedVersion:  2,
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, recordID, out.RecordID)
+	assert.Equal(t, int64(3), out.Version)
+	assert.Equal(t, model.UploadStatusUploaded, out.UploadStatus)
+	assert.Equal(t, 1, tx.calls)
+	require.Len(t, recordRepo.updated, 1)
+	assert.Equal(t, recordID, recordRepo.updated[0].ID)
+	assert.Equal(t, userID, recordRepo.updated[0].UserID)
+	assert.Equal(t, "new binary", recordRepo.updated[0].Title)
+	assert.Equal(t, []byte("new-encrypted-dek"), recordRepo.updated[0].EncryptedDEK.Data)
+	assert.Equal(t, []byte("new-encrypted-payload"), recordRepo.updated[0].EncryptedPayload.Data)
+	require.Len(t, recordFileRepo.replaced, 1)
+	assert.NotEqual(t, recordRepo.record.File.ID, recordFileRepo.replaced[0].ID)
+	assert.Equal(t, recordID, recordFileRepo.replaced[0].RecordID)
+	assert.Equal(t, "users/user/records/record/files/new-file/payload", recordFileRepo.replaced[0].ObjectKey)
+	assert.Equal(t, oldFileCreatedAt, recordFileRepo.replaced[0].CreatedAt)
+	assert.Equal(t, model.UploadStatusUploading, recordFileRepo.replaced[0].UploadStatus)
+	assert.Equal(t, fileData, storage.putData)
+	assert.Equal(t, int64(len(fileData)), storage.putSize)
+	require.Len(t, recordFileRepo.updates, 1)
+	assert.Equal(t, model.UploadStatusUploaded, recordFileRepo.updates[0].status)
+}
+
+// TestRecordUseCase_UpdateBinaryRecord_FailWithInvalidInput проверяет ошибки валидации входных данных.
+func TestRecordUseCase_UpdateBinaryRecord_FailWithInvalidInput(t *testing.T) {
+	tests := []struct {
+		name string
+		in   UpdateBinaryRecordInput
+		err  error
+	}{
+		{
+			name: "unsupported upload mode",
+			in:   UpdateBinaryRecordInput{EncryptedSize: 1, UploadMode: model.UploadModeMultiPart},
+			err:  ErrUploadModeNotSupported,
+		},
+		{
+			name: "zero encrypted size",
+			in:   UpdateBinaryRecordInput{EncryptedSize: 0, UploadMode: model.UploadModeSinglePart},
+			err:  ErrInvalidBinaryEncryptedSize,
+		},
+		{
+			name: "too large encrypted size",
+			in: UpdateBinaryRecordInput{
+				EncryptedSize: int64(MaxEncryptedFileSize()) + 1,
+				UploadMode:    model.UploadModeSinglePart,
+			},
+			err: ErrInvalidBinaryEncryptedSize,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			uc, recordRepo, recordFileRepo, storage, tx := newTestRecordUseCase(t)
+
+			// Act
+			_, err := uc.UpdateBinaryRecord(context.Background(), tt.in)
+
+			// Assert
+			require.ErrorIs(t, err, tt.err)
+			assert.Zero(t, tx.calls)
+			assert.Empty(t, recordRepo.updated)
+			assert.Empty(t, recordFileRepo.replaced)
+			assert.Empty(t, storage.putData)
+		})
+	}
+}
+
+// TestRecordUseCase_UpdateBinaryRecord_FailWithInvalidRecordState проверяет ошибки состояния приватной записи.
+func TestRecordUseCase_UpdateBinaryRecord_FailWithInvalidRecordState(t *testing.T) {
+	tests := []struct {
+		name   string
+		record model.Record
+		err    error
+	}{
+		{name: "not binary", record: model.Record{Type: model.RecordTypeText}, err: ErrRecordIsNotBinary},
+		{name: "file is nil", record: model.Record{Type: model.RecordTypeBinary}, err: ErrRecordFileIsNotUploaded},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			uc, recordRepo, recordFileRepo, storage, tx := newTestRecordUseCase(t)
+			recordRepo.record = tt.record
+
+			// Act
+			_, err := uc.UpdateBinaryRecord(context.Background(), UpdateBinaryRecordInput{
+				EncryptedSize: 1,
+				UploadMode:    model.UploadModeSinglePart,
+			})
+
+			// Assert
+			require.ErrorIs(t, err, tt.err)
+			assert.Zero(t, tx.calls)
+			assert.Empty(t, recordFileRepo.replaced)
+			assert.Empty(t, storage.putData)
+		})
+	}
+}
+
+// TestRecordUseCase_UpdateBinaryRecord_FailWithStorageError проверяет ошибку замены файла в хранилище.
+func TestRecordUseCase_UpdateBinaryRecord_FailWithStorageError(t *testing.T) {
+	// Arrange
+	uc, recordRepo, recordFileRepo, storage, _ := newTestRecordUseCase(t)
+	storage.putErr = errTest
+	recordRepo.record = model.Record{
+		Type: model.RecordTypeBinary,
+		File: &model.RecordFile{ID: uuid.Must(uuid.NewV7()), UploadStatus: model.UploadStatusUploaded},
+	}
+	fileData := []byte("file")
+
+	// Act
+	_, err := uc.UpdateBinaryRecord(context.Background(), UpdateBinaryRecordInput{
+		EncryptedFile: bytes.NewReader(fileData),
+		EncryptedSize: int64(len(fileData)),
+		UploadMode:    model.UploadModeSinglePart,
+	})
+
+	// Assert
+	require.ErrorIs(t, err, errTest)
+	require.Len(t, recordFileRepo.updates, 1)
+	assert.Equal(t, model.UploadStatusFailed, recordFileRepo.updates[0].status)
 }
 
 // TestRecordUseCase_ListRecords проверяет успешное получение списка приватных записей.

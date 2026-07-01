@@ -197,23 +197,31 @@ func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reade
 				printError(out, err)
 			}
 		case "11":
-			if err := downloadBinaryFile(ctx, app, reader, out); err != nil {
+			if err := updateBinaryMetadata(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "12":
-			if err := deleteRecord(ctx, app, reader, out); err != nil {
+			if err := replaceBinaryFile(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "13":
-			if err := listRecords(ctx, app, out); err != nil {
+			if err := downloadBinaryFile(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "14":
+			if err := deleteRecord(ctx, app, reader, out); err != nil {
+				printError(out, err)
+			}
+		case "15":
+			if err := listRecords(ctx, app, out); err != nil {
+				printError(out, err)
+			}
+		case "16":
 			if err := logout(ctx, app, out); err != nil {
 				printError(out, err)
 			}
 			return nil
-		case "15":
+		case "17":
 			return logoutAndExit(ctx, app, out)
 		default:
 			fmt.Fprintln(out, "неизвестное действие")
@@ -234,11 +242,13 @@ func printRecordsMenu(out io.Writer) {
 8. Получить банковскую карту
 9. Обновить банковскую карту
 10. Создать бинарную запись с файлом
-11. Скачать файл бинарной записи
-12. Удалить приватную запись
-13. Показать список приватных записей
-14. Выйти из аккаунта
-15. Завершить приложение`)
+11. Обновить бинарную запись
+12. Заменить файл бинарной записи
+13. Скачать файл бинарной записи
+14. Удалить запись
+15. Показать список записей
+16. Выйти из аккаунта
+17. Завершить приложение`)
 }
 
 // createCredential запрашивает поля учетных данных и создает зашифрованную приватную запись.
@@ -637,6 +647,102 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 		"создана файловая приватная запись: record_id=%s version=%d\n",
 		created.RecordID,
 		created.Version,
+	)
+	return nil
+}
+
+// updateBinaryMetadata запрашивает новые открытые метаданные и обновляет бинарную приватную запись без замены файла.
+func updateBinaryMetadata(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+	expectedVersion, err := promptExpectedVersion(reader, out)
+	if err != nil {
+		return err
+	}
+	title, err := promptRequired(reader, out, "Новое название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Новое описание: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	updated, err := app.UpdateBinaryMetadata(callCtx, clientApp.UpdateBinaryMetadataInput{
+		RecordID:        recordID,
+		ExpectedVersion: expectedVersion,
+		Title:           title,
+		Description:     description,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"обновлены метаданные бинарной приватной записи: record_id=%s version=%d\n",
+		updated.RecordID,
+		updated.Version,
+	)
+	return nil
+}
+
+// replaceBinaryFile запрашивает новые метаданные и путь к файлу, затем заменяет файл бинарной приватной записи.
+func replaceBinaryFile(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+	expectedVersion, err := promptExpectedVersion(reader, out)
+	if err != nil {
+		return err
+	}
+	title, err := promptRequired(reader, out, "Новое название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Новое описание: ")
+	if err != nil {
+		return err
+	}
+	path, err := promptRequired(reader, out, "Путь к новому файлу: ")
+	if err != nil {
+		return err
+	}
+
+	file, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("не удалось прочитать файл: %w", err)
+	}
+
+	filename := filepath.Base(path)
+	contentType := mime.TypeByExtension(filepath.Ext(path))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	updated, err := app.UpdateBinary(callCtx, clientApp.UpdateBinaryInput{
+		RecordID:        recordID,
+		ExpectedVersion: expectedVersion,
+		Title:           title,
+		Description:     description,
+		Filename:        filename,
+		ContentType:     contentType,
+		File:            file,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"заменен файл бинарной приватной записи: record_id=%s version=%d\n",
+		updated.RecordID,
+		updated.Version,
 	)
 	return nil
 }

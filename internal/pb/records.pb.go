@@ -2480,6 +2480,618 @@ func (b0 CreateBinaryRecordResponse_builder) Build() *CreateBinaryRecordResponse
 	return m0
 }
 
+type UpdateBinaryRecordRequest struct {
+	state              protoimpl.MessageState              `protogen:"opaque.v1"`
+	xxx_hidden_Payload isUpdateBinaryRecordRequest_Payload `protobuf_oneof:"payload"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *UpdateBinaryRecordRequest) Reset() {
+	*x = UpdateBinaryRecordRequest{}
+	mi := &file_api_records_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateBinaryRecordRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateBinaryRecordRequest) ProtoMessage() {}
+
+func (x *UpdateBinaryRecordRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *UpdateBinaryRecordRequest) GetMetadata() *UpdateBinaryRecordMetadata {
+	if x != nil {
+		if x, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Metadata); ok {
+			return x.Metadata
+		}
+	}
+	return nil
+}
+
+func (x *UpdateBinaryRecordRequest) GetChunk() []byte {
+	if x != nil {
+		if x, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Chunk); ok {
+			return x.Chunk
+		}
+	}
+	return nil
+}
+
+func (x *UpdateBinaryRecordRequest) SetMetadata(v *UpdateBinaryRecordMetadata) {
+	if v == nil {
+		x.xxx_hidden_Payload = nil
+		return
+	}
+	x.xxx_hidden_Payload = &updateBinaryRecordRequest_Metadata{v}
+}
+
+func (x *UpdateBinaryRecordRequest) SetChunk(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_Payload = &updateBinaryRecordRequest_Chunk{v}
+}
+
+func (x *UpdateBinaryRecordRequest) HasPayload() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Payload != nil
+}
+
+func (x *UpdateBinaryRecordRequest) HasMetadata() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Metadata)
+	return ok
+}
+
+func (x *UpdateBinaryRecordRequest) HasChunk() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Chunk)
+	return ok
+}
+
+func (x *UpdateBinaryRecordRequest) ClearPayload() {
+	x.xxx_hidden_Payload = nil
+}
+
+func (x *UpdateBinaryRecordRequest) ClearMetadata() {
+	if _, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Metadata); ok {
+		x.xxx_hidden_Payload = nil
+	}
+}
+
+func (x *UpdateBinaryRecordRequest) ClearChunk() {
+	if _, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Chunk); ok {
+		x.xxx_hidden_Payload = nil
+	}
+}
+
+const UpdateBinaryRecordRequest_Payload_not_set_case case_UpdateBinaryRecordRequest_Payload = 0
+const UpdateBinaryRecordRequest_Metadata_case case_UpdateBinaryRecordRequest_Payload = 1
+const UpdateBinaryRecordRequest_Chunk_case case_UpdateBinaryRecordRequest_Payload = 2
+
+func (x *UpdateBinaryRecordRequest) WhichPayload() case_UpdateBinaryRecordRequest_Payload {
+	if x == nil {
+		return UpdateBinaryRecordRequest_Payload_not_set_case
+	}
+	switch x.xxx_hidden_Payload.(type) {
+	case *updateBinaryRecordRequest_Metadata:
+		return UpdateBinaryRecordRequest_Metadata_case
+	case *updateBinaryRecordRequest_Chunk:
+		return UpdateBinaryRecordRequest_Chunk_case
+	default:
+		return UpdateBinaryRecordRequest_Payload_not_set_case
+	}
+}
+
+type UpdateBinaryRecordRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	// Fields of oneof xxx_hidden_Payload:
+	Metadata *UpdateBinaryRecordMetadata
+	Chunk    []byte
+	// -- end of xxx_hidden_Payload
+}
+
+func (b0 UpdateBinaryRecordRequest_builder) Build() *UpdateBinaryRecordRequest {
+	m0 := &UpdateBinaryRecordRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Metadata != nil {
+		x.xxx_hidden_Payload = &updateBinaryRecordRequest_Metadata{b.Metadata}
+	}
+	if b.Chunk != nil {
+		x.xxx_hidden_Payload = &updateBinaryRecordRequest_Chunk{b.Chunk}
+	}
+	return m0
+}
+
+type case_UpdateBinaryRecordRequest_Payload protoreflect.FieldNumber
+
+func (x case_UpdateBinaryRecordRequest_Payload) String() string {
+	md := file_api_records_proto_msgTypes[16].Descriptor()
+	if x == 0 {
+		return "not set"
+	}
+	return protoimpl.X.MessageFieldStringOf(md, protoreflect.FieldNumber(x))
+}
+
+type isUpdateBinaryRecordRequest_Payload interface {
+	isUpdateBinaryRecordRequest_Payload()
+}
+
+type updateBinaryRecordRequest_Metadata struct {
+	Metadata *UpdateBinaryRecordMetadata `protobuf:"bytes,1,opt,name=metadata,oneof"`
+}
+
+type updateBinaryRecordRequest_Chunk struct {
+	Chunk []byte `protobuf:"bytes,2,opt,name=chunk,oneof"`
+}
+
+func (*updateBinaryRecordRequest_Metadata) isUpdateBinaryRecordRequest_Payload() {}
+
+func (*updateBinaryRecordRequest_Chunk) isUpdateBinaryRecordRequest_Payload() {}
+
+type UpdateBinaryRecordMetadata struct {
+	state                       protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_RecordId         *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
+	xxx_hidden_Title            *string                `protobuf:"bytes,2,opt,name=title"`
+	xxx_hidden_Description      *string                `protobuf:"bytes,3,opt,name=description"`
+	xxx_hidden_EncryptedDek     []byte                 `protobuf:"bytes,4,opt,name=encrypted_dek,json=encryptedDek"`
+	xxx_hidden_EncryptedPayload []byte                 `protobuf:"bytes,5,opt,name=encrypted_payload,json=encryptedPayload"`
+	xxx_hidden_EncryptedSize    int64                  `protobuf:"varint,6,opt,name=encrypted_size,json=encryptedSize"`
+	xxx_hidden_UploadMode       UploadMode             `protobuf:"varint,7,opt,name=upload_mode,json=uploadMode,enum=gophkeeper.v1.UploadMode"`
+	xxx_hidden_ExpectedVersion  int64                  `protobuf:"varint,8,opt,name=expected_version,json=expectedVersion"`
+	XXX_raceDetectHookData      protoimpl.RaceDetectHookData
+	XXX_presence                [1]uint32
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
+}
+
+func (x *UpdateBinaryRecordMetadata) Reset() {
+	*x = UpdateBinaryRecordMetadata{}
+	mi := &file_api_records_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateBinaryRecordMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateBinaryRecordMetadata) ProtoMessage() {}
+
+func (x *UpdateBinaryRecordMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *UpdateBinaryRecordMetadata) GetRecordId() string {
+	if x != nil {
+		if x.xxx_hidden_RecordId != nil {
+			return *x.xxx_hidden_RecordId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *UpdateBinaryRecordMetadata) GetTitle() string {
+	if x != nil {
+		if x.xxx_hidden_Title != nil {
+			return *x.xxx_hidden_Title
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *UpdateBinaryRecordMetadata) GetDescription() string {
+	if x != nil {
+		if x.xxx_hidden_Description != nil {
+			return *x.xxx_hidden_Description
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *UpdateBinaryRecordMetadata) GetEncryptedDek() []byte {
+	if x != nil {
+		return x.xxx_hidden_EncryptedDek
+	}
+	return nil
+}
+
+func (x *UpdateBinaryRecordMetadata) GetEncryptedPayload() []byte {
+	if x != nil {
+		return x.xxx_hidden_EncryptedPayload
+	}
+	return nil
+}
+
+func (x *UpdateBinaryRecordMetadata) GetEncryptedSize() int64 {
+	if x != nil {
+		return x.xxx_hidden_EncryptedSize
+	}
+	return 0
+}
+
+func (x *UpdateBinaryRecordMetadata) GetUploadMode() UploadMode {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 6) {
+			return x.xxx_hidden_UploadMode
+		}
+	}
+	return UploadMode_UPLOAD_MODE_UNSPECIFIED
+}
+
+func (x *UpdateBinaryRecordMetadata) GetExpectedVersion() int64 {
+	if x != nil {
+		return x.xxx_hidden_ExpectedVersion
+	}
+	return 0
+}
+
+func (x *UpdateBinaryRecordMetadata) SetRecordId(v string) {
+	x.xxx_hidden_RecordId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) SetTitle(v string) {
+	x.xxx_hidden_Title = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) SetDescription(v string) {
+	x.xxx_hidden_Description = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) SetEncryptedDek(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_EncryptedDek = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) SetEncryptedPayload(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_EncryptedPayload = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) SetEncryptedSize(v int64) {
+	x.xxx_hidden_EncryptedSize = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) SetUploadMode(v UploadMode) {
+	x.xxx_hidden_UploadMode = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) SetExpectedVersion(v int64) {
+	x.xxx_hidden_ExpectedVersion = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasRecordId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasTitle() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasDescription() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasEncryptedDek() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasEncryptedPayload() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasEncryptedSize() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasUploadMode() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 6)
+}
+
+func (x *UpdateBinaryRecordMetadata) HasExpectedVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearRecordId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_RecordId = nil
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearTitle() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_Title = nil
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearDescription() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_Description = nil
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearEncryptedDek() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_EncryptedDek = nil
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearEncryptedPayload() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
+	x.xxx_hidden_EncryptedPayload = nil
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearEncryptedSize() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 5)
+	x.xxx_hidden_EncryptedSize = 0
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearUploadMode() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
+	x.xxx_hidden_UploadMode = UploadMode_UPLOAD_MODE_UNSPECIFIED
+}
+
+func (x *UpdateBinaryRecordMetadata) ClearExpectedVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 7)
+	x.xxx_hidden_ExpectedVersion = 0
+}
+
+type UpdateBinaryRecordMetadata_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	RecordId         *string
+	Title            *string
+	Description      *string
+	EncryptedDek     []byte
+	EncryptedPayload []byte
+	EncryptedSize    *int64
+	UploadMode       *UploadMode
+	ExpectedVersion  *int64
+}
+
+func (b0 UpdateBinaryRecordMetadata_builder) Build() *UpdateBinaryRecordMetadata {
+	m0 := &UpdateBinaryRecordMetadata{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.RecordId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 8)
+		x.xxx_hidden_RecordId = b.RecordId
+	}
+	if b.Title != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 8)
+		x.xxx_hidden_Title = b.Title
+	}
+	if b.Description != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 8)
+		x.xxx_hidden_Description = b.Description
+	}
+	if b.EncryptedDek != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 8)
+		x.xxx_hidden_EncryptedDek = b.EncryptedDek
+	}
+	if b.EncryptedPayload != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 8)
+		x.xxx_hidden_EncryptedPayload = b.EncryptedPayload
+	}
+	if b.EncryptedSize != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 8)
+		x.xxx_hidden_EncryptedSize = *b.EncryptedSize
+	}
+	if b.UploadMode != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
+		x.xxx_hidden_UploadMode = *b.UploadMode
+	}
+	if b.ExpectedVersion != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 8)
+		x.xxx_hidden_ExpectedVersion = *b.ExpectedVersion
+	}
+	return m0
+}
+
+type UpdateBinaryRecordResponse struct {
+	state                   protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_RecordId     *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
+	xxx_hidden_Version      int64                  `protobuf:"varint,2,opt,name=version"`
+	xxx_hidden_UploadStatus UploadStatus           `protobuf:"varint,3,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
+	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
+	XXX_presence            [1]uint32
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *UpdateBinaryRecordResponse) Reset() {
+	*x = UpdateBinaryRecordResponse{}
+	mi := &file_api_records_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateBinaryRecordResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateBinaryRecordResponse) ProtoMessage() {}
+
+func (x *UpdateBinaryRecordResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *UpdateBinaryRecordResponse) GetRecordId() string {
+	if x != nil {
+		if x.xxx_hidden_RecordId != nil {
+			return *x.xxx_hidden_RecordId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *UpdateBinaryRecordResponse) GetVersion() int64 {
+	if x != nil {
+		return x.xxx_hidden_Version
+	}
+	return 0
+}
+
+func (x *UpdateBinaryRecordResponse) GetUploadStatus() UploadStatus {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 2) {
+			return x.xxx_hidden_UploadStatus
+		}
+	}
+	return UploadStatus_UPLOAD_STATUS_UNSPECIFIED
+}
+
+func (x *UpdateBinaryRecordResponse) SetRecordId(v string) {
+	x.xxx_hidden_RecordId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+}
+
+func (x *UpdateBinaryRecordResponse) SetVersion(v int64) {
+	x.xxx_hidden_Version = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
+}
+
+func (x *UpdateBinaryRecordResponse) SetUploadStatus(v UploadStatus) {
+	x.xxx_hidden_UploadStatus = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+}
+
+func (x *UpdateBinaryRecordResponse) HasRecordId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *UpdateBinaryRecordResponse) HasVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *UpdateBinaryRecordResponse) HasUploadStatus() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *UpdateBinaryRecordResponse) ClearRecordId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_RecordId = nil
+}
+
+func (x *UpdateBinaryRecordResponse) ClearVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_Version = 0
+}
+
+func (x *UpdateBinaryRecordResponse) ClearUploadStatus() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_UploadStatus = UploadStatus_UPLOAD_STATUS_UNSPECIFIED
+}
+
+type UpdateBinaryRecordResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	RecordId     *string
+	Version      *int64
+	UploadStatus *UploadStatus
+}
+
+func (b0 UpdateBinaryRecordResponse_builder) Build() *UpdateBinaryRecordResponse {
+	m0 := &UpdateBinaryRecordResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.RecordId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_RecordId = b.RecordId
+	}
+	if b.Version != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		x.xxx_hidden_Version = *b.Version
+	}
+	if b.UploadStatus != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		x.xxx_hidden_UploadStatus = *b.UploadStatus
+	}
+	return m0
+}
+
 type DownloadFileRequest struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_RecordId    *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
@@ -2491,7 +3103,7 @@ type DownloadFileRequest struct {
 
 func (x *DownloadFileRequest) Reset() {
 	*x = DownloadFileRequest{}
-	mi := &file_api_records_proto_msgTypes[16]
+	mi := &file_api_records_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2503,7 +3115,7 @@ func (x *DownloadFileRequest) String() string {
 func (*DownloadFileRequest) ProtoMessage() {}
 
 func (x *DownloadFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[16]
+	mi := &file_api_records_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2569,7 +3181,7 @@ type DownloadFileResponse struct {
 
 func (x *DownloadFileResponse) Reset() {
 	*x = DownloadFileResponse{}
-	mi := &file_api_records_proto_msgTypes[17]
+	mi := &file_api_records_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2581,7 +3193,7 @@ func (x *DownloadFileResponse) String() string {
 func (*DownloadFileResponse) ProtoMessage() {}
 
 func (x *DownloadFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[17]
+	mi := &file_api_records_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2715,6 +3327,24 @@ const file_api_records_proto_rawDesc = "" +
 	"\x1aCreateBinaryRecordResponse\x12\x1b\n" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x12@\n" +
+	"\rupload_status\x18\x03 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"\x87\x01\n" +
+	"\x19UpdateBinaryRecordRequest\x12G\n" +
+	"\bmetadata\x18\x01 \x01(\v2).gophkeeper.v1.UpdateBinaryRecordMetadataH\x00R\bmetadata\x12\x16\n" +
+	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\t\n" +
+	"\apayload\"\xd1\x02\n" +
+	"\x1aUpdateBinaryRecordMetadata\x12\x1b\n" +
+	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12#\n" +
+	"\rencrypted_dek\x18\x04 \x01(\fR\fencryptedDek\x12+\n" +
+	"\x11encrypted_payload\x18\x05 \x01(\fR\x10encryptedPayload\x12%\n" +
+	"\x0eencrypted_size\x18\x06 \x01(\x03R\rencryptedSize\x12:\n" +
+	"\vupload_mode\x18\a \x01(\x0e2\x19.gophkeeper.v1.UploadModeR\n" +
+	"uploadMode\x12)\n" +
+	"\x10expected_version\x18\b \x01(\x03R\x0fexpectedVersion\"\x95\x01\n" +
+	"\x1aUpdateBinaryRecordResponse\x12\x1b\n" +
+	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x03R\aversion\x12@\n" +
 	"\rupload_status\x18\x03 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"2\n" +
 	"\x13DownloadFileRequest\x12\x1b\n" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\",\n" +
@@ -2736,18 +3366,19 @@ const file_api_records_proto_rawDesc = "" +
 	"\x19UPLOAD_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17UPLOAD_STATUS_UPLOADING\x10\x01\x12\x1a\n" +
 	"\x16UPLOAD_STATUS_UPLOADED\x10\x02\x12\x18\n" +
-	"\x14UPLOAD_STATUS_FAILED\x10\x032\x82\x05\n" +
+	"\x14UPLOAD_STATUS_FAILED\x10\x032\xef\x05\n" +
 	"\aRecords\x12W\n" +
 	"\fCreateRecord\x12\".gophkeeper.v1.CreateRecordRequest\x1a#.gophkeeper.v1.CreateRecordResponse\x12k\n" +
 	"\x12CreateBinaryRecord\x12(.gophkeeper.v1.CreateBinaryRecordRequest\x1a).gophkeeper.v1.CreateBinaryRecordResponse(\x01\x12T\n" +
 	"\vListRecords\x12!.gophkeeper.v1.ListRecordsRequest\x1a\".gophkeeper.v1.ListRecordsResponse\x12N\n" +
 	"\tGetRecord\x12\x1f.gophkeeper.v1.GetRecordRequest\x1a .gophkeeper.v1.GetRecordResponse\x12W\n" +
-	"\fUpdateRecord\x12\".gophkeeper.v1.UpdateRecordRequest\x1a#.gophkeeper.v1.UpdateRecordResponse\x12W\n" +
+	"\fUpdateRecord\x12\".gophkeeper.v1.UpdateRecordRequest\x1a#.gophkeeper.v1.UpdateRecordResponse\x12k\n" +
+	"\x12UpdateBinaryRecord\x12(.gophkeeper.v1.UpdateBinaryRecordRequest\x1a).gophkeeper.v1.UpdateBinaryRecordResponse(\x01\x12W\n" +
 	"\fDeleteRecord\x12\".gophkeeper.v1.DeleteRecordRequest\x1a#.gophkeeper.v1.DeleteRecordResponse\x12Y\n" +
 	"\fDownloadFile\x12\".gophkeeper.v1.DownloadFileRequest\x1a#.gophkeeper.v1.DownloadFileResponse0\x01B+Z)zerogravity-82/goph-keeper/internal/pb;pbb\beditionsp\xe8\a"
 
 var file_api_records_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_api_records_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_api_records_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_api_records_proto_goTypes = []any{
 	(RecordType)(0),                    // 0: gophkeeper.v1.RecordType
 	(UploadMode)(0),                    // 1: gophkeeper.v1.UploadMode
@@ -2768,20 +3399,23 @@ var file_api_records_proto_goTypes = []any{
 	(*CreateBinaryRecordRequest)(nil),  // 16: gophkeeper.v1.CreateBinaryRecordRequest
 	(*CreateBinaryRecordMetadata)(nil), // 17: gophkeeper.v1.CreateBinaryRecordMetadata
 	(*CreateBinaryRecordResponse)(nil), // 18: gophkeeper.v1.CreateBinaryRecordResponse
-	(*DownloadFileRequest)(nil),        // 19: gophkeeper.v1.DownloadFileRequest
-	(*DownloadFileResponse)(nil),       // 20: gophkeeper.v1.DownloadFileResponse
-	(*timestamppb.Timestamp)(nil),      // 21: google.protobuf.Timestamp
+	(*UpdateBinaryRecordRequest)(nil),  // 19: gophkeeper.v1.UpdateBinaryRecordRequest
+	(*UpdateBinaryRecordMetadata)(nil), // 20: gophkeeper.v1.UpdateBinaryRecordMetadata
+	(*UpdateBinaryRecordResponse)(nil), // 21: gophkeeper.v1.UpdateBinaryRecordResponse
+	(*DownloadFileRequest)(nil),        // 22: gophkeeper.v1.DownloadFileRequest
+	(*DownloadFileResponse)(nil),       // 23: gophkeeper.v1.DownloadFileResponse
+	(*timestamppb.Timestamp)(nil),      // 24: google.protobuf.Timestamp
 }
 var file_api_records_proto_depIdxs = []int32{
 	0,  // 0: gophkeeper.v1.Record.type:type_name -> gophkeeper.v1.RecordType
-	21, // 1: gophkeeper.v1.Record.created_at:type_name -> google.protobuf.Timestamp
-	21, // 2: gophkeeper.v1.Record.updated_at:type_name -> google.protobuf.Timestamp
-	21, // 3: gophkeeper.v1.Record.deleted_at:type_name -> google.protobuf.Timestamp
+	24, // 1: gophkeeper.v1.Record.created_at:type_name -> google.protobuf.Timestamp
+	24, // 2: gophkeeper.v1.Record.updated_at:type_name -> google.protobuf.Timestamp
+	24, // 3: gophkeeper.v1.Record.deleted_at:type_name -> google.protobuf.Timestamp
 	4,  // 4: gophkeeper.v1.Record.file:type_name -> gophkeeper.v1.RecordFile
 	2,  // 5: gophkeeper.v1.RecordFile.upload_status:type_name -> gophkeeper.v1.UploadStatus
 	0,  // 6: gophkeeper.v1.RecordListItem.type:type_name -> gophkeeper.v1.RecordType
-	21, // 7: gophkeeper.v1.RecordListItem.created_at:type_name -> google.protobuf.Timestamp
-	21, // 8: gophkeeper.v1.RecordListItem.updated_at:type_name -> google.protobuf.Timestamp
+	24, // 7: gophkeeper.v1.RecordListItem.created_at:type_name -> google.protobuf.Timestamp
+	24, // 8: gophkeeper.v1.RecordListItem.updated_at:type_name -> google.protobuf.Timestamp
 	4,  // 9: gophkeeper.v1.RecordListItem.file:type_name -> gophkeeper.v1.RecordFile
 	0,  // 10: gophkeeper.v1.CreateRecordRequest.type:type_name -> gophkeeper.v1.RecordType
 	5,  // 11: gophkeeper.v1.ListRecordsResponse.items:type_name -> gophkeeper.v1.RecordListItem
@@ -2789,25 +3423,30 @@ var file_api_records_proto_depIdxs = []int32{
 	17, // 13: gophkeeper.v1.CreateBinaryRecordRequest.metadata:type_name -> gophkeeper.v1.CreateBinaryRecordMetadata
 	1,  // 14: gophkeeper.v1.CreateBinaryRecordMetadata.upload_mode:type_name -> gophkeeper.v1.UploadMode
 	2,  // 15: gophkeeper.v1.CreateBinaryRecordResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
-	6,  // 16: gophkeeper.v1.Records.CreateRecord:input_type -> gophkeeper.v1.CreateRecordRequest
-	16, // 17: gophkeeper.v1.Records.CreateBinaryRecord:input_type -> gophkeeper.v1.CreateBinaryRecordRequest
-	8,  // 18: gophkeeper.v1.Records.ListRecords:input_type -> gophkeeper.v1.ListRecordsRequest
-	10, // 19: gophkeeper.v1.Records.GetRecord:input_type -> gophkeeper.v1.GetRecordRequest
-	12, // 20: gophkeeper.v1.Records.UpdateRecord:input_type -> gophkeeper.v1.UpdateRecordRequest
-	14, // 21: gophkeeper.v1.Records.DeleteRecord:input_type -> gophkeeper.v1.DeleteRecordRequest
-	19, // 22: gophkeeper.v1.Records.DownloadFile:input_type -> gophkeeper.v1.DownloadFileRequest
-	7,  // 23: gophkeeper.v1.Records.CreateRecord:output_type -> gophkeeper.v1.CreateRecordResponse
-	18, // 24: gophkeeper.v1.Records.CreateBinaryRecord:output_type -> gophkeeper.v1.CreateBinaryRecordResponse
-	9,  // 25: gophkeeper.v1.Records.ListRecords:output_type -> gophkeeper.v1.ListRecordsResponse
-	11, // 26: gophkeeper.v1.Records.GetRecord:output_type -> gophkeeper.v1.GetRecordResponse
-	13, // 27: gophkeeper.v1.Records.UpdateRecord:output_type -> gophkeeper.v1.UpdateRecordResponse
-	15, // 28: gophkeeper.v1.Records.DeleteRecord:output_type -> gophkeeper.v1.DeleteRecordResponse
-	20, // 29: gophkeeper.v1.Records.DownloadFile:output_type -> gophkeeper.v1.DownloadFileResponse
-	23, // [23:30] is the sub-list for method output_type
-	16, // [16:23] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	20, // 16: gophkeeper.v1.UpdateBinaryRecordRequest.metadata:type_name -> gophkeeper.v1.UpdateBinaryRecordMetadata
+	1,  // 17: gophkeeper.v1.UpdateBinaryRecordMetadata.upload_mode:type_name -> gophkeeper.v1.UploadMode
+	2,  // 18: gophkeeper.v1.UpdateBinaryRecordResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
+	6,  // 19: gophkeeper.v1.Records.CreateRecord:input_type -> gophkeeper.v1.CreateRecordRequest
+	16, // 20: gophkeeper.v1.Records.CreateBinaryRecord:input_type -> gophkeeper.v1.CreateBinaryRecordRequest
+	8,  // 21: gophkeeper.v1.Records.ListRecords:input_type -> gophkeeper.v1.ListRecordsRequest
+	10, // 22: gophkeeper.v1.Records.GetRecord:input_type -> gophkeeper.v1.GetRecordRequest
+	12, // 23: gophkeeper.v1.Records.UpdateRecord:input_type -> gophkeeper.v1.UpdateRecordRequest
+	19, // 24: gophkeeper.v1.Records.UpdateBinaryRecord:input_type -> gophkeeper.v1.UpdateBinaryRecordRequest
+	14, // 25: gophkeeper.v1.Records.DeleteRecord:input_type -> gophkeeper.v1.DeleteRecordRequest
+	22, // 26: gophkeeper.v1.Records.DownloadFile:input_type -> gophkeeper.v1.DownloadFileRequest
+	7,  // 27: gophkeeper.v1.Records.CreateRecord:output_type -> gophkeeper.v1.CreateRecordResponse
+	18, // 28: gophkeeper.v1.Records.CreateBinaryRecord:output_type -> gophkeeper.v1.CreateBinaryRecordResponse
+	9,  // 29: gophkeeper.v1.Records.ListRecords:output_type -> gophkeeper.v1.ListRecordsResponse
+	11, // 30: gophkeeper.v1.Records.GetRecord:output_type -> gophkeeper.v1.GetRecordResponse
+	13, // 31: gophkeeper.v1.Records.UpdateRecord:output_type -> gophkeeper.v1.UpdateRecordResponse
+	21, // 32: gophkeeper.v1.Records.UpdateBinaryRecord:output_type -> gophkeeper.v1.UpdateBinaryRecordResponse
+	15, // 33: gophkeeper.v1.Records.DeleteRecord:output_type -> gophkeeper.v1.DeleteRecordResponse
+	23, // 34: gophkeeper.v1.Records.DownloadFile:output_type -> gophkeeper.v1.DownloadFileResponse
+	27, // [27:35] is the sub-list for method output_type
+	19, // [19:27] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_api_records_proto_init() }
@@ -2819,13 +3458,17 @@ func file_api_records_proto_init() {
 		(*createBinaryRecordRequest_Metadata)(nil),
 		(*createBinaryRecordRequest_Chunk)(nil),
 	}
+	file_api_records_proto_msgTypes[16].OneofWrappers = []any{
+		(*updateBinaryRecordRequest_Metadata)(nil),
+		(*updateBinaryRecordRequest_Chunk)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_records_proto_rawDesc), len(file_api_records_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   18,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

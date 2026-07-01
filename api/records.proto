@@ -126,6 +126,30 @@ message CreateBinaryRecordResponse {
   UploadStatus upload_status = 3;
 }
 
+message UpdateBinaryRecordRequest {
+  oneof payload {
+    UpdateBinaryRecordMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+message UpdateBinaryRecordMetadata {
+  string record_id = 1;
+  string title = 2;
+  string description = 3;
+  bytes encrypted_dek = 4;
+  bytes encrypted_payload = 5;
+  int64 encrypted_size = 6;
+  UploadMode upload_mode = 7;
+  int64 expected_version = 8;
+}
+
+message UpdateBinaryRecordResponse {
+  string record_id = 1;
+  int64 version = 2;
+  UploadStatus upload_status = 3;
+}
+
 message DownloadFileRequest {
   string record_id = 1;
 }
@@ -140,6 +164,7 @@ service Records {
   rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
   rpc GetRecord(GetRecordRequest) returns (GetRecordResponse);
   rpc UpdateRecord(UpdateRecordRequest) returns (UpdateRecordResponse);
+  rpc UpdateBinaryRecord(stream UpdateBinaryRecordRequest) returns (UpdateBinaryRecordResponse);
   rpc DeleteRecord(DeleteRecordRequest) returns (DeleteRecordResponse);
   rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
 }

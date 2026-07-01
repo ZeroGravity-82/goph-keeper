@@ -26,6 +26,25 @@ type CreateBinaryInput struct {
 	File        []byte
 }
 
+// UpdateBinaryInput содержит данные для обновления бинарной приватной записи.
+type UpdateBinaryInput struct {
+	RecordID        string
+	ExpectedVersion int64
+	Title           string
+	Description     string
+	Filename        string
+	ContentType     string
+	File            []byte
+}
+
+// UpdateBinaryMetadataInput содержит данные для обновления открытых метаданных бинарной приватной записи.
+type UpdateBinaryMetadataInput struct {
+	RecordID        string
+	ExpectedVersion int64
+	Title           string
+	Description     string
+}
+
 // BinaryFile содержит расшифрованный файл бинарной приватной записи.
 type BinaryFile struct {
 	RecordID     string
@@ -110,6 +129,125 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 	}
 
 	return CreateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+}
+
+// UpdateBinaryMetadata обновляет открытые метаданные бинарной приватной записи без замены файла.
+func (a *App) UpdateBinaryMetadata(ctx context.Context, in UpdateBinaryMetadataInput) (UpdateRecordOutput, error) {
+	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+
+	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
+	resp, err := a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &in.RecordID}.Build())
+	if err != nil {
+		return UpdateRecordOutput{}, rpcError(
+			err,
+			"не удалось получить бинарную приватную запись",
+			map[codes.Code]string{
+				codes.Unauthenticated: "сессия недействительна, войдите снова",
+				codes.InvalidArgument: "некорректный идентификатор приватной записи",
+				codes.NotFound:        "приватная запись не найдена",
+			},
+		)
+	}
+	record := resp.GetRecord()
+	if record == nil {
+		return UpdateRecordOutput{}, errors.New("сервер вернул пустую приватную запись")
+	}
+	if record.GetType() != pb.RecordType_RECORD_TYPE_BINARY {
+		return UpdateRecordOutput{}, fmt.Errorf("приватная запись %s не является бинарной", in.RecordID)
+	}
+
+	return a.updateRecord(
+		ctx,
+		in.RecordID,
+		in.Title,
+		in.Description,
+		record.GetEncryptedDek(),
+		record.GetEncryptedPayload(),
+		in.ExpectedVersion,
+	)
+}
+
+// UpdateBinary шифрует новый payload и файл на клиенте, затем заменяет файл бинарной приватной записи.
+func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRecordOutput, error) {
+	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if len(in.File) == 0 {
+		return UpdateRecordOutput{}, errors.New("файл не должен быть пустым")
+	}
+	if len(in.File) > maxPlainBinaryFileSize {
+		return UpdateRecordOutput{}, fmt.Errorf("размер файла превышает лимит %d байт", maxPlainBinaryFileSize)
+	}
+
+	encrypted, err := crypto.EncryptBinaryRecordData(
+		a.masterKey,
+		a.session.MasterKeySalt,
+		model.BinaryPayload{
+			Filename:    in.Filename,
+			ContentType: in.ContentType,
+			Size:        int64(len(in.File)),
+		},
+		in.File,
+	)
+	if err != nil {
+		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать бинарную приватную запись: %w", err)
+	}
+
+	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
+	stream, err := a.records.UpdateBinaryRecord(ctx)
+	if err != nil {
+		return UpdateRecordOutput{}, rpcError(
+			err,
+			"не удалось начать обновление бинарной приватной записи",
+			map[codes.Code]string{codes.Unauthenticated: "сессия недействительна, войдите снова"},
+		)
+	}
+
+	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
+	encryptedSize := int64(len(encrypted.EncryptedFile.Data))
+	if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
+		Metadata: pb.UpdateBinaryRecordMetadata_builder{
+			RecordId:         &in.RecordID,
+			Title:            &in.Title,
+			Description:      &in.Description,
+			EncryptedDek:     encrypted.EncryptedDEK.Data,
+			EncryptedPayload: encrypted.EncryptedPayload.Data,
+			EncryptedSize:    &encryptedSize,
+			UploadMode:       &uploadMode,
+			ExpectedVersion:  &in.ExpectedVersion,
+		}.Build(),
+	}.Build()); err != nil {
+		return UpdateRecordOutput{}, rpcError(err, "не удалось отправить метаданные файла", nil)
+	}
+	if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
+		Chunk: encrypted.EncryptedFile.Data,
+	}.Build()); err != nil {
+		return UpdateRecordOutput{}, rpcError(err, "не удалось отправить файл", nil)
+	}
+
+	resp, err := stream.CloseAndRecv()
+	if err != nil {
+		return UpdateRecordOutput{}, rpcError(
+			err,
+			"не удалось обновить бинарную приватную запись",
+			map[codes.Code]string{
+				codes.Unauthenticated:    "сессия недействительна, войдите снова",
+				codes.InvalidArgument:    "некорректные данные бинарной приватной записи",
+				codes.NotFound:           "приватная запись не найдена",
+				codes.Aborted:            "приватная запись была изменена с другого клиента, получите актуальную версию",
+				codes.FailedPrecondition: "файл не может быть загружен в текущем состоянии",
+				codes.ResourceExhausted:  "размер файла превышает допустимый лимит",
+				codes.DeadlineExceeded:   "истекло время ожидания загрузки файла",
+				codes.Canceled:           "загрузка файла отменена",
+				codes.Unavailable:        "сервер временно недоступен",
+				codes.PermissionDenied:   "доступ запрещен",
+			},
+		)
+	}
+
+	return UpdateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
 }
 
 // DownloadBinaryFile скачивает зашифрованный файл, расшифровывает его на клиенте и возвращает исходные данные.
