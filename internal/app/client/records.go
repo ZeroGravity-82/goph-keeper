@@ -23,6 +23,11 @@ type UpdateRecordOutput struct {
 	Version  int64
 }
 
+// DeleteRecordOutput содержит результат удаления приватной записи.
+type DeleteRecordOutput struct {
+	RecordID string
+}
+
 // RecordListItem содержит краткую информацию о приватной записи.
 type RecordListItem struct {
 	RecordID    string
@@ -97,6 +102,29 @@ func (a *App) updateRecord(
 	}
 
 	return UpdateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+}
+
+// DeleteRecord удаляет приватную запись пользователя.
+func (a *App) DeleteRecord(ctx context.Context, recordID string) (DeleteRecordOutput, error) {
+	if err := a.requireSession(); err != nil {
+		return DeleteRecordOutput{}, err
+	}
+
+	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
+	resp, err := a.records.DeleteRecord(ctx, pb.DeleteRecordRequest_builder{RecordId: &recordID}.Build())
+	if err != nil {
+		return DeleteRecordOutput{}, rpcError(
+			err,
+			"не удалось удалить приватную запись",
+			map[codes.Code]string{
+				codes.Unauthenticated: "сессия недействительна, войдите снова",
+				codes.InvalidArgument: "некорректный идентификатор приватной записи",
+				codes.NotFound:        "приватная запись не найдена",
+			},
+		)
+	}
+
+	return DeleteRecordOutput{RecordID: resp.GetRecordId()}, nil
 }
 
 func timestampAsTime(ts *timestamppb.Timestamp) time.Time {

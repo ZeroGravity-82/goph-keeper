@@ -201,15 +201,19 @@ func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reade
 				printError(out, err)
 			}
 		case "12":
-			if err := listRecords(ctx, app, out); err != nil {
+			if err := deleteRecord(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "13":
+			if err := listRecords(ctx, app, out); err != nil {
+				printError(out, err)
+			}
+		case "14":
 			if err := logout(ctx, app, out); err != nil {
 				printError(out, err)
 			}
 			return nil
-		case "14":
+		case "15":
 			return logoutAndExit(ctx, app, out)
 		default:
 			fmt.Fprintln(out, "неизвестное действие")
@@ -231,9 +235,10 @@ func printRecordsMenu(out io.Writer) {
 9. Обновить банковскую карту
 10. Создать бинарную запись с файлом
 11. Скачать файл бинарной записи
-12. Показать список приватных записей
-13. Выйти из аккаунта
-14. Завершить приложение`)
+12. Удалить приватную запись
+13. Показать список приватных записей
+14. Выйти из аккаунта
+15. Завершить приложение`)
 }
 
 // createCredential запрашивает поля учетных данных и создает зашифрованную приватную запись.
@@ -684,6 +689,23 @@ func listRecords(ctx context.Context, app *clientApp.App, out io.Writer) error {
 	for _, item := range items {
 		fmt.Fprintf(out, "%s | %s | %s | %s\n", item.RecordID, item.Type, item.Title, item.Description)
 	}
+	return nil
+}
+
+// deleteRecord удаляет приватную запись пользователя.
+func deleteRecord(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	deleted, err := app.DeleteRecord(callCtx, recordID)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "приватная запись удалена: record_id=%s\n", deleted.RecordID)
 	return nil
 }
 
