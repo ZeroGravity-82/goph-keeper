@@ -161,15 +161,31 @@ func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reade
 				printError(out, err)
 			}
 		case "3":
-			if err := listRecords(ctx, app, out); err != nil {
+			if err := createText(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "4":
+			if err := getText(ctx, app, reader, out); err != nil {
+				printError(out, err)
+			}
+		case "5":
+			if err := createCard(ctx, app, reader, out); err != nil {
+				printError(out, err)
+			}
+		case "6":
+			if err := getCard(ctx, app, reader, out); err != nil {
+				printError(out, err)
+			}
+		case "7":
+			if err := listRecords(ctx, app, out); err != nil {
+				printError(out, err)
+			}
+		case "8":
 			if err := logout(ctx, app, out); err != nil {
 				printError(out, err)
 			}
 			return nil
-		case "5":
+		case "9":
 			return logoutAndExit(ctx, app, out)
 		default:
 			fmt.Fprintln(out, "неизвестное действие")
@@ -182,9 +198,13 @@ func printRecordsMenu(out io.Writer) {
 	_, _ = fmt.Fprintln(out, `
 1. Создать учетные данные
 2. Получить учетные данные
-3. Показать список приватных записей
-4. Выйти из аккаунта
-5. Завершить приложение`)
+3. Создать текстовую запись
+4. Получить текстовую запись
+5. Создать банковскую карту
+6. Получить банковскую карту
+7. Показать список приватных записей
+8. Выйти из аккаунта
+9. Завершить приложение`)
 }
 
 // createCredential запрашивает поля учетных данных и создает зашифрованную приватную запись.
@@ -247,6 +267,140 @@ func getCredential(ctx context.Context, app *clientApp.App, reader *bufio.Reader
 		record.Description,
 		record.Login,
 		record.Password,
+	)
+	return nil
+}
+
+// createText запрашивает поля текстовой записи и создает зашифрованную приватную запись.
+func createText(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	title, err := promptRequired(reader, out, "Название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Описание: ")
+	if err != nil {
+		return err
+	}
+	text, err := promptRequired(reader, out, "Текст: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	created, err := app.CreateText(callCtx, clientApp.CreateTextInput{
+		Title:       title,
+		Description: description,
+		Text:        text,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"создана текстовая приватная запись: record_id=%s version=%d\n",
+		created.RecordID,
+		created.Version,
+	)
+	return nil
+}
+
+// getText получает текстовую приватную запись и печатает расшифрованный payload.
+func getText(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	record, err := app.GetText(callCtx, recordID)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"record_id: %s\nназвание: %s\nописание: %s\nтекст: %s\n",
+		record.RecordID,
+		record.Title,
+		record.Description,
+		record.Text,
+	)
+	return nil
+}
+
+// createCard запрашивает поля банковской карты и создает зашифрованную приватную запись.
+func createCard(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	title, err := promptRequired(reader, out, "Название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Описание: ")
+	if err != nil {
+		return err
+	}
+	number, err := promptRequired(reader, out, "Номер карты: ")
+	if err != nil {
+		return err
+	}
+	holderName, err := promptRequired(reader, out, "Имя владельца: ")
+	if err != nil {
+		return err
+	}
+	expiresAt, err := promptRequired(reader, out, "Срок действия: ")
+	if err != nil {
+		return err
+	}
+	cvc, err := promptRequired(reader, out, "CVC: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	created, err := app.CreateCard(callCtx, clientApp.CreateCardInput{
+		Title:       title,
+		Description: description,
+		Number:      number,
+		HolderName:  holderName,
+		ExpiresAt:   expiresAt,
+		CVC:         cvc,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"создана приватная запись банковской карты: record_id=%s version=%d\n",
+		created.RecordID,
+		created.Version,
+	)
+	return nil
+}
+
+// getCard получает приватную запись банковской карты и печатает расшифрованный payload.
+func getCard(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	record, err := app.GetCard(callCtx, recordID)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"record_id: %s\nназвание: %s\nописание: %s\nномер карты: %s\nимя владельца: %s\nсрок действия: %s\nCVC: %s\n",
+		record.RecordID,
+		record.Title,
+		record.Description,
+		record.Number,
+		record.HolderName,
+		record.ExpiresAt,
+		record.CVC,
 	)
 	return nil
 }
