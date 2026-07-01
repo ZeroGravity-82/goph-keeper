@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"os"
+	"path/filepath"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 )
@@ -177,15 +180,23 @@ func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reade
 				printError(out, err)
 			}
 		case "7":
-			if err := listRecords(ctx, app, out); err != nil {
+			if err := createBinary(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "8":
+			if err := downloadBinaryFile(ctx, app, reader, out); err != nil {
+				printError(out, err)
+			}
+		case "9":
+			if err := listRecords(ctx, app, out); err != nil {
+				printError(out, err)
+			}
+		case "10":
 			if err := logout(ctx, app, out); err != nil {
 				printError(out, err)
 			}
 			return nil
-		case "9":
+		case "11":
 			return logoutAndExit(ctx, app, out)
 		default:
 			fmt.Fprintln(out, "неизвестное действие")
@@ -202,9 +213,11 @@ func printRecordsMenu(out io.Writer) {
 4. Получить текстовую запись
 5. Создать банковскую карту
 6. Получить банковскую карту
-7. Показать список приватных записей
-8. Выйти из аккаунта
-9. Завершить приложение`)
+7. Создать файловую запись
+8. Скачать файл
+9. Показать список приватных записей
+10. Выйти из аккаунта
+11. Завершить приложение`)
 }
 
 // createCredential запрашивает поля учетных данных и создает зашифрованную приватную запись.
@@ -401,6 +414,86 @@ func getCard(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out 
 		record.HolderName,
 		record.ExpiresAt,
 		record.CVC,
+	)
+	return nil
+}
+
+// createBinary запрашивает метаданные и путь к файлу, затем создает зашифрованную файловую приватную запись.
+func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	title, err := promptRequired(reader, out, "Название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Описание: ")
+	if err != nil {
+		return err
+	}
+	path, err := promptRequired(reader, out, "Путь к файлу: ")
+	if err != nil {
+		return err
+	}
+
+	file, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("не удалось прочитать файл: %w", err)
+	}
+
+	filename := filepath.Base(path)
+	contentType := mime.TypeByExtension(filepath.Ext(path))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	created, err := app.CreateBinary(callCtx, clientApp.CreateBinaryInput{
+		Title:       title,
+		Description: description,
+		Filename:    filename,
+		ContentType: contentType,
+		File:        file,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"создана файловая приватная запись: record_id=%s version=%d\n",
+		created.RecordID,
+		created.Version,
+	)
+	return nil
+}
+
+// downloadBinaryFile скачивает файл приватной записи, расшифровывает его и сохраняет по указанному пути.
+func downloadBinaryFile(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+	outputPath, err := promptRequired(reader, out, "Путь для сохранения файла: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	file, err := app.DownloadBinaryFile(callCtx, recordID)
+	if err != nil {
+		return err
+	}
+
+	if err = os.WriteFile(outputPath, file.Data, 0o600); err != nil {
+		return fmt.Errorf("не удалось сохранить файл: %w", err)
+	}
+	fmt.Fprintf(
+		out,
+		"файл сохранен: %s\nrecord_id: %s\nисходное имя: %s\nMIME-тип: %s\nразмер: %d байт\n",
+		outputPath,
+		file.RecordID,
+		file.Filename,
+		file.ContentType,
+		file.DeclaredSize,
 	)
 	return nil
 }

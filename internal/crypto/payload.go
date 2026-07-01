@@ -29,6 +29,13 @@ type binaryPayloadJSON struct {
 	Size        int64  `json:"size"`
 }
 
+// EncryptedBinaryRecordData содержит зашифрованные данные бинарной приватной записи.
+type EncryptedBinaryRecordData struct {
+	EncryptedDEK     model.EncryptedBlob
+	EncryptedPayload model.EncryptedBlob
+	EncryptedFile    model.EncryptedBlob
+}
+
 // EncryptedRecordData содержит зашифрованные данные приватной записи.
 type EncryptedRecordData struct {
 	EncryptedDEK     model.EncryptedBlob
@@ -146,6 +153,67 @@ func DecryptRecordData[T any](
 		return payload, fmt.Errorf("failed to decrypt record payload: %w", err)
 	}
 	return payload, nil
+}
+
+// EncryptBinaryRecordData шифрует payload бинарной приватной записи, содержимое файла и DEK.
+func EncryptBinaryRecordData(
+	masterKey string,
+	salt []byte,
+	payload model.BinaryPayload,
+	file []byte,
+) (EncryptedBinaryRecordData, error) {
+	kek, err := deriveKEK(masterKey, salt)
+	if err != nil {
+		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to derive KEK: %w", err)
+	}
+
+	dek, err := generateDEK()
+	if err != nil {
+		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to generate DEK: %w", err)
+	}
+
+	encryptedPayload, err := encryptPayload(payload, dek)
+	if err != nil {
+		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to encrypt binary record payload: %w", err)
+	}
+	encryptedFile, err := encrypt(file, dek)
+	if err != nil {
+		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to encrypt binary record file: %w", err)
+	}
+	encryptedDEK, err := encryptDEK(dek, kek)
+	if err != nil {
+		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to encrypt DEK: %w", err)
+	}
+
+	return EncryptedBinaryRecordData{
+		EncryptedDEK:     encryptedDEK,
+		EncryptedPayload: encryptedPayload,
+		EncryptedFile:    encryptedFile,
+	}, nil
+}
+
+// DecryptBinaryRecordFile расшифровывает файл бинарной приватной записи через DEK, сохраненный в encrypted DEK.
+func DecryptBinaryRecordFile(
+	masterKey string,
+	salt []byte,
+	encryptedDEK model.EncryptedBlob,
+	encryptedFile model.EncryptedBlob,
+) ([]byte, error) {
+	kek, err := deriveKEK(masterKey, salt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive KEK: %w", err)
+	}
+
+	dek, err := decryptDEK(encryptedDEK, kek)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt DEK: %w", err)
+	}
+
+	file, err := decrypt(encryptedFile, dek)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt binary record file: %w", err)
+	}
+	return file, nil
 }
 
 // decryptPayload расшифровывает payload приватной записи через DEK и десериализует JSON в доменную структуру.

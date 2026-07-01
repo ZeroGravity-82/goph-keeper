@@ -269,6 +269,50 @@ func TestEncryptDecryptRecordData(t *testing.T) {
 	assert.Equal(t, payload, decrypted)
 }
 
+// TestEncryptDecryptBinaryRecordData проверяет полный цикл шифрования и расшифровки бинарной приватной записи.
+func TestEncryptDecryptBinaryRecordData(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
+	file := []byte("file-secret")
+
+	// Act
+	encrypted, err := EncryptBinaryRecordData(masterKey, salt, payload, file)
+	require.NoError(t, err)
+	decryptedPayload, err := DecryptRecordData[model.BinaryPayload](masterKey, salt, EncryptedRecordData{
+		EncryptedDEK:     encrypted.EncryptedDEK,
+		EncryptedPayload: encrypted.EncryptedPayload,
+	})
+	require.NoError(t, err)
+	decryptedFile, err := DecryptBinaryRecordFile(masterKey, salt, encrypted.EncryptedDEK, encrypted.EncryptedFile)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotEmpty(t, encrypted.EncryptedDEK.Data)
+	assert.NotEmpty(t, encrypted.EncryptedPayload.Data)
+	assert.NotEmpty(t, encrypted.EncryptedFile.Data)
+	assert.Equal(t, payload, decryptedPayload)
+	assert.Equal(t, file, decryptedFile)
+}
+
+// TestDecryptBinaryRecordFile_FailWithWrongMasterKey проверяет ошибку расшифровки файла неправильным мастер-ключом.
+func TestDecryptBinaryRecordFile_FailWithWrongMasterKey(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
+	encrypted, err := EncryptBinaryRecordData(masterKey, salt, payload, []byte("file-secret"))
+	require.NoError(t, err)
+
+	// Act
+	file, err := DecryptBinaryRecordFile("wrong master key", salt, encrypted.EncryptedDEK, encrypted.EncryptedFile)
+
+	// Assert
+	require.Error(t, err)
+	assert.Nil(t, file)
+}
+
 // TestEncryptRecordData_FailWithInvalidMasterKey проверяет ошибку при некорректном мастер-ключе.
 func TestEncryptRecordData_FailWithInvalidMasterKey(t *testing.T) {
 	// Arrange
