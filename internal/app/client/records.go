@@ -17,6 +17,12 @@ type CreateRecordOutput struct {
 	Version  int64
 }
 
+// UpdateRecordOutput содержит результат обновления приватной записи.
+type UpdateRecordOutput struct {
+	RecordID string
+	Version  int64
+}
+
 // RecordListItem содержит краткую информацию о приватной записи.
 type RecordListItem struct {
 	RecordID    string
@@ -53,6 +59,44 @@ func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 		})
 	}
 	return items, nil
+}
+
+func (a *App) updateRecord(
+	ctx context.Context,
+	recordID string,
+	title string,
+	description string,
+	encryptedDEK []byte,
+	encryptedPayload []byte,
+	expectedVersion int64,
+) (UpdateRecordOutput, error) {
+	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+
+	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
+	resp, err := a.records.UpdateRecord(ctx, pb.UpdateRecordRequest_builder{
+		RecordId:         &recordID,
+		Title:            &title,
+		Description:      &description,
+		EncryptedDek:     encryptedDEK,
+		EncryptedPayload: encryptedPayload,
+		ExpectedVersion:  &expectedVersion,
+	}.Build())
+	if err != nil {
+		return UpdateRecordOutput{}, rpcError(
+			err,
+			"не удалось обновить приватную запись",
+			map[codes.Code]string{
+				codes.Unauthenticated: "сессия недействительна, войдите снова",
+				codes.InvalidArgument: "некорректные данные приватной записи",
+				codes.NotFound:        "приватная запись не найдена",
+				codes.Aborted:         "приватная запись была изменена с другого клиента, получите актуальную версию",
+			},
+		)
+	}
+
+	return UpdateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
 }
 
 func timestampAsTime(ts *timestamppb.Timestamp) time.Time {

@@ -23,9 +23,19 @@ type CreateTextInput struct {
 // TextRecord содержит расшифрованную текстовую приватную запись.
 type TextRecord struct {
 	RecordID    string
+	Version     int64
 	Title       string
 	Description string
 	Text        string
+}
+
+// UpdateTextInput содержит данные для обновления текстовой приватной записи.
+type UpdateTextInput struct {
+	RecordID        string
+	ExpectedVersion int64
+	Title           string
+	Description     string
+	Text            string
 }
 
 // CreateText шифрует payload на клиенте и создает текстовую приватную запись.
@@ -62,6 +72,30 @@ func (a *App) CreateText(ctx context.Context, in CreateTextInput) (CreateRecordO
 	}
 
 	return CreateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+}
+
+// UpdateText шифрует обновленный payload на клиенте и обновляет текстовую приватную запись.
+func (a *App) UpdateText(ctx context.Context, in UpdateTextInput) (UpdateRecordOutput, error) {
+	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+
+	encrypted, err := crypto.EncryptRecordData(a.masterKey, a.session.MasterKeySalt, model.TextPayload{
+		Text: in.Text,
+	})
+	if err != nil {
+		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать текстовую приватную запись: %w", err)
+	}
+
+	return a.updateRecord(
+		ctx,
+		in.RecordID,
+		in.Title,
+		in.Description,
+		encrypted.EncryptedDEK.Data,
+		encrypted.EncryptedPayload.Data,
+		in.ExpectedVersion,
+	)
 }
 
 // GetText получает текстовую приватную запись и расшифровывает payload на клиенте.
@@ -105,6 +139,7 @@ func (a *App) GetText(ctx context.Context, recordID string) (TextRecord, error) 
 
 	return TextRecord{
 		RecordID:    record.GetRecordId(),
+		Version:     record.GetVersion(),
 		Title:       record.GetTitle(),
 		Description: record.GetDescription(),
 		Text:        payload.Text,

@@ -26,12 +26,25 @@ type CreateCardInput struct {
 // CardRecord содержит расшифрованную приватную запись с данными банковской карты.
 type CardRecord struct {
 	RecordID    string
+	Version     int64
 	Title       string
 	Description string
 	Number      string
 	HolderName  string
 	ExpiresAt   string
 	CVC         string
+}
+
+// UpdateCardInput содержит данные для обновления приватной записи с данными банковской карты.
+type UpdateCardInput struct {
+	RecordID        string
+	ExpectedVersion int64
+	Title           string
+	Description     string
+	Number          string
+	HolderName      string
+	ExpiresAt       string
+	CVC             string
 }
 
 // CreateCard шифрует payload на клиенте и создает приватную запись с данными банковской карты.
@@ -71,6 +84,33 @@ func (a *App) CreateCard(ctx context.Context, in CreateCardInput) (CreateRecordO
 	}
 
 	return CreateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+}
+
+// UpdateCard шифрует обновленный payload на клиенте и обновляет приватную запись с данными банковской карты.
+func (a *App) UpdateCard(ctx context.Context, in UpdateCardInput) (UpdateRecordOutput, error) {
+	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+
+	encrypted, err := crypto.EncryptRecordData(a.masterKey, a.session.MasterKeySalt, model.CardPayload{
+		Number:     in.Number,
+		HolderName: in.HolderName,
+		ExpiresAt:  in.ExpiresAt,
+		CVC:        in.CVC,
+	})
+	if err != nil {
+		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать приватную запись банковской карты: %w", err)
+	}
+
+	return a.updateRecord(
+		ctx,
+		in.RecordID,
+		in.Title,
+		in.Description,
+		encrypted.EncryptedDEK.Data,
+		encrypted.EncryptedPayload.Data,
+		in.ExpectedVersion,
+	)
 }
 
 // GetCard получает приватную запись банковской карты и расшифровывает payload на клиенте.
@@ -114,6 +154,7 @@ func (a *App) GetCard(ctx context.Context, recordID string) (CardRecord, error) 
 
 	return CardRecord{
 		RecordID:    record.GetRecordId(),
+		Version:     record.GetVersion(),
 		Title:       record.GetTitle(),
 		Description: record.GetDescription(),
 		Number:      payload.Number,

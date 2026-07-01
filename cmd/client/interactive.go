@@ -9,6 +9,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 )
@@ -164,39 +165,51 @@ func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reade
 				printError(out, err)
 			}
 		case "3":
-			if err := createText(ctx, app, reader, out); err != nil {
+			if err := updateCredential(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "4":
-			if err := getText(ctx, app, reader, out); err != nil {
+			if err := createText(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "5":
-			if err := createCard(ctx, app, reader, out); err != nil {
+			if err := getText(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "6":
-			if err := getCard(ctx, app, reader, out); err != nil {
+			if err := updateText(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "7":
-			if err := createBinary(ctx, app, reader, out); err != nil {
+			if err := createCard(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "8":
-			if err := downloadBinaryFile(ctx, app, reader, out); err != nil {
+			if err := getCard(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "9":
-			if err := listRecords(ctx, app, out); err != nil {
+			if err := updateCard(ctx, app, reader, out); err != nil {
 				printError(out, err)
 			}
 		case "10":
+			if err := createBinary(ctx, app, reader, out); err != nil {
+				printError(out, err)
+			}
+		case "11":
+			if err := downloadBinaryFile(ctx, app, reader, out); err != nil {
+				printError(out, err)
+			}
+		case "12":
+			if err := listRecords(ctx, app, out); err != nil {
+				printError(out, err)
+			}
+		case "13":
 			if err := logout(ctx, app, out); err != nil {
 				printError(out, err)
 			}
 			return nil
-		case "11":
+		case "14":
 			return logoutAndExit(ctx, app, out)
 		default:
 			fmt.Fprintln(out, "неизвестное действие")
@@ -209,15 +222,18 @@ func printRecordsMenu(out io.Writer) {
 	_, _ = fmt.Fprintln(out, `
 1. Создать учетные данные
 2. Получить учетные данные
-3. Создать текстовую запись
-4. Получить текстовую запись
-5. Создать банковскую карту
-6. Получить банковскую карту
-7. Создать файловую запись
-8. Скачать файл
-9. Показать список приватных записей
-10. Выйти из аккаунта
-11. Завершить приложение`)
+3. Обновить учетные данные
+4. Создать текстовую запись
+5. Получить текстовую запись
+6. Обновить текстовую запись
+7. Создать банковскую карту
+8. Получить банковскую карту
+9. Обновить банковскую карту
+10. Создать бинарную запись с файлом
+11. Скачать файл бинарной записи
+12. Показать список приватных записей
+13. Выйти из аккаунта
+14. Завершить приложение`)
 }
 
 // createCredential запрашивает поля учетных данных и создает зашифрованную приватную запись.
@@ -274,12 +290,62 @@ func getCredential(ctx context.Context, app *clientApp.App, reader *bufio.Reader
 	}
 	fmt.Fprintf(
 		out,
-		"record_id: %s\nназвание: %s\nописание: %s\nлогин учетной записи: %s\nпароль учетной записи: %s\n",
+		"record_id: %s\nверсия: %d\nназвание: %s\nописание: %s\nлогин учетной записи: %s\nпароль учетной записи: %s\n",
 		record.RecordID,
+		record.Version,
 		record.Title,
 		record.Description,
 		record.Login,
 		record.Password,
+	)
+	return nil
+}
+
+// updateCredential запрашивает новые поля учетных данных и обновляет зашифрованную приватную запись.
+func updateCredential(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+	expectedVersion, err := promptExpectedVersion(reader, out)
+	if err != nil {
+		return err
+	}
+	title, err := promptRequired(reader, out, "Новое название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Новое описание: ")
+	if err != nil {
+		return err
+	}
+	credentialLogin, err := promptRequired(reader, out, "Новый логин учетной записи: ")
+	if err != nil {
+		return err
+	}
+	credentialPassword, err := promptRequired(reader, out, "Новый пароль учетной записи: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	updated, err := app.UpdateCredential(callCtx, clientApp.UpdateCredentialInput{
+		RecordID:           recordID,
+		ExpectedVersion:    expectedVersion,
+		Title:              title,
+		Description:        description,
+		CredentialLogin:    credentialLogin,
+		CredentialPassword: credentialPassword,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"обновлена приватная запись с учетными данными: record_id=%s version=%d\n",
+		updated.RecordID,
+		updated.Version,
 	)
 	return nil
 }
@@ -333,11 +399,56 @@ func getText(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out 
 	}
 	fmt.Fprintf(
 		out,
-		"record_id: %s\nназвание: %s\nописание: %s\nтекст: %s\n",
+		"record_id: %s\nверсия: %d\nназвание: %s\nописание: %s\nтекст: %s\n",
 		record.RecordID,
+		record.Version,
 		record.Title,
 		record.Description,
 		record.Text,
+	)
+	return nil
+}
+
+// updateText запрашивает новые поля текстовой записи и обновляет зашифрованную приватную запись.
+func updateText(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+	expectedVersion, err := promptExpectedVersion(reader, out)
+	if err != nil {
+		return err
+	}
+	title, err := promptRequired(reader, out, "Новое название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Новое описание: ")
+	if err != nil {
+		return err
+	}
+	text, err := promptRequired(reader, out, "Новый текст: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	updated, err := app.UpdateText(callCtx, clientApp.UpdateTextInput{
+		RecordID:        recordID,
+		ExpectedVersion: expectedVersion,
+		Title:           title,
+		Description:     description,
+		Text:            text,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"обновлена текстовая приватная запись: record_id=%s version=%d\n",
+		updated.RecordID,
+		updated.Version,
 	)
 	return nil
 }
@@ -406,14 +517,74 @@ func getCard(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out 
 	}
 	fmt.Fprintf(
 		out,
-		"record_id: %s\nназвание: %s\nописание: %s\nномер карты: %s\nимя владельца: %s\nсрок действия: %s\nCVC: %s\n",
+		"record_id: %s\nверсия: %d\nназвание: %s\nописание: %s\nномер карты: %s\nимя владельца: %s\nсрок действия: %s\nCVC: %s\n",
 		record.RecordID,
+		record.Version,
 		record.Title,
 		record.Description,
 		record.Number,
 		record.HolderName,
 		record.ExpiresAt,
 		record.CVC,
+	)
+	return nil
+}
+
+// updateCard запрашивает новые поля банковской карты и обновляет зашифрованную приватную запись.
+func updateCard(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+	recordID, err := promptRequired(reader, out, "ID приватной записи: ")
+	if err != nil {
+		return err
+	}
+	expectedVersion, err := promptExpectedVersion(reader, out)
+	if err != nil {
+		return err
+	}
+	title, err := promptRequired(reader, out, "Новое название: ")
+	if err != nil {
+		return err
+	}
+	description, err := prompt(reader, out, "Новое описание: ")
+	if err != nil {
+		return err
+	}
+	number, err := promptRequired(reader, out, "Новый номер карты: ")
+	if err != nil {
+		return err
+	}
+	holderName, err := promptRequired(reader, out, "Новое имя владельца: ")
+	if err != nil {
+		return err
+	}
+	expiresAt, err := promptRequired(reader, out, "Новый срок действия: ")
+	if err != nil {
+		return err
+	}
+	cvc, err := promptRequired(reader, out, "Новый CVC: ")
+	if err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+	updated, err := app.UpdateCard(callCtx, clientApp.UpdateCardInput{
+		RecordID:        recordID,
+		ExpectedVersion: expectedVersion,
+		Title:           title,
+		Description:     description,
+		Number:          number,
+		HolderName:      holderName,
+		ExpiresAt:       expiresAt,
+		CVC:             cvc,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(
+		out,
+		"обновлена приватная запись банковской карты: record_id=%s version=%d\n",
+		updated.RecordID,
+		updated.Version,
 	)
 	return nil
 }
@@ -514,6 +685,19 @@ func listRecords(ctx context.Context, app *clientApp.App, out io.Writer) error {
 		fmt.Fprintf(out, "%s | %s | %s | %s\n", item.RecordID, item.Type, item.Title, item.Description)
 	}
 	return nil
+}
+
+// promptExpectedVersion запрашивает версию приватной записи, на основе которой выполняется обновление.
+func promptExpectedVersion(reader *bufio.Reader, out io.Writer) (int64, error) {
+	value, err := promptRequired(reader, out, "Текущая версия: ")
+	if err != nil {
+		return 0, err
+	}
+	version, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || version <= 0 {
+		return 0, errors.New("текущая версия должна быть положительным целым числом")
+	}
+	return version, nil
 }
 
 // logout завершает пользовательскую сессию и возвращает клиента в стартовое меню.

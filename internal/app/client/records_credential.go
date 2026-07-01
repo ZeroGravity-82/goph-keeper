@@ -24,10 +24,21 @@ type CreateCredentialInput struct {
 // CredentialRecord содержит расшифрованную приватную запись с учетными данными.
 type CredentialRecord struct {
 	RecordID    string
+	Version     int64
 	Title       string
 	Description string
 	Login       string
 	Password    string
+}
+
+// UpdateCredentialInput содержит данные для обновления приватной записи с учетными данными.
+type UpdateCredentialInput struct {
+	RecordID           string
+	ExpectedVersion    int64
+	Title              string
+	Description        string
+	CredentialLogin    string
+	CredentialPassword string
 }
 
 // CreateCredential шифрует payload на клиенте и создает приватную запись с учетными данными.
@@ -65,6 +76,31 @@ func (a *App) CreateCredential(ctx context.Context, in CreateCredentialInput) (C
 	}
 
 	return CreateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+}
+
+// UpdateCredential шифрует обновленный payload на клиенте и обновляет приватную запись с учетными данными.
+func (a *App) UpdateCredential(ctx context.Context, in UpdateCredentialInput) (UpdateRecordOutput, error) {
+	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+
+	encrypted, err := crypto.EncryptRecordData(a.masterKey, a.session.MasterKeySalt, model.CredentialPayload{
+		Login:    in.CredentialLogin,
+		Password: in.CredentialPassword,
+	})
+	if err != nil {
+		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать приватную запись с учетными данными: %w", err)
+	}
+
+	return a.updateRecord(
+		ctx,
+		in.RecordID,
+		in.Title,
+		in.Description,
+		encrypted.EncryptedDEK.Data,
+		encrypted.EncryptedPayload.Data,
+		in.ExpectedVersion,
+	)
 }
 
 // GetCredential получает приватную запись и расшифровывает payload на клиенте.
@@ -108,6 +144,7 @@ func (a *App) GetCredential(ctx context.Context, recordID string) (CredentialRec
 
 	return CredentialRecord{
 		RecordID:    record.GetRecordId(),
+		Version:     record.GetVersion(),
 		Title:       record.GetTitle(),
 		Description: record.GetDescription(),
 		Login:       payload.Login,
