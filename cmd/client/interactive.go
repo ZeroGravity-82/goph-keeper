@@ -261,11 +261,11 @@ func createCredential(ctx context.Context, app *clientApp.App, reader *bufio.Rea
 	if err != nil {
 		return err
 	}
-	credentialLogin, err := promptRequired(reader, out, "Логин учетной записи: ")
+	credentialLogin, err := promptRequired(reader, out, "Логин сохраняемой учетной записи: ")
 	if err != nil {
 		return err
 	}
-	credentialPassword, err := promptRequired(reader, out, "Пароль учетной записи: ")
+	credentialPassword, err := promptRequired(reader, out, "Пароль сохраняемой учетной записи: ")
 	if err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func getCredential(ctx context.Context, app *clientApp.App, reader *bufio.Reader
 	}
 	fmt.Fprintf(
 		out,
-		"record_id: %s\nверсия: %d\nназвание: %s\nописание: %s\nлогин учетной записи: %s\nпароль учетной записи: %s\n",
+		"record_id: %s\nверсия: %d\nназвание: %s\nописание: %s\nлогин сохраненной учетной записи: %s\nпароль сохраненной учетной записи: %s\n",
 		record.RecordID,
 		record.Version,
 		record.Title,
@@ -334,11 +334,11 @@ func updateCredential(ctx context.Context, app *clientApp.App, reader *bufio.Rea
 	if err != nil {
 		return err
 	}
-	credentialLogin, err := promptRequired(reader, out, "Новый логин учетной записи: ")
+	credentialLogin, err := promptRequired(reader, out, "Новый логин обновляемой учетной записи: ")
 	if err != nil {
 		return err
 	}
-	credentialPassword, err := promptRequired(reader, out, "Новый пароль учетной записи: ")
+	credentialPassword, err := promptRequired(reader, out, "Новый пароль обновляемой учетной записи: ")
 	if err != nil {
 		return err
 	}
