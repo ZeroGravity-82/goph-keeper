@@ -21,8 +21,11 @@ import (
 )
 
 type authClientFake struct {
-	registerReq *pb.RegisterRequest
-	loginResp   *pb.LoginResponse
+	registerReq  *pb.RegisterRequest
+	loginResp    *pb.LoginResponse
+	refreshReq   *pb.RefreshRequest
+	refreshResp  *pb.RefreshResponse
+	refreshError error
 }
 
 func (f *authClientFake) Register(
@@ -49,11 +52,12 @@ func (f *authClientFake) Login(
 }
 
 func (f *authClientFake) Refresh(
-	context.Context,
-	*pb.RefreshRequest,
-	...grpc.CallOption,
+	_ context.Context,
+	req *pb.RefreshRequest,
+	_ ...grpc.CallOption,
 ) (*pb.RefreshResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+	f.refreshReq = req
+	return f.refreshResp, f.refreshError
 }
 
 func (f *authClientFake) Logout(
@@ -68,6 +72,8 @@ type recordsClientFake struct {
 	nextID         int
 	records        map[string]*pb.Record
 	encryptedFiles map[string][]byte
+	listCalls      int
+	listUnauthOnce bool
 }
 
 func newRecordsClientFake() *recordsClientFake {
@@ -169,6 +175,11 @@ func (f *recordsClientFake) ListRecords(
 	*pb.ListRecordsRequest,
 	...grpc.CallOption,
 ) (*pb.ListRecordsResponse, error) {
+	f.listCalls++
+	if f.listUnauthOnce && f.listCalls == 1 {
+		return nil, status.Error(codes.Unauthenticated, "access token is invalid")
+	}
+
 	ids := make([]string, 0, len(f.records))
 	for id := range f.records {
 		ids = append(ids, id)
@@ -543,6 +554,47 @@ func TestApp_CredentialRecordLifecycle(t *testing.T) {
 	_, err = app.GetCredential(ctx, created.RecordID)
 	require.Error(t, err)
 	assert.Equal(t, "приватная запись не найдена", err.Error())
+}
+
+// TestApp_ListRecordsRefreshesAccessToken проверяет, что клиент обновляет пару токенов и повторяет исходный запрос,
+// если access-токен протух во время клиентского сценария.
+func TestApp_ListRecordsRefreshesAccessToken(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	recordsClient := newRecordsClientFake()
+	recordsClient.listUnauthOnce = true
+	newAccessToken := "new-access-token"
+	newRefreshToken := "new-refresh-token"
+	authClient := &authClientFake{
+		refreshResp: pb.RefreshResponse_builder{
+			AccessToken:  &newAccessToken,
+			RefreshToken: &newRefreshToken,
+		}.Build(),
+	}
+	app := newStartedTestApp(t)
+	app.auth = authClient
+	app.records = recordsClient
+
+	_, err := app.CreateCredential(ctx, CreateCredentialInput{
+		Title:              "GitHub",
+		CredentialLogin:    "octocat",
+		CredentialPassword: "secret",
+	})
+	require.NoError(t, err)
+	oldRefreshToken := app.session.RefreshToken
+
+	// Act
+	items, err := app.ListRecords(ctx)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "GitHub", items[0].Title)
+	assert.Equal(t, 2, recordsClient.listCalls)
+	require.NotNil(t, authClient.refreshReq)
+	assert.Equal(t, oldRefreshToken, authClient.refreshReq.GetRefreshToken())
+	assert.Equal(t, newAccessToken, app.session.AccessToken)
+	assert.Equal(t, newRefreshToken, app.session.RefreshToken)
 }
 
 // TestApp_TextRecordRoundTrip выполняет для текстовой приватной записи ограниченную проверку - маппинг payload через
