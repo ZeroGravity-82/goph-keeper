@@ -543,6 +543,7 @@ func TestApp_CredentialRecordLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, created.RecordID, items[0].RecordID)
+	assert.Equal(t, "credential", items[0].Type)
 	assert.Equal(t, "GitHub updated", items[0].Title)
 
 	// Act
