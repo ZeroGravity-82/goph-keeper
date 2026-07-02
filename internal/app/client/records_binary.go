@@ -192,7 +192,7 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 		in.File,
 	)
 	if err != nil {
-		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать бинарную приватную запись: %w", err)
+		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать новый файл бинарной приватной записи: %w", err)
 	}
 
 	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
@@ -228,7 +228,7 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 	if err != nil {
 		return UpdateRecordOutput{}, rpcError(
 			err,
-			"не удалось обновить бинарную приватную запись",
+			"не удалось заменить файл бинарной приватной записи",
 			map[codes.Code]string{
 				codes.Unauthenticated:    "сессия недействительна, войдите снова",
 				codes.InvalidArgument:    "некорректные данные бинарной приватной записи",

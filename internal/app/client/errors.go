@@ -10,6 +10,9 @@ import (
 
 func rpcError(err error, fallback string, messages map[codes.Code]string) error {
 	code := status.Code(err)
+	if code == codes.Unknown {
+		return err
+	}
 	if message, ok := messages[code]; ok {
 		return errors.New(message)
 	}

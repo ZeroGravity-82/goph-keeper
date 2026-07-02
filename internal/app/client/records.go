@@ -47,7 +47,7 @@ func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 	})
 	if err != nil {
 		return nil, rpcError(err, "не удалось получить список приватных записей", map[codes.Code]string{
-			codes.Unauthenticated: "сессия недействительна, в аккаунт войдите снова",
+			codes.Unauthenticated: "сессия недействительна, войдите снова",
 		})
 	}
 
