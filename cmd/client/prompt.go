@@ -13,6 +13,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type requiredInputError struct {
+	message string
+}
+
+func (e requiredInputError) Error() string {
+	return e.message
+}
+
 // promptSecret запрашивает секретное значение и скрывает ввод, если stdin является терминалом.
 //
 // Если ввод идет не из терминала, функция использует обычный prompt. Это упрощает тестирование и позволяет запускать
@@ -102,14 +110,39 @@ func readLineFromFile(file *os.File) (string, error) {
 
 // promptRequired запрашивает обязательное значение и возвращает ошибку при пустом вводе.
 func promptRequired(reader *bufio.Reader, out io.Writer, label string) (string, error) {
+	return promptRequiredNamed(reader, out, label, strings.TrimSuffix(label, ": "))
+}
+
+// promptRequiredNamed запрашивает обязательное значение и использует fieldName в сообщении об ошибке.
+func promptRequiredNamed(reader *bufio.Reader, out io.Writer, label string, fieldName string) (string, error) {
+	return promptRequiredWithError(reader, out, label, fmt.Sprintf("%s обязателен", fieldName))
+}
+
+// promptRequiredWithError запрашивает обязательное значение и возвращает requiredError при пустом вводе.
+func promptRequiredWithError(reader *bufio.Reader, out io.Writer, label string, requiredError string) (string, error) {
 	value, err := prompt(reader, out, label)
 	if err != nil {
 		return "", err
 	}
 	if value == "" {
-		return "", fmt.Errorf("%s обязателен", strings.TrimSuffix(label, ": "))
+		return "", requiredInputError{message: requiredError}
 	}
 	return value, nil
+}
+
+// promptRequiredRetry повторяет запрос обязательного значения, пока пользователь не введет непустую строку.
+func promptRequiredRetry(reader *bufio.Reader, out io.Writer, label string, requiredError string) (string, error) {
+	for {
+		value, err := promptRequiredWithError(reader, out, label, requiredError)
+		if err == nil {
+			return value, nil
+		}
+		var requiredErr requiredInputError
+		if !errors.As(err, &requiredErr) {
+			return "", err
+		}
+		printError(out, err)
+	}
 }
 
 // prompt печатает приглашение, читает одну строку пользовательского ввода и нормализует ее.
@@ -122,11 +155,76 @@ func prompt(reader *bufio.Reader, out io.Writer, label string) (string, error) {
 	return normalizeInput(value)
 }
 
-// normalizeInput удаляет пробельные символы по краям и проверяет корректность UTF-8.
+// normalizeInput применяет управляющие символы терминального ввода, удаляет пробельные символы по краям и проверяет
+// корректность UTF-8.
 func normalizeInput(value string) (string, error) {
+	value = applyTerminalControls(value)
 	value = strings.TrimSpace(value)
 	if !utf8.ValidString(value) {
 		return "", errors.New("ввод должен быть корректной UTF-8 строкой")
 	}
 	return value, nil
+}
+
+func applyTerminalControls(value string) string {
+	input := []byte(value)
+	output := make([]byte, 0, len(input))
+	for i := 0; i < len(input); i++ {
+		switch input[i] {
+		case '\b', 0x7f:
+			output = eraseLastInputRune(output)
+		case 0x1b:
+			i = skipEscapeSequence(input, i)
+		default:
+			if input[i] < utf8.RuneSelf {
+				output = append(output, input[i])
+				continue
+			}
+			r, size := utf8.DecodeRune(input[i:])
+			if r == utf8.RuneError && size == 1 {
+				output = append(output, input[i])
+				continue
+			}
+			output = append(output, input[i:i+size]...)
+			i += size - 1
+		}
+	}
+	return string(dropInvalidUTF8Bytes(output))
+}
+
+func eraseLastInputRune(value []byte) []byte {
+	if len(value) == 0 {
+		return value
+	}
+	_, size := utf8.DecodeLastRune(value)
+	if size <= 1 {
+		return value[:len(value)-1]
+	}
+	return value[:len(value)-size]
+}
+
+func skipEscapeSequence(input []byte, start int) int {
+	for i := start + 1; i < len(input); i++ {
+		if input[i] >= '@' && input[i] <= '~' {
+			return i
+		}
+	}
+	return len(input) - 1
+}
+
+func dropInvalidUTF8Bytes(input []byte) []byte {
+	output := make([]byte, 0, len(input))
+	for i := 0; i < len(input); i++ {
+		if input[i] < utf8.RuneSelf {
+			output = append(output, input[i])
+			continue
+		}
+		r, size := utf8.DecodeRune(input[i:])
+		if r == utf8.RuneError && size == 1 {
+			continue
+		}
+		output = append(output, input[i:i+size]...)
+		i += size - 1
+	}
+	return output
 }

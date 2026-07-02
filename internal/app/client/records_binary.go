@@ -44,6 +44,17 @@ type UpdateBinaryMetadataInput struct {
 	Description     string
 }
 
+// BinaryRecord содержит расшифрованное описание бинарной приватной записи без содержимого файла.
+type BinaryRecord struct {
+	RecordID    string
+	Version     int64
+	Title       string
+	Description string
+	Filename    string
+	ContentType string
+	Size        int64
+}
+
 // BinaryFile содержит расшифрованный файл бинарной приватной записи.
 type BinaryFile struct {
 	RecordID     string
@@ -245,6 +256,60 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 	}
 
 	return UpdateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+}
+
+// GetBinary получает метаданные бинарной приватной записи и расшифровывает описание файла на клиенте.
+func (a *App) GetBinary(ctx context.Context, recordID string) (BinaryRecord, error) {
+	if err := a.requireSession(); err != nil {
+		return BinaryRecord{}, err
+	}
+
+	var resp *pb.GetRecordResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+		return err
+	})
+	if err != nil {
+		return BinaryRecord{}, rpcError(
+			err,
+			"не удалось получить бинарную приватную запись",
+			map[codes.Code]string{
+				codes.Unauthenticated: "сессия недействительна, войдите снова",
+				codes.InvalidArgument: "некорректный идентификатор приватной записи",
+				codes.NotFound:        "приватная запись не найдена",
+			},
+		)
+	}
+	record := resp.GetRecord()
+	if record == nil {
+		return BinaryRecord{}, errors.New("сервер вернул пустую приватную запись")
+	}
+	if record.GetType() != pb.RecordType_RECORD_TYPE_BINARY {
+		return BinaryRecord{}, fmt.Errorf("приватная запись %s не является бинарной", recordID)
+	}
+
+	payload, err := crypto.DecryptRecordData[model.BinaryPayload](
+		a.masterKey,
+		a.session.MasterKeySalt,
+		crypto.EncryptedRecordData{
+			EncryptedDEK:     model.EncryptedBlob{Data: record.GetEncryptedDek()},
+			EncryptedPayload: model.EncryptedBlob{Data: record.GetEncryptedPayload()},
+		},
+	)
+	if err != nil {
+		return BinaryRecord{}, fmt.Errorf("не удалось расшифровать описание файла: %w", err)
+	}
+
+	return BinaryRecord{
+		RecordID:    record.GetRecordId(),
+		Version:     record.GetVersion(),
+		Title:       record.GetTitle(),
+		Description: record.GetDescription(),
+		Filename:    payload.Filename,
+		ContentType: payload.ContentType,
+		Size:        payload.Size,
+	}, nil
 }
 
 // DownloadBinaryFile скачивает зашифрованный файл, расшифровывает его на клиенте и возвращает исходные данные.
