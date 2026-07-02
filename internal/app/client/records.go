@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
 )
 
@@ -55,7 +56,7 @@ func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 	for _, item := range resp.GetItems() {
 		items = append(items, RecordListItem{
 			RecordID:    item.GetRecordId(),
-			Type:        item.GetType().String(),
+			Type:        recordTypeString(item.GetType()),
 			Title:       item.GetTitle(),
 			Description: item.GetDescription(),
 			CreatedAt:   timestampAsTime(item.GetCreatedAt()),
@@ -63,6 +64,21 @@ func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 		})
 	}
 	return items, nil
+}
+
+func recordTypeString(recordType pb.RecordType) string {
+	switch recordType {
+	case pb.RecordType_RECORD_TYPE_CREDENTIAL:
+		return string(model.RecordTypeCredential)
+	case pb.RecordType_RECORD_TYPE_TEXT:
+		return string(model.RecordTypeText)
+	case pb.RecordType_RECORD_TYPE_CARD:
+		return string(model.RecordTypeCard)
+	case pb.RecordType_RECORD_TYPE_BINARY:
+		return string(model.RecordTypeBinary)
+	default:
+		return "unknown"
+	}
 }
 
 func (a *App) updateRecord(
