@@ -10,7 +10,6 @@ import (
 	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
-	"zerogravity-82/goph-keeper/internal/transport/grpcclient"
 )
 
 // CreateTextInput содержит данные для создания текстовой приватной записи.
@@ -52,14 +51,18 @@ func (a *App) CreateText(ctx context.Context, in CreateTextInput) (CreateRecordO
 	}
 
 	recordType := pb.RecordType_RECORD_TYPE_TEXT
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.CreateRecord(ctx, pb.CreateRecordRequest_builder{
-		Type:             &recordType,
-		Title:            &in.Title,
-		Description:      &in.Description,
-		EncryptedDek:     encrypted.EncryptedDEK.Data,
-		EncryptedPayload: encrypted.EncryptedPayload.Data,
-	}.Build())
+	var resp *pb.CreateRecordResponse
+	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.CreateRecord(ctx, pb.CreateRecordRequest_builder{
+			Type:             &recordType,
+			Title:            &in.Title,
+			Description:      &in.Description,
+			EncryptedDek:     encrypted.EncryptedDEK.Data,
+			EncryptedPayload: encrypted.EncryptedPayload.Data,
+		}.Build())
+		return err
+	})
 	if err != nil {
 		return CreateRecordOutput{}, rpcError(
 			err,
@@ -100,12 +103,12 @@ func (a *App) UpdateText(ctx context.Context, in UpdateTextInput) (UpdateRecordO
 
 // GetText получает текстовую приватную запись и расшифровывает payload на клиенте.
 func (a *App) GetText(ctx context.Context, recordID string) (TextRecord, error) {
-	if err := a.requireSession(); err != nil {
-		return TextRecord{}, err
-	}
-
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+	var resp *pb.GetRecordResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+		return err
+	})
 	if err != nil {
 		return TextRecord{}, rpcError(
 			err,

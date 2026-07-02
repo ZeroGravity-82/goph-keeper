@@ -12,7 +12,6 @@ import (
 	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
-	"zerogravity-82/goph-keeper/internal/transport/grpcclient"
 )
 
 const maxPlainBinaryFileSize = 100 * 1024 * 1024
@@ -80,37 +79,34 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 		return CreateRecordOutput{}, fmt.Errorf("не удалось зашифровать бинарную приватную запись: %w", err)
 	}
 
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	stream, err := a.records.CreateBinaryRecord(ctx)
-	if err != nil {
-		return CreateRecordOutput{}, rpcError(
-			err,
-			"не удалось начать создание бинарной приватной записи",
-			map[codes.Code]string{codes.Unauthenticated: "сессия недействительна, войдите снова"},
-		)
-	}
-
 	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
 	encryptedSize := int64(len(encrypted.EncryptedFile.Data))
-	if err = stream.Send(pb.CreateBinaryRecordRequest_builder{
-		Metadata: pb.CreateBinaryRecordMetadata_builder{
-			Title:            &in.Title,
-			Description:      &in.Description,
-			EncryptedDek:     encrypted.EncryptedDEK.Data,
-			EncryptedPayload: encrypted.EncryptedPayload.Data,
-			EncryptedSize:    &encryptedSize,
-			UploadMode:       &uploadMode,
-		}.Build(),
-	}.Build()); err != nil {
-		return CreateRecordOutput{}, rpcError(err, "не удалось отправить метаданные файла", nil)
-	}
-	if err = stream.Send(pb.CreateBinaryRecordRequest_builder{
-		Chunk: encrypted.EncryptedFile.Data,
-	}.Build()); err != nil {
-		return CreateRecordOutput{}, rpcError(err, "не удалось отправить файл", nil)
-	}
-
-	resp, err := stream.CloseAndRecv()
+	var resp *pb.CreateBinaryRecordResponse
+	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		stream, err := a.records.CreateBinaryRecord(ctx)
+		if err != nil {
+			return err
+		}
+		if err = stream.Send(pb.CreateBinaryRecordRequest_builder{
+			Metadata: pb.CreateBinaryRecordMetadata_builder{
+				Title:            &in.Title,
+				Description:      &in.Description,
+				EncryptedDek:     encrypted.EncryptedDEK.Data,
+				EncryptedPayload: encrypted.EncryptedPayload.Data,
+				EncryptedSize:    &encryptedSize,
+				UploadMode:       &uploadMode,
+			}.Build(),
+		}.Build()); err != nil {
+			return err
+		}
+		if err = stream.Send(pb.CreateBinaryRecordRequest_builder{
+			Chunk: encrypted.EncryptedFile.Data,
+		}.Build()); err != nil {
+			return err
+		}
+		resp, err = stream.CloseAndRecv()
+		return err
+	})
 	if err != nil {
 		return CreateRecordOutput{}, rpcError(
 			err,
@@ -137,8 +133,12 @@ func (a *App) UpdateBinaryMetadata(ctx context.Context, in UpdateBinaryMetadataI
 		return UpdateRecordOutput{}, err
 	}
 
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &in.RecordID}.Build())
+	var resp *pb.GetRecordResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &in.RecordID}.Build())
+		return err
+	})
 	if err != nil {
 		return UpdateRecordOutput{}, rpcError(
 			err,
@@ -195,39 +195,36 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать бинарную приватную запись: %w", err)
 	}
 
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	stream, err := a.records.UpdateBinaryRecord(ctx)
-	if err != nil {
-		return UpdateRecordOutput{}, rpcError(
-			err,
-			"не удалось начать обновление бинарной приватной записи",
-			map[codes.Code]string{codes.Unauthenticated: "сессия недействительна, войдите снова"},
-		)
-	}
-
 	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
 	encryptedSize := int64(len(encrypted.EncryptedFile.Data))
-	if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
-		Metadata: pb.UpdateBinaryRecordMetadata_builder{
-			RecordId:         &in.RecordID,
-			Title:            &in.Title,
-			Description:      &in.Description,
-			EncryptedDek:     encrypted.EncryptedDEK.Data,
-			EncryptedPayload: encrypted.EncryptedPayload.Data,
-			EncryptedSize:    &encryptedSize,
-			UploadMode:       &uploadMode,
-			ExpectedVersion:  &in.ExpectedVersion,
-		}.Build(),
-	}.Build()); err != nil {
-		return UpdateRecordOutput{}, rpcError(err, "не удалось отправить метаданные файла", nil)
-	}
-	if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
-		Chunk: encrypted.EncryptedFile.Data,
-	}.Build()); err != nil {
-		return UpdateRecordOutput{}, rpcError(err, "не удалось отправить файл", nil)
-	}
-
-	resp, err := stream.CloseAndRecv()
+	var resp *pb.UpdateBinaryRecordResponse
+	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		stream, err := a.records.UpdateBinaryRecord(ctx)
+		if err != nil {
+			return err
+		}
+		if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
+			Metadata: pb.UpdateBinaryRecordMetadata_builder{
+				RecordId:         &in.RecordID,
+				Title:            &in.Title,
+				Description:      &in.Description,
+				EncryptedDek:     encrypted.EncryptedDEK.Data,
+				EncryptedPayload: encrypted.EncryptedPayload.Data,
+				EncryptedSize:    &encryptedSize,
+				UploadMode:       &uploadMode,
+				ExpectedVersion:  &in.ExpectedVersion,
+			}.Build(),
+		}.Build()); err != nil {
+			return err
+		}
+		if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
+			Chunk: encrypted.EncryptedFile.Data,
+		}.Build()); err != nil {
+			return err
+		}
+		resp, err = stream.CloseAndRecv()
+		return err
+	})
 	if err != nil {
 		return UpdateRecordOutput{}, rpcError(
 			err,
@@ -256,8 +253,12 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 		return BinaryFile{}, err
 	}
 
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+	var resp *pb.GetRecordResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+		return err
+	})
 	if err != nil {
 		return BinaryFile{}, rpcError(
 			err,
@@ -289,11 +290,30 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 		return BinaryFile{}, fmt.Errorf("не удалось расшифровать описание файла: %w", err)
 	}
 
-	stream, err := a.records.DownloadFile(ctx, pb.DownloadFileRequest_builder{RecordId: &recordID}.Build())
+	var encryptedFile bytes.Buffer
+	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		encryptedFile.Reset()
+		stream, err := a.records.DownloadFile(ctx, pb.DownloadFileRequest_builder{RecordId: &recordID}.Build())
+		if err != nil {
+			return err
+		}
+		for {
+			chunk, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				return nil
+			}
+			if recvErr != nil {
+				return recvErr
+			}
+			if _, err = encryptedFile.Write(chunk.GetChunk()); err != nil {
+				return fmt.Errorf("не удалось собрать скачанный файл: %w", err)
+			}
+		}
+	})
 	if err != nil {
 		return BinaryFile{}, rpcError(
 			err,
-			"не удалось начать скачивание файла",
+			"не удалось скачать файл",
 			map[codes.Code]string{
 				codes.Unauthenticated:    "сессия недействительна, войдите снова",
 				codes.InvalidArgument:    "некорректный идентификатор приватной записи",
@@ -301,29 +321,6 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 				codes.FailedPrecondition: "файл еще не загружен",
 			},
 		)
-	}
-
-	var encryptedFile bytes.Buffer
-	for {
-		chunk, recvErr := stream.Recv()
-		if errors.Is(recvErr, io.EOF) {
-			break
-		}
-		if recvErr != nil {
-			return BinaryFile{}, rpcError(
-				recvErr,
-				"не удалось скачать файл",
-				map[codes.Code]string{
-					codes.Unauthenticated:    "сессия недействительна, войдите снова",
-					codes.InvalidArgument:    "некорректный идентификатор приватной записи",
-					codes.NotFound:           "приватная запись не найдена",
-					codes.FailedPrecondition: "файл еще не загружен",
-				},
-			)
-		}
-		if _, err = encryptedFile.Write(chunk.GetChunk()); err != nil {
-			return BinaryFile{}, fmt.Errorf("не удалось собрать скачанный файл: %w", err)
-		}
 	}
 
 	file, err := crypto.DecryptBinaryRecordFile(

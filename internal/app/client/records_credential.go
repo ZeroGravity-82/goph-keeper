@@ -10,7 +10,6 @@ import (
 	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
-	"zerogravity-82/goph-keeper/internal/transport/grpcclient"
 )
 
 // CreateCredentialInput содержит данные для создания приватной записи с учетными данными.
@@ -56,14 +55,18 @@ func (a *App) CreateCredential(ctx context.Context, in CreateCredentialInput) (C
 	}
 
 	recordType := pb.RecordType_RECORD_TYPE_CREDENTIAL
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.CreateRecord(ctx, pb.CreateRecordRequest_builder{
-		Type:             &recordType,
-		Title:            &in.Title,
-		Description:      &in.Description,
-		EncryptedDek:     encrypted.EncryptedDEK.Data,
-		EncryptedPayload: encrypted.EncryptedPayload.Data,
-	}.Build())
+	var resp *pb.CreateRecordResponse
+	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.CreateRecord(ctx, pb.CreateRecordRequest_builder{
+			Type:             &recordType,
+			Title:            &in.Title,
+			Description:      &in.Description,
+			EncryptedDek:     encrypted.EncryptedDEK.Data,
+			EncryptedPayload: encrypted.EncryptedPayload.Data,
+		}.Build())
+		return err
+	})
 	if err != nil {
 		return CreateRecordOutput{}, rpcError(
 			err,
@@ -105,12 +108,12 @@ func (a *App) UpdateCredential(ctx context.Context, in UpdateCredentialInput) (U
 
 // GetCredential получает приватную запись и расшифровывает payload на клиенте.
 func (a *App) GetCredential(ctx context.Context, recordID string) (CredentialRecord, error) {
-	if err := a.requireSession(); err != nil {
-		return CredentialRecord{}, err
-	}
-
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+	var resp *pb.GetRecordResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+		return err
+	})
 	if err != nil {
 		return CredentialRecord{}, rpcError(
 			err,

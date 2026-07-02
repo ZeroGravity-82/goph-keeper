@@ -8,7 +8,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"zerogravity-82/goph-keeper/internal/pb"
-	"zerogravity-82/goph-keeper/internal/transport/grpcclient"
 )
 
 // CreateRecordOutput содержит результат создания приватной записи.
@@ -40,12 +39,12 @@ type RecordListItem struct {
 
 // ListRecords возвращает список приватных записей пользователя.
 func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
-	if err := a.requireSession(); err != nil {
-		return nil, err
-	}
-
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.ListRecords(ctx, pb.ListRecordsRequest_builder{}.Build())
+	var resp *pb.ListRecordsResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.ListRecords(ctx, pb.ListRecordsRequest_builder{}.Build())
+		return err
+	})
 	if err != nil {
 		return nil, rpcError(err, "не удалось получить список приватных записей", map[codes.Code]string{
 			codes.Unauthenticated: "сессия недействительна, в аккаунт войдите снова",
@@ -75,19 +74,19 @@ func (a *App) updateRecord(
 	encryptedPayload []byte,
 	expectedVersion int64,
 ) (UpdateRecordOutput, error) {
-	if err := a.requireSession(); err != nil {
-		return UpdateRecordOutput{}, err
-	}
-
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.UpdateRecord(ctx, pb.UpdateRecordRequest_builder{
-		RecordId:         &recordID,
-		Title:            &title,
-		Description:      &description,
-		EncryptedDek:     encryptedDEK,
-		EncryptedPayload: encryptedPayload,
-		ExpectedVersion:  &expectedVersion,
-	}.Build())
+	var resp *pb.UpdateRecordResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.UpdateRecord(ctx, pb.UpdateRecordRequest_builder{
+			RecordId:         &recordID,
+			Title:            &title,
+			Description:      &description,
+			EncryptedDek:     encryptedDEK,
+			EncryptedPayload: encryptedPayload,
+			ExpectedVersion:  &expectedVersion,
+		}.Build())
+		return err
+	})
 	if err != nil {
 		return UpdateRecordOutput{}, rpcError(
 			err,
@@ -106,12 +105,12 @@ func (a *App) updateRecord(
 
 // DeleteRecord удаляет приватную запись пользователя.
 func (a *App) DeleteRecord(ctx context.Context, recordID string) (DeleteRecordOutput, error) {
-	if err := a.requireSession(); err != nil {
-		return DeleteRecordOutput{}, err
-	}
-
-	ctx = grpcclient.WithAccessToken(ctx, a.session.AccessToken)
-	resp, err := a.records.DeleteRecord(ctx, pb.DeleteRecordRequest_builder{RecordId: &recordID}.Build())
+	var resp *pb.DeleteRecordResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.DeleteRecord(ctx, pb.DeleteRecordRequest_builder{RecordId: &recordID}.Build())
+		return err
+	})
 	if err != nil {
 		return DeleteRecordOutput{}, rpcError(
 			err,

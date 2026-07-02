@@ -6,10 +6,12 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
+	"zerogravity-82/goph-keeper/internal/transport/grpcclient"
 )
 
 // AuthSession содержит токены, пользовательскую соль и верификатор мастер-ключа, полученные после аутентификации.
@@ -112,6 +114,51 @@ func validateSessionTokens(session AuthSession) error {
 	return nil
 }
 
+// withAccessTokenRefresh выполняет запрос с текущим access-токеном.
+// Если сервер вернул Unauthenticated, метод один раз обновляет пару токенов и повторяет исходный запрос.
+func (a *App) withAccessTokenRefresh(ctx context.Context, call func(context.Context) error) error {
+	if err := a.requireSession(); err != nil {
+		return err
+	}
+
+	err := call(grpcclient.WithAccessToken(ctx, a.session.AccessToken))
+	if status.Code(err) != codes.Unauthenticated {
+		return err
+	}
+
+	if err = a.refreshSession(ctx); err != nil {
+		return err
+	}
+	return call(grpcclient.WithAccessToken(ctx, a.session.AccessToken))
+}
+
+func (a *App) refreshSession(ctx context.Context) error {
+	refreshToken := a.session.RefreshToken
+	resp, err := a.auth.Refresh(ctx, pb.RefreshRequest_builder{RefreshToken: &refreshToken}.Build())
+	if err != nil {
+		if status.Code(err) == codes.Unauthenticated {
+			a.clearSession()
+			return errors.New("сессия истекла, войдите в аккаунт снова")
+		}
+		return err
+	}
+	session := a.session
+	session.AccessToken = resp.GetAccessToken()
+	session.RefreshToken = resp.GetRefreshToken()
+	if err = validateSessionTokens(session); err != nil {
+		return err
+	}
+
+	a.session = session
+	return nil
+}
+
+func (a *App) clearSession() {
+	a.session = AuthSession{}
+	a.masterKey = ""
+	a.loggedIn = false
+}
+
 // Logout завершает текущую пользовательскую сессию и очищает ее из памяти процесса.
 func (a *App) Logout(ctx context.Context) error {
 	if !a.loggedIn {
@@ -127,8 +174,6 @@ func (a *App) Logout(ctx context.Context) error {
 		})
 	}
 
-	a.session = AuthSession{}
-	a.masterKey = ""
-	a.loggedIn = false
+	a.clearSession()
 	return nil
 }
