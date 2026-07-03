@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,6 +47,38 @@ func Test_promptRequiredRetry_RepeatsEmptyInput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "file.txt", value)
 	assert.Contains(t, out.String(), "ошибка: путь обязателен")
+}
+
+// Test_promptRequiredRetryCancelable_ReturnsCancel проверяет, что обязательный промпт с повтором ввода завершает
+// действие по команде отмены и не печатает ее как ошибку валидации.
+func Test_promptRequiredRetryCancelable_ReturnsCancel(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString(":q\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	value, err := promptRequiredRetryCancelable(reader, out, "Название: ", "название обязательно")
+
+	// Assert
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errActionCanceled))
+	assert.Empty(t, value)
+	assert.NotContains(t, out.String(), "ошибка:")
+}
+
+// Test_promptCancelable_AcceptsRussianCancel проверяет, что обычный отменяемый промпт принимает команду отмены на
+// русском языке.
+func Test_promptCancelable_AcceptsRussianCancel(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("отмена\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	_, err := promptCancelable(reader, out, "Описание: ")
+
+	// Assert
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, errActionCanceled))
 }
 
 // Test_normalizeInput_AppliesBackspaceForASCII проверяет, что управляющий символ Backspace не попадает в команду меню.

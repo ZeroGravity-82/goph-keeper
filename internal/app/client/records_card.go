@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 
@@ -51,12 +52,16 @@ func (a *App) CreateCard(ctx context.Context, in CreateCardInput) (CreateRecordO
 	if err := a.requireSession(); err != nil {
 		return CreateRecordOutput{}, err
 	}
+	normalizedCard, err := validateAndNormalizeCard(in.Number, in.HolderName, in.ExpiresAt, in.CVC)
+	if err != nil {
+		return CreateRecordOutput{}, err
+	}
 
 	encrypted, err := crypto.EncryptRecordData(a.masterKey, a.session.MasterKeySalt, model.CardPayload{
-		Number:     in.Number,
-		HolderName: in.HolderName,
-		ExpiresAt:  in.ExpiresAt,
-		CVC:        in.CVC,
+		Number:     normalizedCard.number,
+		HolderName: normalizedCard.holderName,
+		ExpiresAt:  normalizedCard.expiresAt,
+		CVC:        normalizedCard.cvc,
 	})
 	if err != nil {
 		return CreateRecordOutput{}, fmt.Errorf("не удалось зашифровать приватную запись банковской карты: %w", err)
@@ -94,12 +99,16 @@ func (a *App) UpdateCard(ctx context.Context, in UpdateCardInput) (UpdateRecordO
 	if err := a.requireSession(); err != nil {
 		return UpdateRecordOutput{}, err
 	}
+	normalizedCard, err := validateAndNormalizeCard(in.Number, in.HolderName, in.ExpiresAt, in.CVC)
+	if err != nil {
+		return UpdateRecordOutput{}, err
+	}
 
 	encrypted, err := crypto.EncryptRecordData(a.masterKey, a.session.MasterKeySalt, model.CardPayload{
-		Number:     in.Number,
-		HolderName: in.HolderName,
-		ExpiresAt:  in.ExpiresAt,
-		CVC:        in.CVC,
+		Number:     normalizedCard.number,
+		HolderName: normalizedCard.holderName,
+		ExpiresAt:  normalizedCard.expiresAt,
+		CVC:        normalizedCard.cvc,
 	})
 	if err != nil {
 		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать приватную запись банковской карты: %w", err)
@@ -165,4 +174,149 @@ func (a *App) GetCard(ctx context.Context, recordID string) (CardRecord, error) 
 		ExpiresAt:   payload.ExpiresAt,
 		CVC:         payload.CVC,
 	}, nil
+}
+
+type normalizedCardData struct {
+	number     string
+	holderName string
+	expiresAt  string
+	cvc        string
+}
+
+func validateAndNormalizeCard(number string, holderName string, expiresAt string, cvc string) (normalizedCardData, error) {
+	number = strings.TrimSpace(number)
+	holderName = strings.ToUpper(strings.TrimSpace(holderName))
+	expiresAt = strings.TrimSpace(expiresAt)
+	cvc = strings.TrimSpace(cvc)
+
+	normalizedNumber, err := NormalizeCardNumber(number)
+	if err != nil {
+		return normalizedCardData{}, err
+	}
+	if err = ValidateCardNumber(normalizedNumber); err != nil {
+		return normalizedCardData{}, err
+	}
+	normalizedHolderName, err := NormalizeCardHolderName(holderName)
+	if err != nil {
+		return normalizedCardData{}, err
+	}
+	if err = ValidateCardExpiration(expiresAt); err != nil {
+		return normalizedCardData{}, err
+	}
+	if err = ValidateCardCVC(cvc); err != nil {
+		return normalizedCardData{}, err
+	}
+
+	return normalizedCardData{number: normalizedNumber, holderName: normalizedHolderName, expiresAt: expiresAt, cvc: cvc}, nil
+}
+
+// ValidateCardNumber проверяет номер банковской карты по контрольной сумме.
+func ValidateCardNumber(number string) error {
+	normalizedNumber, err := NormalizeCardNumber(number)
+	if err != nil {
+		return err
+	}
+	if !validLuhn(normalizedNumber) {
+		return errors.New("неверный номер карты")
+	}
+	return nil
+}
+
+// NormalizeCardNumber проверяет номер банковской карты и возвращает его без пробелов.
+func NormalizeCardNumber(number string) (string, error) {
+	number = strings.TrimSpace(number)
+	if len(number) == 16 && isDigits(number) {
+		return number, nil
+	}
+	if len(number) == 19 &&
+		number[4] == ' ' &&
+		number[9] == ' ' &&
+		number[14] == ' ' &&
+		isDigits(number[:4]) &&
+		isDigits(number[5:9]) &&
+		isDigits(number[10:14]) &&
+		isDigits(number[15:19]) {
+		return strings.ReplaceAll(number, " ", ""), nil
+	}
+	return "", errors.New("номер карты должен содержать 16 цифр без пробелов или 4 группы по 4 цифры через пробел")
+}
+
+// NormalizeCardHolderName проверяет имя владельца банковской карты и возвращает его в верхнем регистре.
+func NormalizeCardHolderName(holderName string) (string, error) {
+	holderName = strings.ToUpper(strings.TrimSpace(holderName))
+	if holderName == "" || !isLatinLettersAndSpaces(holderName) {
+		return "", errors.New("имя владельца карты должно содержать только латинские буквы и пробелы")
+	}
+	return holderName, nil
+}
+
+// ValidateCardExpiration проверяет срок действия банковской карты в формате ММ/ГГ.
+func ValidateCardExpiration(expiresAt string) error {
+	expiresAt = strings.TrimSpace(expiresAt)
+	if !validCardExpiration(expiresAt) {
+		return errors.New("срок действия карты должен быть в формате ММ/ГГ")
+	}
+	return nil
+}
+
+// ValidateCardCVC проверяет CVC банковской карты.
+func ValidateCardCVC(cvc string) error {
+	cvc = strings.TrimSpace(cvc)
+	if len(cvc) != 3 || !isDigits(cvc) {
+		return errors.New("CVC должен содержать ровно 3 цифры")
+	}
+	return nil
+}
+
+func isDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validLuhn(number string) bool {
+	sum := 0
+	double := false
+	for i := len(number) - 1; i >= 0; i-- {
+		digit := int(number[i] - '0')
+		if double {
+			digit *= 2
+			if digit > 9 {
+				digit -= 9
+			}
+		}
+		sum += digit
+		double = !double
+	}
+	return sum%10 == 0
+}
+
+func isLatinLettersAndSpaces(value string) bool {
+	for _, r := range value {
+		if r == ' ' {
+			continue
+		}
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+func validCardExpiration(value string) bool {
+	if len(value) != 5 || value[2] != '/' {
+		return false
+	}
+	month := value[:2]
+	year := value[3:]
+	if !isDigits(month) || !isDigits(year) {
+		return false
+	}
+	return month >= "01" && month <= "12"
 }

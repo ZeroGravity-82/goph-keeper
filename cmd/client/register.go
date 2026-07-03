@@ -10,7 +10,7 @@ import (
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 )
 
-// register регистрирует пользователя, проверяет мастер-ключ и сразу открывает клиентскую сессию.
+// register регистрирует пользователя, проверяет мастер-ключ и сразу открывает пользовательскую сессию.
 func register(
 	ctx context.Context,
 	app *clientApp.App,

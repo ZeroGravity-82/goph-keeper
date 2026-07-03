@@ -13,10 +13,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// requiredInputError обозначает пустой ввод обязательного поля.
+//
+// Отдельный тип ошибки позволяет promptRequiredRetry отличать ошибку валидации обязательного поля от ошибок чтения
+// ввода и повторять запрос только в этом случае.
 type requiredInputError struct {
 	message string
 }
 
+// Error возвращает текст ошибки обязательного поля.
 func (e requiredInputError) Error() string {
 	return e.message
 }
@@ -24,7 +29,7 @@ func (e requiredInputError) Error() string {
 // promptSecret запрашивает секретное значение и скрывает ввод, если stdin является терминалом.
 //
 // Если ввод идет не из терминала, функция использует обычный prompt. Это упрощает тестирование и позволяет запускать
-// клиент с перенаправленным вводом.
+// клиента с перенаправленным вводом.
 func promptSecret(reader *bufio.Reader, in io.Reader, out io.Writer, label string) (string, error) {
 	if file, ok := in.(*os.File); ok && isTerminal(file) && reader.Buffered() == 0 {
 		fmt.Fprint(out, label)
@@ -39,6 +44,9 @@ func promptSecret(reader *bufio.Reader, in io.Reader, out io.Writer, label strin
 }
 
 // promptSecretConfirmed запрашивает секретное значение дважды и проверяет совпадение ввода.
+//
+// Это используется при задании нового секрета, чтобы пользователь не сохранил пароль или мастер-ключ с незамеченной
+// опечаткой.
 func promptSecretConfirmed(
 	reader *bufio.Reader,
 	in io.Reader,
@@ -61,12 +69,19 @@ func promptSecretConfirmed(
 }
 
 // isTerminal проверяет, что файл связан с интерактивным терминалом.
+//
+// unix.IoctlGetTermios читает настройки терминала по файловому дескриптору. Если дескриптор указывает на обычный файл,
+// пайп или перенаправленный ввод, то у него нет атрибутов терминала и вызов вернет ошибку. Поэтому успешный вызов здесь
+// используется как простой признак настоящего TTY.
 func isTerminal(file *os.File) bool {
 	_, err := unix.IoctlGetTermios(int(file.Fd()), unix.TCGETS)
 	return err == nil
 }
 
-// readSecretFromTerminal читает строку из терминала с временно отключенным отображением ввода.
+// readSecretFromTerminal читает строку из терминала со временно отключенным отображением ввода.
+//
+// Это нужно для секретных значений вроде пароля и мастер-ключа: при интерактивном вводе они не должны отображаться на
+// экране и оставаться в истории вывода терминала.
 func readSecretFromTerminal(file *os.File) (string, error) {
 	fd := int(file.Fd())
 	oldState, err := unix.IoctlGetTermios(fd, unix.TCGETS)
@@ -130,7 +145,7 @@ func promptRequiredWithError(reader *bufio.Reader, out io.Writer, label string, 
 	return value, nil
 }
 
-// promptRequiredRetry повторяет запрос обязательного значения, пока пользователь не введет непустую строку.
+// promptRequiredRetry повторяет ввод обязательного поля, если пользователь оставил его пустым.
 func promptRequiredRetry(reader *bufio.Reader, out io.Writer, label string, requiredError string) (string, error) {
 	for {
 		value, err := promptRequiredWithError(reader, out, label, requiredError)
@@ -145,7 +160,68 @@ func promptRequiredRetry(reader *bufio.Reader, out io.Writer, label string, requ
 	}
 }
 
-// prompt печатает приглашение, читает одну строку пользовательского ввода и нормализует ее.
+// promptCancelable запрашивает значение и возвращает errActionCanceled при вводе команды отмены.
+func promptCancelable(reader *bufio.Reader, out io.Writer, label string) (string, error) {
+	value, err := prompt(reader, out, label)
+	if err != nil {
+		return "", err
+	}
+	if isCancelInput(value) {
+		return "", errActionCanceled
+	}
+	return value, nil
+}
+
+// promptRequiredCancelable запрашивает обязательное значение с поддержкой команды отмены.
+func promptRequiredCancelable(reader *bufio.Reader, out io.Writer, label string) (string, error) {
+	return promptRequiredWithErrorCancelable(reader, out, label, fmt.Sprintf(
+		"%s обязателен",
+		strings.TrimSuffix(label, ": "),
+	))
+}
+
+// promptRequiredWithErrorCancelable запрашивает обязательное значение с заданным текстом ошибки и поддержкой команды
+// отмены.
+func promptRequiredWithErrorCancelable(
+	reader *bufio.Reader,
+	out io.Writer,
+	label string,
+	requiredError string,
+) (string, error) {
+	value, err := promptCancelable(reader, out, label)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", requiredInputError{message: requiredError}
+	}
+	return value, nil
+}
+
+// promptRequiredRetryCancelable повторяет запрос обязательного значения, но сразу завершает действие по команде отмены.
+func promptRequiredRetryCancelable(
+	reader *bufio.Reader,
+	out io.Writer,
+	label string,
+	requiredError string,
+) (string, error) {
+	for {
+		value, err := promptRequiredWithErrorCancelable(reader, out, label, requiredError)
+		if err == nil {
+			return value, nil
+		}
+		if errors.Is(err, errActionCanceled) {
+			return "", err
+		}
+		var requiredErr requiredInputError
+		if !errors.As(err, &requiredErr) {
+			return "", err
+		}
+		printError(out, err)
+	}
+}
+
+// prompt печатает промпт (приглашение к вводу), читает одну строку пользовательского ввода и нормализует ее.
 func prompt(reader *bufio.Reader, out io.Writer, label string) (string, error) {
 	fmt.Fprint(out, label)
 	value, err := reader.ReadString('\n')
@@ -153,6 +229,16 @@ func prompt(reader *bufio.Reader, out io.Writer, label string) (string, error) {
 		return "", fmt.Errorf("не удалось прочитать ввод: %w", err)
 	}
 	return normalizeInput(value)
+}
+
+// isCancelInput проверяет, что пользователь ввел команду отмены текущего действия.
+func isCancelInput(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case ":q", "cancel", "отмена":
+		return true
+	default:
+		return false
+	}
 }
 
 // normalizeInput применяет управляющие символы терминального ввода, удаляет пробельные символы по краям и проверяет
@@ -166,6 +252,8 @@ func normalizeInput(value string) (string, error) {
 	return value, nil
 }
 
+// applyTerminalControls учитывает управляющие байты терминального ввода: Backspace удаляет предыдущий символ,
+// ANSI escape-последовательности пропускаются, остальные символы сохраняются.
 func applyTerminalControls(value string) string {
 	input := []byte(value)
 	output := make([]byte, 0, len(input))
@@ -192,6 +280,7 @@ func applyTerminalControls(value string) string {
 	return string(dropInvalidUTF8Bytes(output))
 }
 
+// eraseLastInputRune удаляет последний введенный символ с учетом UTF-8.
 func eraseLastInputRune(value []byte) []byte {
 	if len(value) == 0 {
 		return value
@@ -203,6 +292,7 @@ func eraseLastInputRune(value []byte) []byte {
 	return value[:len(value)-size]
 }
 
+// skipEscapeSequence пропускает ANSI escape-последовательность, начиная с ESC.
 func skipEscapeSequence(input []byte, start int) int {
 	for i := start + 1; i < len(input); i++ {
 		if input[i] >= '@' && input[i] <= '~' {
@@ -212,6 +302,7 @@ func skipEscapeSequence(input []byte, start int) int {
 	return len(input) - 1
 }
 
+// dropInvalidUTF8Bytes удаляет битые байты UTF-8 из терминального ввода.
 func dropInvalidUTF8Bytes(input []byte) []byte {
 	output := make([]byte, 0, len(input))
 	for i := 0; i < len(input); i++ {
