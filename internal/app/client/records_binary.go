@@ -265,7 +265,7 @@ func (a *App) GetBinary(ctx context.Context, recordID string) (BinaryRecord, err
 	}
 
 	var resp *pb.GetRecordResponse
-	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
 		var err error
 		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
 		return err
@@ -319,7 +319,7 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 	}
 
 	var resp *pb.GetRecordResponse
-	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
 		var err error
 		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
 		return err

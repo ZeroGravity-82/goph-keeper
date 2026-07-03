@@ -41,7 +41,7 @@ type RecordListItem struct {
 // ListRecords возвращает список приватных записей пользователя.
 func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 	var resp *pb.ListRecordsResponse
-	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
 		var err error
 		resp, err = a.records.ListRecords(ctx, pb.ListRecordsRequest_builder{}.Build())
 		return err

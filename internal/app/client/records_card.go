@@ -128,7 +128,7 @@ func (a *App) UpdateCard(ctx context.Context, in UpdateCardInput) (UpdateRecordO
 // GetCard получает приватную запись банковской карты и расшифровывает payload на клиенте.
 func (a *App) GetCard(ctx context.Context, recordID string) (CardRecord, error) {
 	var resp *pb.GetRecordResponse
-	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
 		var err error
 		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
 		return err

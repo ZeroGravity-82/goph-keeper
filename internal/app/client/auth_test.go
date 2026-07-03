@@ -95,6 +95,34 @@ func TestApp_withAccessTokenRefresh_RefreshesAndRetries(t *testing.T) {
 	assert.Equal(t, newRefreshToken, app.session.RefreshToken)
 }
 
+// TestApp_withAccessTokenRefreshRetry_RetriesTransientError проверяет повтор читающего унарного gRPC-запроса с тем же
+// access-токеном после временной сетевой ошибки.
+func TestApp_withAccessTokenRefreshRetry_RetriesTransientError(t *testing.T) {
+	// Arrange
+	app := &App{
+		session: AuthSession{
+			AccessToken:  "access-token",
+			RefreshToken: "refresh-token",
+		},
+		masterKey: "master-key",
+		loggedIn:  true,
+	}
+	var tokens []string
+
+	// Act
+	err := app.withAccessTokenRefreshRetry(context.Background(), func(ctx context.Context) error {
+		tokens = append(tokens, outgoingAuthorization(t, ctx))
+		if len(tokens) == 1 {
+			return status.Error(codes.Unavailable, "server is temporarily unavailable")
+		}
+		return nil
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Bearer access-token", "Bearer access-token"}, tokens)
+}
+
 func outgoingAuthorization(t *testing.T, ctx context.Context) string {
 	t.Helper()
 

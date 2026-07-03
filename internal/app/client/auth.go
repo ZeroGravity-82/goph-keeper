@@ -132,6 +132,27 @@ func (a *App) withAccessTokenRefresh(ctx context.Context, call func(context.Cont
 	return call(grpcclient.WithAccessToken(ctx, a.session.AccessToken))
 }
 
+// withAccessTokenRefreshRetry выполняет читающий унарный gRPC-запрос с retry/backoff для временных сетевых ошибок.
+func (a *App) withAccessTokenRefreshRetry(ctx context.Context, call func(context.Context) error) error {
+	if err := a.requireSession(); err != nil {
+		return err
+	}
+
+	err := retryUnary(ctx, func(ctx context.Context) error {
+		return call(grpcclient.WithAccessToken(ctx, a.session.AccessToken))
+	})
+	if status.Code(err) != codes.Unauthenticated {
+		return err
+	}
+
+	if err = a.refreshSession(ctx); err != nil {
+		return err
+	}
+	return retryUnary(ctx, func(ctx context.Context) error {
+		return call(grpcclient.WithAccessToken(ctx, a.session.AccessToken))
+	})
+}
+
 func (a *App) refreshSession(ctx context.Context) error {
 	refreshToken := a.session.RefreshToken
 	resp, err := a.auth.Refresh(ctx, pb.RefreshRequest_builder{RefreshToken: &refreshToken}.Build())

@@ -109,7 +109,7 @@ func (a *App) UpdateCredential(ctx context.Context, in UpdateCredentialInput) (U
 // GetCredential получает приватную запись и расшифровывает payload на клиенте.
 func (a *App) GetCredential(ctx context.Context, recordID string) (CredentialRecord, error) {
 	var resp *pb.GetRecordResponse
-	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
 		var err error
 		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
 		return err

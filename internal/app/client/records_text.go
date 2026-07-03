@@ -104,7 +104,7 @@ func (a *App) UpdateText(ctx context.Context, in UpdateTextInput) (UpdateRecordO
 // GetText получает текстовую приватную запись и расшифровывает payload на клиенте.
 func (a *App) GetText(ctx context.Context, recordID string) (TextRecord, error) {
 	var resp *pb.GetRecordResponse
-	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
 		var err error
 		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
 		return err
