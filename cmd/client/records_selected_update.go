@@ -34,7 +34,7 @@ func updateSelectedCredential(
 	login, err := promptWithDefaultCancelable(
 		reader,
 		out,
-		"Новый логин сохраняемой записи с учетными данными",
+		"Новый логин",
 		record.Login,
 	)
 	if err != nil {
@@ -43,7 +43,7 @@ func updateSelectedCredential(
 	password, err := promptWithDefaultCancelable(
 		reader,
 		out,
-		"Новый пароль сохраняемой записи с учетными данными",
+		"Новый пароль",
 		record.Password,
 	)
 	if err != nil {

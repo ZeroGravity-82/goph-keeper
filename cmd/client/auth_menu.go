@@ -57,7 +57,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, in io.Reader, out io.
 				}
 			}
 		case "3":
-			confirmed, err := confirm(reader, out, "Выйти из приложения?")
+			confirmed, err := confirm(reader, out, "Завершить приложение?")
 			if err != nil {
 				return err
 			}
@@ -134,20 +134,14 @@ func promptMasterKey(reader *bufio.Reader, in io.Reader, out io.Writer) (string,
 
 // promptMasterKeyConfirmed запрашивает мастер-ключ с повторным вводом для подтверждения.
 func promptMasterKeyConfirmed(reader *bufio.Reader, in io.Reader, out io.Writer) (string, error) {
-	masterKey, err := promptSecretConfirmed(
+	return promptSecretConfirmedRequired(
 		reader,
 		in,
 		out,
 		"Мастер-ключ: ",
 		"Повторите мастер-ключ: ",
+		"мастер-ключ обязателен",
 	)
-	if err != nil {
-		return "", err
-	}
-	if masterKey == "" {
-		return "", errors.New("мастер-ключ обязателен")
-	}
-	return masterKey, nil
 }
 
 // prepareMasterKey получает мастер-ключ и проверяет, что сервер вернул данные для его проверки.

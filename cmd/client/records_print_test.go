@@ -105,8 +105,8 @@ func Test_printCredentialRecord(t *testing.T) {
 
 	// Assert
 	assert.Contains(t, out.String(), "* тип: credential\n")
-	assert.Contains(t, out.String(), "* логин сохраненной записи с учетными данными: ivan\n")
-	assert.Contains(t, out.String(), "* пароль сохраненной записи с учетными данными: secret\n")
+	assert.Contains(t, out.String(), "* логин: ivan\n")
+	assert.Contains(t, out.String(), "* пароль: secret\n")
 }
 
 // Test_printBinaryRecord проверяет вывод метаданных бинарной записи.

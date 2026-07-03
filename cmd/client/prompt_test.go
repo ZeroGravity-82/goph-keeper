@@ -81,6 +81,30 @@ func Test_promptCancelable_AcceptsRussianCancel(t *testing.T) {
 	assert.True(t, errors.Is(err, errActionCanceled))
 }
 
+// Test_promptSecretConfirmedRequired_ReturnsRequiredErrorBeforeConfirmation проверяет, что пустой первый ввод секрета
+// не приводит к запросу подтверждения.
+func Test_promptSecretConfirmedRequired_ReturnsRequiredErrorBeforeConfirmation(t *testing.T) {
+	// Arrange
+	input := bytes.NewBufferString("\nsecret\n")
+	reader := bufio.NewReader(input)
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	_, err := promptSecretConfirmedRequired(
+		reader,
+		input,
+		out,
+		"Пароль: ",
+		"Повторите пароль: ",
+		"пароль обязателен",
+	)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "пароль обязателен", err.Error())
+	assert.Equal(t, "Пароль: ", out.String())
+}
+
 // Test_normalizeInput_AppliesBackspaceForASCII проверяет, что управляющий символ Backspace не попадает в команду меню.
 func Test_normalizeInput_AppliesBackspaceForASCII(t *testing.T) {
 	// Act

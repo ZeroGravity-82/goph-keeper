@@ -68,6 +68,35 @@ func promptSecretConfirmed(
 	return value, nil
 }
 
+// promptSecretConfirmedRequired запрашивает обязательное секретное значение дважды.
+//
+// Пустой первый ввод возвращает ошибку сразу, без запроса подтверждения. Это важно для пароля и мастер-ключа: пользователь
+// должен увидеть ошибку обязательного поля до повторного ввода.
+func promptSecretConfirmedRequired(
+	reader *bufio.Reader,
+	in io.Reader,
+	out io.Writer,
+	label string,
+	confirmLabel string,
+	requiredError string,
+) (string, error) {
+	value, err := promptSecret(reader, in, out, label)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", requiredInputError{message: requiredError}
+	}
+	confirmed, err := promptSecret(reader, in, out, confirmLabel)
+	if err != nil {
+		return "", err
+	}
+	if value != confirmed {
+		return "", errors.New("значения не совпадают")
+	}
+	return value, nil
+}
+
 // isTerminal проверяет, что файл связан с интерактивным терминалом.
 //
 // unix.IoctlGetTermios читает настройки терминала по файловому дескриптору. Если дескриптор указывает на обычный файл,

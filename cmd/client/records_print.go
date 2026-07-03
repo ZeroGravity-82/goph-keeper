@@ -29,8 +29,8 @@ func printCredentialRecord(out io.Writer, record clientApp.CredentialRecord) {
 	fmt.Fprintf(out, "* тип: credential\n")
 	fmt.Fprintf(out, "* название: %s\n", record.Title)
 	fmt.Fprintf(out, "* описание: %s\n", record.Description)
-	fmt.Fprintf(out, "* логин сохраненной записи с учетными данными: %s\n", record.Login)
-	fmt.Fprintf(out, "* пароль сохраненной записи с учетными данными: %s\n", record.Password)
+	fmt.Fprintf(out, "* логин: %s\n", record.Login)
+	fmt.Fprintf(out, "* пароль: %s\n", record.Password)
 }
 
 // printTextRecord печатает расшифрованную текстовую запись.

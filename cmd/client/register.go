@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
@@ -22,12 +21,16 @@ func register(
 	if err != nil {
 		return false, err
 	}
-	password, err := promptSecretConfirmed(reader, in, out, "Пароль: ", "Повторите пароль: ")
+	password, err := promptSecretConfirmedRequired(
+		reader,
+		in,
+		out,
+		"Пароль: ",
+		"Повторите пароль: ",
+		"пароль обязателен",
+	)
 	if err != nil {
 		return false, err
-	}
-	if password == "" {
-		return false, errors.New("пароль обязателен")
 	}
 
 	masterKey, err := promptMasterKeyConfirmed(reader, in, out)

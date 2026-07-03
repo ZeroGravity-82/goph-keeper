@@ -20,11 +20,11 @@ func createCredential(ctx context.Context, app *clientApp.App, reader *bufio.Rea
 	if err != nil {
 		return err
 	}
-	credentialLogin, err := promptRequiredCancelable(reader, out, "Логин сохраняемой записи с учетными данными: ")
+	credentialLogin, err := promptRequiredCancelable(reader, out, "Логин: ")
 	if err != nil {
 		return err
 	}
-	credentialPassword, err := promptRequiredCancelable(reader, out, "Пароль сохраняемой записи с учетными данными: ")
+	credentialPassword, err := promptRequiredCancelable(reader, out, "Пароль: ")
 	if err != nil {
 		return err
 	}

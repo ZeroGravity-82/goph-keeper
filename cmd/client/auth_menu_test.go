@@ -92,3 +92,19 @@ func Test_promptMasterKeyConfirmed_RejectsMismatch(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "значения не совпадают", err.Error())
 }
+
+// Test_promptMasterKeyConfirmed_RequiresFirstValue проверяет, что пустой мастер-ключ отклоняется до повторного ввода.
+func Test_promptMasterKeyConfirmed_RequiresFirstValue(t *testing.T) {
+	// Arrange
+	input := bytes.NewBufferString("\nsecret\n")
+	reader := bufio.NewReader(input)
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	_, err := promptMasterKeyConfirmed(reader, input, out)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "мастер-ключ обязателен", err.Error())
+	assert.Equal(t, "Мастер-ключ: ", out.String())
+}
