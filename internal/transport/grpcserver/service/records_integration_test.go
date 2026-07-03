@@ -80,12 +80,13 @@ func createIntegrationUser(t *testing.T, ctx context.Context, db *sqlx.DB, login
 	require.NoError(t, err)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	user := model.User{
-		ID:            userID,
-		Login:         login,
-		PasswordHash:  "password-hash",
-		MasterKeySalt: []byte("master-key-salt"),
-		RegisteredAt:  now,
-		UpdatedAt:     now,
+		ID:                userID,
+		Login:             login,
+		PasswordHash:      "password-hash",
+		MasterKeySalt:     []byte("master-key-salt"),
+		MasterKeyVerifier: []byte("master-key-verifier"),
+		RegisteredAt:      now,
+		UpdatedAt:         now,
 	}
 	require.NoError(t, userRepo.Create(ctx, user))
 	return user
