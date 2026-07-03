@@ -42,6 +42,9 @@ func downloadSelectedBinaryFile(
 		return err
 	}
 	outputPath := filepath.Join(outputDir, file.Filename)
+	if err = confirmOutputFileOverwrite(reader, out, outputPath); err != nil {
+		return err
+	}
 	if err = os.WriteFile(outputPath, file.Data, 0o600); err != nil {
 		return fmt.Errorf("не удалось сохранить файл: %w", err)
 	}
@@ -49,6 +52,28 @@ func downloadSelectedBinaryFile(
 	fmt.Fprintf(out, "исходное имя: %s\n", file.Filename)
 	fmt.Fprintf(out, "MIME-тип: %s\n", file.ContentType)
 	fmt.Fprintf(out, "размер: %d байт\n", file.DeclaredSize)
+	return nil
+}
+
+// confirmOutputFileOverwrite запрашивает подтверждение, если файл для сохранения уже существует.
+func confirmOutputFileOverwrite(reader *bufio.Reader, out io.Writer, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("не удалось проверить файл для сохранения: %w", err)
+	}
+	if info.IsDir() {
+		return errors.New("путь для сохранения файла уже существует и является директорией")
+	}
+	confirmed, err := confirm(reader, out, fmt.Sprintf("Файл %q уже существует. Перезаписать?", path))
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return errActionCanceled
+	}
 	return nil
 }
 
