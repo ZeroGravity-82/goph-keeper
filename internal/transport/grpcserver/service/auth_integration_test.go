@@ -54,7 +54,7 @@ func TestAuthService_Register_Integration_OK(t *testing.T) {
 	storedRefreshToken, err := tokenRepo.FindActiveByHash(
 		ctx,
 		auth.HashRefreshToken(resp.GetRefreshToken()),
-		time.Now().UTC(),
+		fixedTestTime(),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, storedRefreshToken.UserID)
@@ -117,7 +117,7 @@ func TestAuthService_Login_Integration_OK(t *testing.T) {
 	storedRefreshToken, err := tokenRepo.FindActiveByHash(
 		ctx,
 		auth.HashRefreshToken(loginResp.GetRefreshToken()),
-		time.Now().UTC(),
+		fixedTestTime(),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, storedRefreshToken.UserID)
@@ -198,7 +198,7 @@ func TestAuthService_Refresh_Integration_OK(t *testing.T) {
 	_, err = tokenRepo.FindActiveByHash(
 		ctx,
 		auth.HashRefreshToken(registerResp.GetRefreshToken()),
-		time.Now().UTC(),
+		fixedTestTime(),
 	)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
@@ -206,7 +206,7 @@ func TestAuthService_Refresh_Integration_OK(t *testing.T) {
 	storedRefreshToken, err := tokenRepo.FindActiveByHash(
 		ctx,
 		auth.HashRefreshToken(refreshResp.GetRefreshToken()),
-		time.Now().UTC(),
+		fixedTestTime(),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, storedRefreshToken.UserID)
@@ -274,7 +274,7 @@ func TestAuthService_Logout_Integration_OK(t *testing.T) {
 	_, err = tokenRepo.FindActiveByHash(
 		ctx,
 		auth.HashRefreshToken(registerResp.GetRefreshToken()),
-		time.Now().UTC(),
+		fixedTestTime(),
 	)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))

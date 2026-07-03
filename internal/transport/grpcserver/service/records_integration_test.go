@@ -78,7 +78,7 @@ func createIntegrationUser(t *testing.T, ctx context.Context, db *sqlx.DB, login
 	require.NoError(t, err)
 	userID, err := uuid.NewV7()
 	require.NoError(t, err)
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := fixedTestTime()
 	user := model.User{
 		ID:                userID,
 		Login:             login,
@@ -404,7 +404,7 @@ func createIntegrationBinaryRecord(
 	require.NoError(t, err)
 	fileID, err := uuid.NewV7()
 	require.NoError(t, err)
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := fixedTestTime()
 
 	_, err = db.ExecContext(ctx, `
 INSERT INTO record (
@@ -513,7 +513,7 @@ func TestRecordsService_GetRecord_Integration_NotFoundForDeletedRecord(t *testin
 	recordsService := newIntegrationRecordsService(t, db)
 	requestCtx := authcontext.WithUserID(ctx, user.ID)
 	recordID := createIntegrationRecord(t, requestCtx, recordsService, pb.RecordType_RECORD_TYPE_TEXT, "deleted title")
-	_, err := db.ExecContext(ctx, `UPDATE record SET deleted_at = $1 WHERE id = $2`, time.Now().UTC(), recordID)
+	_, err := db.ExecContext(ctx, `UPDATE record SET deleted_at = $1 WHERE id = $2`, fixedTestTime(), recordID)
 	require.NoError(t, err)
 	req := pb.GetRecordRequest_builder{RecordId: new(recordID.String())}.Build()
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,7 +25,7 @@ func TestTransactor_WithinTransaction_Commit(t *testing.T) {
 	tokenRepo, err := NewRefreshTokenRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "tx-commit-user")
-	token := newTestRefreshToken(t, user.ID, "tx-commit-token", time.Now().UTC())
+	token := newTestRefreshToken(t, user.ID, "tx-commit-token", fixedTestTime())
 
 	// Act
 	err = tr.WithinTransaction(ctx, func(ctx context.Context) error {
@@ -63,7 +62,7 @@ func TestTransactor_WithinTransaction_Rollback(t *testing.T) {
 	tokenRepo, err := NewRefreshTokenRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "tx-rollback-user")
-	token := newTestRefreshToken(t, user.ID, "tx-rollback-token", time.Now().UTC())
+	token := newTestRefreshToken(t, user.ID, "tx-rollback-token", fixedTestTime())
 	wantErr := errors.New("fail transaction")
 
 	// Act

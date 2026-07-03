@@ -27,7 +27,7 @@ func TestRecordRepository_CreateAndGetByIDAndUserID(t *testing.T) {
 	recordRepo, err := NewRecordRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "record-user")
-	record := newTestRecord(t, user.ID, model.RecordTypeCredential, "credential title", time.Now().UTC())
+	record := newTestRecord(t, user.ID, model.RecordTypeCredential, "credential title", fixedTestTime())
 
 	require.NoError(t, userRepo.Create(ctx, user))
 
@@ -55,8 +55,8 @@ func TestRecordRepository_GetByIDAndUserID_WithFile(t *testing.T) {
 	fileRepo, err := NewRecordFileRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "record-file-user")
-	record := newTestRecord(t, user.ID, model.RecordTypeBinary, "binary title", time.Now().UTC())
-	file := newTestRecordFile(t, record.ID, time.Now().UTC())
+	record := newTestRecord(t, user.ID, model.RecordTypeBinary, "binary title", fixedTestTime())
+	file := newTestRecordFile(t, record.ID, fixedTestTime())
 
 	require.NoError(t, userRepo.Create(ctx, user))
 	require.NoError(t, recordRepo.Create(ctx, record))
@@ -101,7 +101,7 @@ func TestRecordRepository_ListByUserID(t *testing.T) {
 	require.NoError(t, err)
 	user := newTestUser(t, "record-list-user")
 	otherUser := newTestUser(t, "record-list-other-user")
-	now := time.Now().UTC()
+	now := fixedTestTime()
 	olderRecord := newTestRecord(t, user.ID, model.RecordTypeText, "older title", now.Add(-time.Hour))
 	newerRecord := newTestRecord(t, user.ID, model.RecordTypeBinary, "newer title", now)
 	deletedAt := now.Add(time.Minute)
@@ -149,7 +149,7 @@ func TestRecordRepository_Update(t *testing.T) {
 	recordRepo, err := NewRecordRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "record-update-user")
-	record := newTestRecord(t, user.ID, model.RecordTypeText, "old title", time.Now().UTC())
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "old title", fixedTestTime())
 	updatedAt := record.UpdatedAt.Add(time.Minute).UTC().Truncate(time.Microsecond)
 
 	require.NoError(t, userRepo.Create(ctx, user))
@@ -191,8 +191,9 @@ func TestRecordRepository_Update_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	user := newTestUser(t, "record-update-not-found-user")
 	otherUser := newTestUser(t, "record-update-not-found-other-user")
-	deletedRecord := newTestRecord(t, user.ID, model.RecordTypeText, "deleted title", time.Now().UTC())
-	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	now := fixedTestTime()
+	deletedRecord := newTestRecord(t, user.ID, model.RecordTypeText, "deleted title", now)
+	deletedAt := now.Add(time.Minute)
 	deletedRecord.DeletedAt = &deletedAt
 
 	require.NoError(t, userRepo.Create(ctx, user))
@@ -203,7 +204,7 @@ func TestRecordRepository_Update_NotFound(t *testing.T) {
 		name   string
 		record model.Record
 	}{
-		{name: "missing record", record: newTestRecord(t, user.ID, model.RecordTypeText, "missing title", time.Now().UTC())},
+		{name: "missing record", record: newTestRecord(t, user.ID, model.RecordTypeText, "missing title", now)},
 		{name: "other user", record: model.Record{ID: deletedRecord.ID, UserID: otherUser.ID}},
 		{name: "deleted record", record: model.Record{ID: deletedRecord.ID, UserID: user.ID}},
 	}
@@ -216,7 +217,7 @@ func TestRecordRepository_Update_NotFound(t *testing.T) {
 			record.Description = "new description"
 			record.EncryptedDEK = model.EncryptedBlob{Data: []byte("new-dek")}
 			record.EncryptedPayload = model.EncryptedBlob{Data: []byte("new-payload")}
-			record.UpdatedAt = time.Now().UTC()
+			record.UpdatedAt = now.Add(time.Minute)
 
 			// Act
 			_, err := recordRepo.Update(ctx, record, 1)
@@ -238,7 +239,7 @@ func TestRecordRepository_Update_VersionConflict(t *testing.T) {
 	recordRepo, err := NewRecordRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "record-update-version-conflict-user")
-	record := newTestRecord(t, user.ID, model.RecordTypeText, "title", time.Now().UTC())
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "title", fixedTestTime())
 	originalTitle := record.Title
 	originalVersion := record.Version
 
@@ -246,7 +247,7 @@ func TestRecordRepository_Update_VersionConflict(t *testing.T) {
 	require.NoError(t, recordRepo.Create(ctx, record))
 
 	record.Title = "new title"
-	record.UpdatedAt = time.Now().UTC()
+	record.UpdatedAt = fixedTestTime().Add(time.Minute)
 
 	// Act
 	_, err = recordRepo.Update(ctx, record, 999)
@@ -271,8 +272,8 @@ func TestRecordRepository_Delete(t *testing.T) {
 	recordRepo, err := NewRecordRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "record-delete-user")
-	record := newTestRecord(t, user.ID, model.RecordTypeText, "delete title", time.Now().UTC())
-	deletedAt := time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond)
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "delete title", fixedTestTime())
+	deletedAt := fixedTestTime().Add(time.Minute)
 
 	require.NoError(t, userRepo.Create(ctx, user))
 	require.NoError(t, recordRepo.Create(ctx, record))
@@ -314,9 +315,10 @@ func TestRecordRepository_Delete_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	user := newTestUser(t, "record-delete-not-found-user")
 	otherUser := newTestUser(t, "record-delete-not-found-other-user")
-	record := newTestRecord(t, user.ID, model.RecordTypeText, "delete title", time.Now().UTC())
-	deletedRecord := newTestRecord(t, user.ID, model.RecordTypeText, "already deleted title", time.Now().UTC())
-	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	now := fixedTestTime()
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "delete title", now)
+	deletedRecord := newTestRecord(t, user.ID, model.RecordTypeText, "already deleted title", now)
+	deletedAt := now.Add(time.Minute)
 	deletedRecord.DeletedAt = &deletedAt
 
 	require.NoError(t, userRepo.Create(ctx, user))
@@ -337,7 +339,7 @@ func TestRecordRepository_Delete_NotFound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Act
-			err := recordRepo.Delete(ctx, tt.recordID, tt.userID, time.Now().UTC())
+			err := recordRepo.Delete(ctx, tt.recordID, tt.userID, now.Add(time.Minute))
 
 			// Assert
 			require.Error(t, err)
@@ -358,9 +360,9 @@ func TestRecordFileRepository_UpdateUploadStatus(t *testing.T) {
 	fileRepo, err := NewRecordFileRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "record-file-status-user")
-	record := newTestRecord(t, user.ID, model.RecordTypeBinary, "binary title", time.Now().UTC())
-	file := newTestRecordFile(t, record.ID, time.Now().UTC())
-	updatedAt := time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond)
+	record := newTestRecord(t, user.ID, model.RecordTypeBinary, "binary title", fixedTestTime())
+	file := newTestRecordFile(t, record.ID, fixedTestTime())
+	updatedAt := fixedTestTime().Add(time.Minute)
 
 	require.NoError(t, userRepo.Create(ctx, user))
 	require.NoError(t, recordRepo.Create(ctx, record))
@@ -387,7 +389,7 @@ func TestRecordFileRepository_UpdateUploadStatus_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	err = fileRepo.UpdateUploadStatus(ctx, uuid.New(), model.UploadStatusUploaded, time.Now().UTC())
+	err = fileRepo.UpdateUploadStatus(ctx, uuid.New(), model.UploadStatusUploaded, fixedTestTime())
 
 	// Assert
 	require.Error(t, err)

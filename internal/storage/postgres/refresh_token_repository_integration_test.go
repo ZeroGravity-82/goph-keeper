@@ -25,7 +25,7 @@ func TestRefreshTokenRepository_CreateAndFindActiveByHash(t *testing.T) {
 	tokenRepo, err := NewRefreshTokenRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "refresh-user")
-	token := newTestRefreshToken(t, user.ID, "active-token-hash", time.Now().UTC())
+	token := newTestRefreshToken(t, user.ID, "active-token-hash", fixedTestTime())
 
 	require.NoError(t, userRepo.Create(ctx, user))
 
@@ -54,7 +54,7 @@ func TestRefreshTokenRepository_FindActiveByHash_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	_, err = tokenRepo.FindActiveByHash(ctx, "missing-token-hash", time.Now().UTC())
+	_, err = tokenRepo.FindActiveByHash(ctx, "missing-token-hash", fixedTestTime())
 
 	// Assert
 	require.Error(t, err)
@@ -71,7 +71,7 @@ func TestRefreshTokenRepository_FindActiveByHash_Expired(t *testing.T) {
 	tokenRepo, err := NewRefreshTokenRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "expired-token-user")
-	now := time.Now().UTC()
+	now := fixedTestTime()
 	token := newTestRefreshToken(t, user.ID, "expired-token-hash", now.Add(-2*time.Hour))
 	token.ExpiresAt = now.Add(-time.Hour)
 
@@ -96,7 +96,7 @@ func TestRefreshTokenRepository_Revoke(t *testing.T) {
 	tokenRepo, err := NewRefreshTokenRepository(db)
 	require.NoError(t, err)
 	user := newTestUser(t, "revoked-token-user")
-	now := time.Now().UTC()
+	now := fixedTestTime()
 	token := newTestRefreshToken(t, user.ID, "revoked-token-hash", now)
 	revokedAt := now.Add(time.Minute)
 
@@ -122,7 +122,7 @@ func TestRefreshTokenRepository_Revoke_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	err = tokenRepo.Revoke(ctx, uuid.New(), time.Now().UTC())
+	err = tokenRepo.Revoke(ctx, uuid.New(), fixedTestTime())
 
 	// Assert
 	require.Error(t, err)

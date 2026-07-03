@@ -62,7 +62,7 @@ func newTestUser(t *testing.T, login string) model.User {
 
 	id, err := uuid.NewV7()
 	require.NoError(t, err)
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := fixedTestTime()
 
 	return model.User{
 		ID:                id,
