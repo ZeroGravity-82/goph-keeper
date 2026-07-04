@@ -9,10 +9,16 @@ import (
 	"time"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
+	"zerogravity-82/goph-keeper/internal/buildinfo"
 	"zerogravity-82/goph-keeper/internal/config"
 )
 
 const defaultTimeout = 10 * time.Second
+
+var (
+	buildVersion string
+	buildDate    string
+)
 
 func main() {
 	cfg, err := config.LoadClient()
@@ -40,7 +46,7 @@ func run(ctx context.Context, cfg config.ClientConfig, in io.Reader, out io.Writ
 		err = errors.Join(err, app.Close())
 	}()
 
-	return runStartMenu(ctx, app, in, out)
+	return runStartMenu(ctx, app, buildinfo.New(buildVersion, buildDate), in, out)
 }
 
 func newApp(clientCfg config.ClientConfig) (*clientApp.App, error) {

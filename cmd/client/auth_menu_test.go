@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"zerogravity-82/goph-keeper/internal/buildinfo"
 )
 
 // Test_printStartMenu проверяет пункты стартового меню.
@@ -15,10 +17,17 @@ func Test_printStartMenu(t *testing.T) {
 	out := bytes.NewBuffer(nil)
 
 	// Act
-	printStartMenu(out)
+	printStartMenu(out, buildinfo.New("1.2.3", "2026-07-05"))
 
 	// Assert
-	assert.Equal(t, "1. Зарегистрироваться\n2. Войти в аккаунт\n3. Завершить приложение\n", out.String())
+	assert.Equal(
+		t,
+		"GophKeeper (версия: 1.2.3, дата сборки: 2026-07-05)\n\n"+
+			"1. Зарегистрироваться\n"+
+			"2. Войти в аккаунт\n"+
+			"3. Завершить приложение\n",
+		out.String(),
+	)
 }
 
 // Test_printWelcome проверяет приветствие после входа.
@@ -30,7 +39,7 @@ func Test_printWelcome(t *testing.T) {
 	printWelcome(out, "ivan")
 
 	// Assert
-	assert.Equal(t, "Добро пожаловать в GophKeeper, ivan.\n", out.String())
+	assert.Equal(t, "Добро пожаловать, ivan.\n", out.String())
 }
 
 // Test_promptMasterKey_ReturnsValue проверяет ввод непустого мастер-ключа.

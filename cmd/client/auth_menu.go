@@ -8,14 +8,15 @@ import (
 	"io"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
+	"zerogravity-82/goph-keeper/internal/buildinfo"
 )
 
 // runStartMenu запускает стартовое меню CLI-клиента для регистрации, входа в аккаунт или выхода из приложения.
-func runStartMenu(ctx context.Context, app *clientApp.App, in io.Reader, out io.Writer) error {
+func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info, in io.Reader, out io.Writer) error {
 	reader := bufio.NewReader(in)
 	for {
 		clearScreen(out)
-		printStartMenu(out)
+		printStartMenu(out, build)
 		choice, err := promptRequiredRetry(reader, out, "Выберите действие: ", "действие обязательно")
 		if err != nil {
 			return err
@@ -75,7 +76,9 @@ func runStartMenu(ctx context.Context, app *clientApp.App, in io.Reader, out io.
 }
 
 // printStartMenu печатает меню действий, доступных без активной пользовательской сессии.
-func printStartMenu(out io.Writer) {
+func printStartMenu(out io.Writer, build buildinfo.Info) {
+	fmt.Fprintln(out, build.Title("GophKeeper"))
+	fmt.Fprintln(out)
 	fmt.Fprintln(out, "1. Зарегистрироваться")
 	fmt.Fprintln(out, "2. Войти в аккаунт")
 	fmt.Fprintln(out, "3. Завершить приложение")
@@ -117,7 +120,7 @@ func login(ctx context.Context, app *clientApp.App, reader *bufio.Reader, in io.
 
 // printWelcome печатает приветствие после успешной аутентификации.
 func printWelcome(out io.Writer, login string) {
-	fmt.Fprintf(out, "Добро пожаловать в GophKeeper, %s.\n", login)
+	fmt.Fprintf(out, "Добро пожаловать, %s.\n", login)
 }
 
 // promptMasterKey запрашивает мастер-ключ без подтверждения.
