@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
@@ -16,10 +15,10 @@ func register(
 	reader *bufio.Reader,
 	in io.Reader,
 	out io.Writer,
-) (bool, error) {
+) (string, bool, error) {
 	login, err := promptRequired(reader, out, "Логин: ")
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	password, err := promptSecretConfirmedRequired(
 		reader,
@@ -30,28 +29,23 @@ func register(
 		"пароль обязателен",
 	)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
 	masterKey, err := promptMasterKeyConfirmed(reader, in, out)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	session, err := app.Register(callCtx, login, password, masterKey)
 	cancel()
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	if err = app.StartSession(session, masterKey); err != nil {
-		return false, err
+		return "", false, err
 	}
 
-	_, err = fmt.Fprintf(out, "пользователь зарегистрирован, выполнен вход: %q\n", login)
-	if err != nil {
-		return false, err
-	}
-	printWelcome(out, login)
-	return true, err
+	return login, true, nil
 }

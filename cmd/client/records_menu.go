@@ -12,13 +12,19 @@ import (
 )
 
 // runRecordsMenu запускает меню действий с приватными записями для активной пользовательской сессии.
-func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer) error {
+func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer, login string) error {
 	state := newRecordsMenuState()
 	if err := state.refresh(ctx, app); err != nil {
 		printError(out, err)
 	}
+	welcomeLogin := login
 	for {
 		clearScreen(out)
+		if welcomeLogin != "" {
+			printWelcome(out, welcomeLogin)
+			fmt.Fprintln(out)
+			welcomeLogin = ""
+		}
 		printRecordsMenu(out, state.items)
 		fmt.Fprintln(out)
 		choice, err := promptRequiredRetry(reader, out, "Выберите действие: ", "действие обязательно")

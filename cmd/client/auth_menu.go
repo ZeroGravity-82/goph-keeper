@@ -24,7 +24,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 
 		switch choice {
 		case "1":
-			loggedIn, err := register(ctx, app, reader, in, out)
+			loginName, loggedIn, err := register(ctx, app, reader, in, out)
 			if err != nil {
 				printError(out, err)
 				if err = waitForEnter(reader, out); err != nil {
@@ -33,7 +33,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 				continue
 			}
 			if loggedIn {
-				if err = runRecordsMenu(ctx, app, reader, out); err != nil {
+				if err = runRecordsMenu(ctx, app, reader, out, loginName); err != nil {
 					if errors.Is(err, errExitApplication) {
 						return nil
 					}
@@ -41,7 +41,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 				}
 			}
 		case "2":
-			loggedIn, err := login(ctx, app, reader, in, out)
+			loginName, loggedIn, err := login(ctx, app, reader, in, out)
 			if err != nil {
 				printError(out, err)
 				if err = waitForEnter(reader, out); err != nil {
@@ -50,7 +50,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 				continue
 			}
 			if loggedIn {
-				if err = runRecordsMenu(ctx, app, reader, out); err != nil {
+				if err = runRecordsMenu(ctx, app, reader, out, loginName); err != nil {
 					if errors.Is(err, errExitApplication) {
 						return nil
 					}
@@ -82,40 +82,39 @@ func printStartMenu(out io.Writer, build buildinfo.Info) {
 	fmt.Fprintln(out, "1. Зарегистрироваться")
 	fmt.Fprintln(out, "2. Войти в аккаунт")
 	fmt.Fprintln(out, "3. Завершить приложение")
+	fmt.Fprintln(out)
 }
 
 // login выполняет вход пользователя в аккаунт, проверяет мастер-ключ и открывает пользовательскую сессию.
-func login(ctx context.Context, app *clientApp.App, reader *bufio.Reader, in io.Reader, out io.Writer) (bool, error) {
+func login(ctx context.Context, app *clientApp.App, reader *bufio.Reader, in io.Reader, out io.Writer) (string, bool, error) {
 	login, err := promptRequired(reader, out, "Логин: ")
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	password, err := promptSecret(reader, in, out, "Пароль: ")
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	if password == "" {
-		return false, errors.New("пароль обязателен")
+		return "", false, errors.New("пароль обязателен")
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	session, err := app.Login(callCtx, login, password)
 	cancel()
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
 	session, masterKey, err := prepareMasterKey(session, reader, in, out)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	if err = app.StartSession(session, masterKey); err != nil {
-		return false, err
+		return "", false, err
 	}
 
-	fmt.Fprintf(out, "выполнен вход: %q\n\n", login)
-	printWelcome(out, login)
-	return true, nil
+	return login, true, nil
 }
 
 // printWelcome печатает приветствие после успешной аутентификации.

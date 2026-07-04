@@ -12,7 +12,7 @@ import (
 func printRecordsTable(out io.Writer, items []clientApp.RecordListItem) {
 	fmt.Fprintln(out, "Записи:")
 	if len(items) == 0 {
-		fmt.Fprintln(out, "< записей еще нет >")
+		fmt.Fprintln(out, "[записей еще нет]")
 		return
 	}
 	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)

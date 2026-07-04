@@ -18,7 +18,7 @@ func Test_printRecordsTable_Empty(t *testing.T) {
 	printRecordsTable(out, nil)
 
 	// Assert
-	assert.Equal(t, "Записи:\n< записей еще нет >\n", out.String())
+	assert.Equal(t, "Записи:\n[записей еще нет]\n", out.String())
 }
 
 // Test_printRecordsTable_PrintsRowsWithNumbers проверяет вывод строк списка с номерами.
