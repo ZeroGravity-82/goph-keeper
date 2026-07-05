@@ -145,3 +145,13 @@ func Test_normalizeInput_DropsInvalidUTF8Bytes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ab", value)
 }
+
+// Test_normalizeInput_SkipsEscapeSequence проверяет, что escape-последовательность стрелки не попадает во ввод.
+func Test_normalizeInput_SkipsEscapeSequence(t *testing.T) {
+	// Act
+	value, err := normalizeInput("1\x1b[A2")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "12", value)
+}

@@ -323,7 +323,13 @@ func eraseLastInputRune(value []byte) []byte {
 
 // skipEscapeSequence пропускает ANSI escape-последовательность, начиная с ESC.
 func skipEscapeSequence(input []byte, start int) int {
-	for i := start + 1; i < len(input); i++ {
+	if start+1 >= len(input) {
+		return start
+	}
+	if input[start+1] != '[' {
+		return start + 1
+	}
+	for i := start + 2; i < len(input); i++ {
 		if input[i] >= '@' && input[i] <= '~' {
 			return i
 		}
