@@ -417,7 +417,7 @@ TEST_FILE_STORAGE_BUCKET='gophkeeper-test' \
 go tool cover -func=coverage.out | tail -n 1
 ```
 
-## Планируемый стек
+## Технологический стек
 
 - Go;
 - gRPC для взаимодействия клиента и сервера;
