@@ -1,3 +1,4 @@
+// Package authcontext хранит данные аутентифицированного пользователя в context.Context.
 package authcontext
 
 import (

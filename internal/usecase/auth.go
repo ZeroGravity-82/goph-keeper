@@ -12,11 +12,13 @@ import (
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
 
+// AuthTokens содержит пару access/refresh-токенов пользовательской сессии.
 type AuthTokens struct {
 	AccessToken  string
 	RefreshToken string
 }
 
+// RegisterInput описывает входные данные сценария регистрации пользователя.
 type RegisterInput struct {
 	Login             string
 	Password          string
@@ -24,40 +26,48 @@ type RegisterInput struct {
 	MasterKeyVerifier []byte
 }
 
+// RegisterOutput описывает результат сценария регистрации пользователя.
 type RegisterOutput struct {
 	AuthTokens    AuthTokens
 	MasterKeySalt []byte
 }
 
+// LoginInput описывает входные данные сценария входа в аккаунт.
 type LoginInput struct {
 	Login    string
 	Password string
 }
 
+// LoginOutput описывает результат сценария входа в аккаунт.
 type LoginOutput struct {
 	AuthTokens        AuthTokens
 	MasterKeySalt     []byte
 	MasterKeyVerifier []byte
 }
 
+// RefreshInput описывает входные данные сценария обновления пары токенов.
 type RefreshInput struct {
 	RefreshToken string
 }
 
+// RefreshOutput описывает результат сценария обновления пары токенов.
 type RefreshOutput struct {
 	AuthTokens AuthTokens
 }
 
+// LogoutInput описывает входные данные сценария выхода из аккаунта.
 type LogoutInput struct {
 	RefreshToken string
 }
 
+// ReencryptedRecordDEK содержит заново зашифрованный DEK приватной записи и версию, которую видел клиент.
 type ReencryptedRecordDEK struct {
 	RecordID        uuid.UUID
 	ExpectedVersion int64
 	EncryptedDEK    []byte
 }
 
+// ChangeMasterKeyInput описывает входные данные сценария смены мастер-ключа.
 type ChangeMasterKeyInput struct {
 	UserID            uuid.UUID
 	MasterKeySalt     []byte
@@ -92,6 +102,7 @@ type sessionTokenIssuer interface {
 
 type masterKeySaltValidator func(salt []byte) error
 
+// AuthUseCase реализует сценарии аутентификации, управления токенами и смены мастер-ключа.
 type AuthUseCase struct {
 	userRepo              userRepository
 	recordRepo            masterKeyRecordRepository

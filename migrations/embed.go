@@ -1,3 +1,4 @@
+// Package migrations встраивает SQL-миграции базы данных в бинарный файл сервера.
 package migrations
 
 import "embed"

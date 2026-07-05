@@ -1,4 +1,4 @@
-// Пакет buildinfo форматирует метаданные сборки приложения для вывода в CLI.
+// Package buildinfo форматирует метаданные сборки приложения для вывода в CLI.
 package buildinfo
 
 import "fmt"

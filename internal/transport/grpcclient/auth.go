@@ -1,3 +1,4 @@
+// Package grpcclient содержит вспомогательные функции для исходящих gRPC-запросов CLI-клиента.
 package grpcclient
 
 import (
