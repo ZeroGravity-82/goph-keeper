@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -30,6 +32,106 @@ func (s *accessTokenParserStub) ParseAccessToken(_ string) (*auth.AccessClaims, 
 	return s.claims, s.err
 }
 
+// TestNewGRPCServer_RequiresDependencies проверяет валидацию обязательных зависимостей gRPC-сервера.
+func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
+	tests := []struct {
+		name           string
+		addr           string
+		creds          bool
+		authService    pb.AuthServer
+		recordsService pb.RecordsServer
+		tokenParser    accessTokenParser
+		wantErr        string
+	}{
+		{
+			name:           "address",
+			creds:          true,
+			authService:    &pb.UnimplementedAuthServer{},
+			recordsService: &pb.UnimplementedRecordsServer{},
+			tokenParser:    &accessTokenParserStub{},
+			wantErr:        "grpc server address is not provided",
+		},
+		{
+			name:           "credentials",
+			addr:           "127.0.0.1:0",
+			authService:    &pb.UnimplementedAuthServer{},
+			recordsService: &pb.UnimplementedRecordsServer{},
+			tokenParser:    &accessTokenParserStub{},
+			wantErr:        "transport credentials are not provided",
+		},
+		{
+			name:           "auth service",
+			addr:           "127.0.0.1:0",
+			creds:          true,
+			recordsService: &pb.UnimplementedRecordsServer{},
+			tokenParser:    &accessTokenParserStub{},
+			wantErr:        "auth service is not provided",
+		},
+		{
+			name:        "records service",
+			addr:        "127.0.0.1:0",
+			creds:       true,
+			authService: &pb.UnimplementedAuthServer{},
+			tokenParser: &accessTokenParserStub{},
+			wantErr:     "records service is not provided",
+		},
+		{
+			name:           "token parser",
+			addr:           "127.0.0.1:0",
+			creds:          true,
+			authService:    &pb.UnimplementedAuthServer{},
+			recordsService: &pb.UnimplementedRecordsServer{},
+			wantErr:        "access token parser is not provided",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var creds credentials.TransportCredentials
+			if tt.creds {
+				creds = insecure.NewCredentials()
+			}
+
+			// Act
+			_, err := NewGRPCServer(
+				tt.addr,
+				creds,
+				tt.authService,
+				tt.recordsService,
+				tt.tokenParser,
+				nil,
+			)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, tt.wantErr, err.Error())
+		})
+	}
+}
+
+// TestNewGRPCServer_CreatesServerWithDefaultLogger проверяет успешное создание сервера без явного логгера.
+func TestNewGRPCServer_CreatesServerWithDefaultLogger(t *testing.T) {
+	// Arrange
+	parser := &accessTokenParserStub{}
+
+	// Act
+	srv, err := NewGRPCServer(
+		"127.0.0.1:0",
+		insecure.NewCredentials(),
+		&pb.UnimplementedAuthServer{},
+		&pb.UnimplementedRecordsServer{},
+		parser,
+		nil,
+	)
+
+	// Assert
+	require.NoError(t, err)
+	require.NotNil(t, srv)
+	assert.Equal(t, "127.0.0.1:0", srv.addr)
+	assert.NotNil(t, srv.logger)
+	assert.Same(t, parser, srv.tokenParser)
+}
+
 // TestAuthenticateUnary_SkipsAuthMethods проверяет, что методы аутентификации не требуют access-токен.
 func TestAuthenticateUnary_SkipsAuthMethods(t *testing.T) {
 	// Arrange
@@ -38,9 +140,14 @@ func TestAuthenticateUnary_SkipsAuthMethods(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Auth_Register_FullMethodName}
 
 	// Act
-	resp, err := srv.authenticateUnaryInterceptor(context.Background(), nil, info, func(ctx context.Context, req any) (any, error) {
-		return "ok", nil
-	})
+	resp, err := srv.authenticateUnaryInterceptor(
+		context.Background(),
+		nil,
+		info,
+		func(ctx context.Context, req any) (any, error) {
+			return "ok", nil
+		},
+	)
 
 	// Assert
 	require.NoError(t, err)
@@ -107,9 +214,14 @@ func TestAuthenticateUnary_FailsWithoutAuthorization(t *testing.T) {
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
 	// Act
-	_, err := srv.authenticateUnaryInterceptor(context.Background(), nil, info, func(ctx context.Context, req any) (any, error) {
-		return nil, errors.New("handler must not be called")
-	})
+	_, err := srv.authenticateUnaryInterceptor(
+		context.Background(),
+		nil,
+		info,
+		func(ctx context.Context, req any) (any, error) {
+			return nil, errors.New("handler must not be called")
+		},
+	)
 
 	// Assert
 	require.Error(t, err)

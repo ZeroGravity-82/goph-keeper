@@ -109,6 +109,26 @@ func Test_printCredentialRecord(t *testing.T) {
 	assert.Contains(t, out.String(), "* пароль: secret\n")
 }
 
+// Test_printTextRecord проверяет вывод текстовой приватной записи.
+func Test_printTextRecord(t *testing.T) {
+	// Arrange
+	out := bytes.NewBuffer(nil)
+	record := clientApp.TextRecord{
+		Title:       "Заметка",
+		Description: "Секрет",
+		Text:        "текст",
+	}
+
+	// Act
+	printTextRecord(out, record)
+
+	// Assert
+	assert.Contains(t, out.String(), "* тип: text\n")
+	assert.Contains(t, out.String(), "* название: Заметка\n")
+	assert.Contains(t, out.String(), "* описание: Секрет\n")
+	assert.Contains(t, out.String(), "* текст: текст\n")
+}
+
 // Test_printBinaryRecord проверяет вывод метаданных бинарной записи.
 func Test_printBinaryRecord(t *testing.T) {
 	// Arrange

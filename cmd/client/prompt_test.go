@@ -34,6 +34,35 @@ func Test_promptRequiredWithError_UsesCustomError(t *testing.T) {
 	assert.Equal(t, "действие обязательно", err.Error())
 }
 
+// Test_promptRequired_ReturnsValue проверяет, что обязательный ввод возвращает непустое значение.
+func Test_promptRequired_ReturnsValue(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("value\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	value, err := promptRequired(reader, out, "Поле: ")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "value", value)
+	assert.Equal(t, "Поле: ", out.String())
+}
+
+// Test_promptRequiredNamed_UsesFieldName проверяет сообщение об ошибке для именованного обязательного поля.
+func Test_promptRequiredNamed_UsesFieldName(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	_, err := promptRequiredNamed(reader, out, "Логин: ", "логин")
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "логин обязателен", err.Error())
+}
+
 // Test_promptRequiredRetry_RepeatsEmptyInput проверяет, что пустой ввод повторяет текущий промпт.
 func Test_promptRequiredRetry_RepeatsEmptyInput(t *testing.T) {
 	// Arrange
@@ -64,6 +93,20 @@ func Test_promptRequiredRetryCancelable_ReturnsCancel(t *testing.T) {
 	assert.True(t, errors.Is(err, errActionCanceled))
 	assert.Empty(t, value)
 	assert.NotContains(t, out.String(), "ошибка:")
+}
+
+// Test_promptRequiredCancelable_ReturnsValue проверяет обязательный отменяемый ввод без повтора.
+func Test_promptRequiredCancelable_ReturnsValue(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("Название\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	value, err := promptRequiredCancelable(reader, out, "Название: ")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "Название", value)
 }
 
 // Test_promptCancelable_AcceptsRussianCancel проверяет, что обычный отменяемый промпт принимает команду отмены на
@@ -103,6 +146,36 @@ func Test_promptSecretConfirmedRequired_ReturnsRequiredErrorBeforeConfirmation(t
 	require.Error(t, err)
 	assert.Equal(t, "пароль обязателен", err.Error())
 	assert.Equal(t, "Пароль: ", out.String())
+}
+
+// Test_promptSecretConfirmed_ReturnsValue проверяет успешный повторный ввод секретного значения.
+func Test_promptSecretConfirmed_ReturnsValue(t *testing.T) {
+	// Arrange
+	input := bytes.NewBufferString("secret\nsecret\n")
+	reader := bufio.NewReader(input)
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	value, err := promptSecretConfirmed(reader, input, out, "Пароль: ", "Повторите пароль: ")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "secret", value)
+}
+
+// Test_promptSecretConfirmed_RejectsMismatch проверяет ошибку при несовпадении секретных значений.
+func Test_promptSecretConfirmed_RejectsMismatch(t *testing.T) {
+	// Arrange
+	input := bytes.NewBufferString("secret\nother\n")
+	reader := bufio.NewReader(input)
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	_, err := promptSecretConfirmed(reader, input, out, "Пароль: ", "Повторите пароль: ")
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "значения не совпадают", err.Error())
 }
 
 // Test_normalizeInput_AppliesBackspaceForASCII проверяет, что управляющий символ Backspace не попадает в команду меню.

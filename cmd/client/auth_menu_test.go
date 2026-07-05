@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 	"zerogravity-82/goph-keeper/internal/buildinfo"
 )
 
@@ -40,6 +41,38 @@ func Test_printWelcome(t *testing.T) {
 
 	// Assert
 	assert.Equal(t, "Добро пожаловать, ivan.\n", out.String())
+}
+
+// Test_prepareMasterKey_ReturnsEnteredMasterKey проверяет получение мастер-ключа при наличии проверочных данных.
+func Test_prepareMasterKey_ReturnsEnteredMasterKey(t *testing.T) {
+	// Arrange
+	input := bytes.NewBufferString("secret\n")
+	reader := bufio.NewReader(input)
+	out := bytes.NewBuffer(nil)
+	session := clientApp.AuthSession{MasterKeyVerifier: []byte("verifier")}
+
+	// Act
+	gotSession, masterKey, err := prepareMasterKey(session, reader, input, out)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, session, gotSession)
+	assert.Equal(t, "secret", masterKey)
+}
+
+// Test_prepareMasterKey_RequiresVerifier проверяет ошибку при отсутствии проверочных данных мастер-ключа.
+func Test_prepareMasterKey_RequiresVerifier(t *testing.T) {
+	// Arrange
+	input := bytes.NewBufferString("secret\n")
+	reader := bufio.NewReader(input)
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	_, _, err := prepareMasterKey(clientApp.AuthSession{}, reader, input, out)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "проверочные данные мастер-ключа отсутствуют", err.Error())
 }
 
 // Test_promptMasterKey_ReturnsValue проверяет ввод непустого мастер-ключа.

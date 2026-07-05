@@ -26,6 +26,7 @@ type authClientFake struct {
 	refreshReq   *pb.RefreshRequest
 	refreshResp  *pb.RefreshResponse
 	refreshError error
+	logoutReq    *pb.LogoutRequest
 }
 
 func (f *authClientFake) Register(
@@ -61,10 +62,11 @@ func (f *authClientFake) Refresh(
 }
 
 func (f *authClientFake) Logout(
-	context.Context,
-	*pb.LogoutRequest,
-	...grpc.CallOption,
+	_ context.Context,
+	req *pb.LogoutRequest,
+	_ ...grpc.CallOption,
 ) (*pb.LogoutResponse, error) {
+	f.logoutReq = req
 	return pb.LogoutResponse_builder{}.Build(), nil
 }
 
@@ -619,6 +621,25 @@ func TestApp_TextRecordRoundTrip(t *testing.T) {
 	assert.Equal(t, "Recovery codes", got.Title)
 	assert.Equal(t, "GitLab", got.Description)
 	assert.Equal(t, "code-1\ncode-2", got.Text)
+
+	// Act
+	updated, err := app.UpdateText(ctx, UpdateTextInput{
+		RecordID:        created.RecordID,
+		ExpectedVersion: got.Version,
+		Title:           "Recovery codes updated",
+		Description:     "GitLab updated",
+		Text:            "code-3",
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, created.RecordID, updated.RecordID)
+	assert.Equal(t, int64(2), updated.Version)
+	got, err = app.GetText(ctx, created.RecordID)
+	require.NoError(t, err)
+	assert.Equal(t, "Recovery codes updated", got.Title)
+	assert.Equal(t, "GitLab updated", got.Description)
+	assert.Equal(t, "code-3", got.Text)
 }
 
 // TestApp_CardRecordRoundTrip выполняет для приватной записи банковской карты ограниченную проверку - маппинг payload
@@ -648,6 +669,31 @@ func TestApp_CardRecordRoundTrip(t *testing.T) {
 	assert.Equal(t, "IVAN IVANOV", got.HolderName)
 	assert.Equal(t, "12/30", got.ExpiresAt)
 	assert.Equal(t, "123", got.CVC)
+
+	// Act
+	updated, err := app.UpdateCard(ctx, UpdateCardInput{
+		RecordID:        created.RecordID,
+		ExpectedVersion: got.Version,
+		Title:           "Backup card",
+		Description:     "family",
+		Number:          "5555555555554444",
+		HolderName:      "petr petrov",
+		ExpiresAt:       "11/31",
+		CVC:             "456",
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, created.RecordID, updated.RecordID)
+	assert.Equal(t, int64(2), updated.Version)
+	got, err = app.GetCard(ctx, created.RecordID)
+	require.NoError(t, err)
+	assert.Equal(t, "Backup card", got.Title)
+	assert.Equal(t, "family", got.Description)
+	assert.Equal(t, "5555555555554444", got.Number)
+	assert.Equal(t, "PETR PETROV", got.HolderName)
+	assert.Equal(t, "11/31", got.ExpiresAt)
+	assert.Equal(t, "456", got.CVC)
 }
 
 // TestApp_BinaryRecordLifecycle проверяет полный клиентский путь для бинарной приватной записи - создание, скачивание,

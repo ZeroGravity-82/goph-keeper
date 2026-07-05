@@ -83,6 +83,35 @@ func Test_promptCardHolderName_RetriesCyrillicInput(t *testing.T) {
 	assert.Contains(t, out.String(), "ошибка: имя владельца карты должно содержать только латинские буквы и пробелы")
 }
 
+// Test_promptCardHolderNameWithDefault_ReturnsCurrentOnEmptyInput проверяет значение по умолчанию для имени владельца.
+func Test_promptCardHolderNameWithDefault_ReturnsCurrentOnEmptyInput(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	holderName, err := promptCardHolderNameWithDefault(reader, out, "Новое имя владельца", "IVAN IVANOV")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "IVAN IVANOV", holderName)
+	assert.Contains(t, out.String(), "Новое имя владельца [IVAN IVANOV]: ")
+}
+
+// Test_promptCardHolderNameWithDefault_NormalizesValue проверяет нормализацию нового имени владельца.
+func Test_promptCardHolderNameWithDefault_NormalizesValue(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("petr petrov\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	holderName, err := promptCardHolderNameWithDefault(reader, out, "Новое имя владельца", "IVAN IVANOV")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "PETR PETROV", holderName)
+}
+
 // Test_promptCardExpiration_RetriesInvalidInput проверяет повторный ввод срока действия после ошибки формата.
 func Test_promptCardExpiration_RetriesInvalidInput(t *testing.T) {
 	// Arrange
@@ -98,6 +127,21 @@ func Test_promptCardExpiration_RetriesInvalidInput(t *testing.T) {
 	assert.Contains(t, out.String(), "ошибка: срок действия карты должен быть в формате ММ/ГГ")
 }
 
+// Test_promptCardExpirationWithDefault_ReturnsCurrentOnEmptyInput проверяет значение по умолчанию для срока действия.
+func Test_promptCardExpirationWithDefault_ReturnsCurrentOnEmptyInput(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	expiresAt, err := promptCardExpirationWithDefault(reader, out, "Новый срок действия", "12/30")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "12/30", expiresAt)
+	assert.Contains(t, out.String(), "Новый срок действия [12/30]: ")
+}
+
 // Test_promptCardCVC_RetriesInvalidInput проверяет повторный ввод CVC после ошибки формата.
 func Test_promptCardCVC_RetriesInvalidInput(t *testing.T) {
 	// Arrange
@@ -111,4 +155,19 @@ func Test_promptCardCVC_RetriesInvalidInput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "123", cvc)
 	assert.Contains(t, out.String(), "ошибка: CVC должен содержать ровно 3 цифры")
+}
+
+// Test_promptCardCVCWithDefault_ReturnsCurrentOnEmptyInput проверяет значение по умолчанию для CVC.
+func Test_promptCardCVCWithDefault_ReturnsCurrentOnEmptyInput(t *testing.T) {
+	// Arrange
+	reader := bufio.NewReader(bytes.NewBufferString("\n"))
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	cvc, err := promptCardCVCWithDefault(reader, out, "Новый CVC", "123")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "123", cvc)
+	assert.Contains(t, out.String(), "Новый CVC [123]: ")
 }

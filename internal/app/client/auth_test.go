@@ -133,6 +133,33 @@ func outgoingAuthorization(t *testing.T, ctx context.Context) string {
 	return values[0]
 }
 
+// TestApp_LogoutClearsSession проверяет, что выход из аккаунта отправляет refresh-токен и очищает сессию в памяти.
+func TestApp_LogoutClearsSession(t *testing.T) {
+	// Arrange
+	authClient := &authClientFake{}
+	app := &App{
+		auth: authClient,
+		session: AuthSession{
+			AccessToken:  "access-token",
+			RefreshToken: "refresh-token",
+		},
+		masterKey: "master-key",
+		loggedIn:  true,
+	}
+
+	// Act
+	err := app.Logout(context.Background())
+
+	// Assert
+	require.NoError(t, err)
+	require.NotNil(t, authClient.logoutReq)
+	assert.Equal(t, "refresh-token", authClient.logoutReq.GetRefreshToken())
+	assert.False(t, app.loggedIn)
+	assert.Empty(t, app.session.AccessToken)
+	assert.Empty(t, app.session.RefreshToken)
+	assert.Empty(t, app.masterKey)
+}
+
 // TestApp_withAccessTokenRefresh_ClearsSessionWhenRefreshTokenIsInvalid проверяет, что при недействительном
 // refresh-токене клиент очищает сессию и не повторяет исходный запрос.
 func TestApp_withAccessTokenRefresh_ClearsSessionWhenRefreshTokenIsInvalid(t *testing.T) {
