@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -38,6 +39,13 @@ type RecordListItem struct {
 	UpdatedAt   time.Time
 }
 
+// rawRecord содержит минимальный набор полей приватной записи, нужный для переупаковки DEK при смене мастер-ключа.
+type rawRecord struct {
+	RecordID     string
+	Version      int64
+	EncryptedDEK []byte
+}
+
 // ListRecords возвращает список приватных записей пользователя.
 func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 	var resp *pb.ListRecordsResponse
@@ -64,6 +72,35 @@ func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 		})
 	}
 	return items, nil
+}
+
+func (a *App) getRawRecord(ctx context.Context, recordID string) (rawRecord, error) {
+	var resp *pb.GetRecordResponse
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.GetRecord(ctx, pb.GetRecordRequest_builder{RecordId: &recordID}.Build())
+		return err
+	})
+	if err != nil {
+		return rawRecord{}, rpcError(
+			err,
+			"не удалось получить приватную запись",
+			map[codes.Code]string{
+				codes.Unauthenticated: "сессия недействительна, войдите снова",
+				codes.InvalidArgument: "некорректный идентификатор приватной записи",
+				codes.NotFound:        "приватная запись не найдена",
+			},
+		)
+	}
+	record := resp.GetRecord()
+	if record == nil {
+		return rawRecord{}, errors.New("сервер вернул пустую приватную запись")
+	}
+	return rawRecord{
+		RecordID:     record.GetRecordId(),
+		Version:      record.GetVersion(),
+		EncryptedDEK: record.GetEncryptedDek(),
+	}, nil
 }
 
 func recordTypeString(recordType pb.RecordType) string {

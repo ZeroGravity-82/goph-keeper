@@ -21,12 +21,17 @@ import (
 )
 
 type authClientFake struct {
-	registerReq  *pb.RegisterRequest
-	loginResp    *pb.LoginResponse
-	refreshReq   *pb.RefreshRequest
-	refreshResp  *pb.RefreshResponse
-	refreshError error
-	logoutReq    *pb.LogoutRequest
+	registerReq               *pb.RegisterRequest
+	loginResp                 *pb.LoginResponse
+	refreshReq                *pb.RefreshRequest
+	refreshResp               *pb.RefreshResponse
+	refreshError              error
+	logoutReq                 *pb.LogoutRequest
+	changeMasterKeyReq        *pb.ChangeMasterKeyRequest
+	changeMasterKeyErr        error
+	changeMasterKeyCalls      int
+	changeMasterKeyUnauthOnce bool
+	records                   *recordsClientFake
 }
 
 func (f *authClientFake) Register(
@@ -68,6 +73,47 @@ func (f *authClientFake) Logout(
 ) (*pb.LogoutResponse, error) {
 	f.logoutReq = req
 	return pb.LogoutResponse_builder{}.Build(), nil
+}
+
+func (f *authClientFake) ChangeMasterKey(
+	_ context.Context,
+	req *pb.ChangeMasterKeyRequest,
+	_ ...grpc.CallOption,
+) (*pb.ChangeMasterKeyResponse, error) {
+	f.changeMasterKeyCalls++
+	f.changeMasterKeyReq = req
+	if f.changeMasterKeyUnauthOnce && f.changeMasterKeyCalls == 1 {
+		return nil, status.Error(codes.Unauthenticated, "access token is invalid")
+	}
+	if f.changeMasterKeyErr != nil {
+		return nil, f.changeMasterKeyErr
+	}
+	if f.records != nil {
+		for _, item := range req.GetRecords() {
+			record := f.records.records[item.GetRecordId()]
+			if record == nil {
+				continue
+			}
+			version := record.GetVersion() + 1
+			recordID := record.GetRecordId()
+			recordType := record.GetType()
+			title := record.GetTitle()
+			description := record.GetDescription()
+			f.records.records[item.GetRecordId()] = pb.Record_builder{
+				RecordId:         &recordID,
+				Type:             &recordType,
+				Title:            &title,
+				Description:      &description,
+				EncryptedDek:     item.GetEncryptedDek(),
+				EncryptedPayload: record.GetEncryptedPayload(),
+				Version:          &version,
+				CreatedAt:        record.GetCreatedAt(),
+				UpdatedAt:        fixedUpdatedRecordTimestamp(),
+				File:             record.GetFile(),
+			}.Build()
+		}
+	}
+	return pb.ChangeMasterKeyResponse_builder{}.Build(), nil
 }
 
 type recordsClientFake struct {
@@ -429,13 +475,17 @@ func newStartedTestApp(t *testing.T) *App {
 
 	salt, err := crypto.GenerateMasterKeySalt()
 	require.NoError(t, err)
+	verifier, err := crypto.EncryptMasterKeyVerifier("master-key", salt)
+	require.NoError(t, err)
+	recordsClient := newRecordsClientFake()
 	return &App{
-		auth:    &authClientFake{},
-		records: newRecordsClientFake(),
+		auth:    &authClientFake{records: recordsClient},
+		records: recordsClient,
 		session: AuthSession{
-			AccessToken:   "access-token",
-			RefreshToken:  "refresh-token",
-			MasterKeySalt: salt,
+			AccessToken:       "access-token",
+			RefreshToken:      "refresh-token",
+			MasterKeySalt:     salt,
+			MasterKeyVerifier: verifier.Data,
 		},
 		masterKey: "master-key",
 		loggedIn:  true,
@@ -497,8 +547,8 @@ func TestApp_CredentialRecordLifecycle(t *testing.T) {
 	// Act
 	created, err := app.CreateCredential(ctx, CreateCredentialInput{
 		Title:              "GitHub",
-		Description:        "main account",
-		CredentialLogin:    "octocat",
+		Description:        "основной аккаунт",
+		CredentialLogin:    "zerogravity",
 		CredentialPassword: "secret",
 	})
 
@@ -513,8 +563,8 @@ func TestApp_CredentialRecordLifecycle(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	assert.Equal(t, "GitHub", got.Title)
-	assert.Equal(t, "main account", got.Description)
-	assert.Equal(t, "octocat", got.Login)
+	assert.Equal(t, "основной аккаунт", got.Description)
+	assert.Equal(t, "zerogravity", got.Login)
 	assert.Equal(t, "secret", got.Password)
 
 	// Act
@@ -522,8 +572,8 @@ func TestApp_CredentialRecordLifecycle(t *testing.T) {
 		RecordID:           created.RecordID,
 		ExpectedVersion:    got.Version,
 		Title:              "GitHub updated",
-		Description:        "work account",
-		CredentialLogin:    "octocat-work",
+		Description:        "рабочий аккаунт",
+		CredentialLogin:    "zerogravity-work",
 		CredentialPassword: "new-secret",
 	})
 
@@ -534,8 +584,8 @@ func TestApp_CredentialRecordLifecycle(t *testing.T) {
 	got, err = app.GetCredential(ctx, created.RecordID)
 	require.NoError(t, err)
 	assert.Equal(t, "GitHub updated", got.Title)
-	assert.Equal(t, "work account", got.Description)
-	assert.Equal(t, "octocat-work", got.Login)
+	assert.Equal(t, "рабочий аккаунт", got.Description)
+	assert.Equal(t, "zerogravity-work", got.Login)
 	assert.Equal(t, "new-secret", got.Password)
 
 	// Act
@@ -580,7 +630,7 @@ func TestApp_ListRecordsRefreshesAccessToken(t *testing.T) {
 
 	_, err := app.CreateCredential(ctx, CreateCredentialInput{
 		Title:              "GitHub",
-		CredentialLogin:    "octocat",
+		CredentialLogin:    "zerogravity",
 		CredentialPassword: "secret",
 	})
 	require.NoError(t, err)
@@ -609,8 +659,8 @@ func TestApp_TextRecordRoundTrip(t *testing.T) {
 
 	// Act
 	created, err := app.CreateText(ctx, CreateTextInput{
-		Title:       "Recovery codes",
-		Description: "GitLab",
+		Title:       "Коды восстановления",
+		Description: "Коды восстановления GitLab",
 		Text:        "code-1\ncode-2",
 	})
 
@@ -618,17 +668,17 @@ func TestApp_TextRecordRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	got, err := app.GetText(ctx, created.RecordID)
 	require.NoError(t, err)
-	assert.Equal(t, "Recovery codes", got.Title)
-	assert.Equal(t, "GitLab", got.Description)
+	assert.Equal(t, "Коды восстановления", got.Title)
+	assert.Equal(t, "Коды восстановления GitLab", got.Description)
 	assert.Equal(t, "code-1\ncode-2", got.Text)
 
 	// Act
 	updated, err := app.UpdateText(ctx, UpdateTextInput{
 		RecordID:        created.RecordID,
 		ExpectedVersion: got.Version,
-		Title:           "Recovery codes updated",
-		Description:     "GitLab updated",
-		Text:            "code-3",
+		Title:           "Коды восстановления новые",
+		Description:     "Коды восстановления GitLab новые",
+		Text:            "code-3, code-4",
 	})
 
 	// Assert
@@ -637,9 +687,148 @@ func TestApp_TextRecordRoundTrip(t *testing.T) {
 	assert.Equal(t, int64(2), updated.Version)
 	got, err = app.GetText(ctx, created.RecordID)
 	require.NoError(t, err)
-	assert.Equal(t, "Recovery codes updated", got.Title)
-	assert.Equal(t, "GitLab updated", got.Description)
-	assert.Equal(t, "code-3", got.Text)
+	assert.Equal(t, "Коды восстановления новые", got.Title)
+	assert.Equal(t, "Коды восстановления GitLab новые", got.Description)
+	assert.Equal(t, "code-3, code-4", got.Text)
+}
+
+// TestApp_ChangeMasterKey_ReencryptsExistingRecords проверяет смену мастер-ключа для уже существующих записей.
+func TestApp_ChangeMasterKey_ReencryptsExistingRecords(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	app := newStartedTestApp(t)
+	authClient := app.auth.(*authClientFake)
+
+	created, err := app.CreateText(ctx, CreateTextInput{
+		Title: "Секретная заметка",
+		Text:  "текст, зашифрованный старым мастер-ключом",
+	})
+	require.NoError(t, err)
+
+	// Act
+	err = app.ChangeMasterKey(ctx, "master-key", "new-master-key")
+
+	// Assert
+	require.NoError(t, err)
+	require.NotNil(t, authClient.changeMasterKeyReq)
+	assert.NotEqual(t, []byte(nil), authClient.changeMasterKeyReq.GetMasterKeySalt())
+	require.Len(t, authClient.changeMasterKeyReq.GetRecords(), 1)
+	assert.Equal(t, created.RecordID, authClient.changeMasterKeyReq.GetRecords()[0].GetRecordId())
+	assert.Equal(t, "new-master-key", app.masterKey)
+
+	got, err := app.GetText(ctx, created.RecordID)
+	require.NoError(t, err)
+	assert.Equal(t, "текст, зашифрованный старым мастер-ключом", got.Text)
+
+	app.masterKey = "master-key"
+	_, err = app.GetText(ctx, created.RecordID)
+	require.Error(t, err)
+}
+
+// TestApp_ChangeMasterKey_ValidationErrors проверяет клиентские ошибки до обращения к серверу.
+func TestApp_ChangeMasterKey_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		app     func(t *testing.T) *App
+		current string
+		new     string
+		want    string
+	}{
+		{
+			name:    "not logged in",
+			app:     func(t *testing.T) *App { return &App{} },
+			current: "master-key",
+			new:     "new-master-key",
+			want:    "пользователь не вошел в аккаунт",
+		},
+		{
+			name:    "empty current master key",
+			app:     newStartedTestApp,
+			current: "",
+			new:     "new-master-key",
+			want:    "текущий мастер-ключ обязателен",
+		},
+		{
+			name:    "empty new master key",
+			app:     newStartedTestApp,
+			current: "master-key",
+			new:     "",
+			want:    "новый мастер-ключ обязателен",
+		},
+		{
+			name:    "same master key",
+			app:     newStartedTestApp,
+			current: "master-key",
+			new:     "master-key",
+			want:    "новый мастер-ключ должен отличаться от текущего",
+		},
+		{
+			name:    "wrong current master key",
+			app:     newStartedTestApp,
+			current: "wrong-master-key",
+			new:     "new-master-key",
+			want:    "неверный текущий мастер-ключ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			app := tt.app(t)
+
+			// Act
+			err := app.ChangeMasterKey(context.Background(), tt.current, tt.new)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, tt.want, err.Error())
+		})
+	}
+}
+
+// TestApp_ChangeMasterKey_ReturnsConflict проверяет сообщение при серверном конфликте версий приватных записей.
+func TestApp_ChangeMasterKey_ReturnsConflict(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	app := newStartedTestApp(t)
+	authClient := app.auth.(*authClientFake)
+	authClient.changeMasterKeyErr = status.Error(codes.Aborted, "records changed")
+
+	// Act
+	err := app.ChangeMasterKey(ctx, "master-key", "new-master-key")
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "приватные записи изменились во время смены мастер-ключа, повторите действие", err.Error())
+	assert.Equal(t, "master-key", app.masterKey)
+}
+
+// TestApp_ChangeMasterKey_RefreshesAccessToken проверяет, что при истекшем access-токене клиент обновляет сессию и
+// повторяет смену мастер-ключа.
+func TestApp_ChangeMasterKey_RefreshesAccessToken(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	app := newStartedTestApp(t)
+	authClient := app.auth.(*authClientFake)
+	newAccessToken := "new-access-token"
+	newRefreshToken := "new-refresh-token"
+	authClient.changeMasterKeyUnauthOnce = true
+	authClient.refreshResp = pb.RefreshResponse_builder{
+		AccessToken:  &newAccessToken,
+		RefreshToken: &newRefreshToken,
+	}.Build()
+
+	// Act
+	err := app.ChangeMasterKey(ctx, "master-key", "new-master-key")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 2, authClient.changeMasterKeyCalls)
+	require.NotNil(t, authClient.refreshReq)
+	assert.Equal(t, "refresh-token", authClient.refreshReq.GetRefreshToken())
+	assert.Equal(t, newAccessToken, app.session.AccessToken)
+	assert.Equal(t, newRefreshToken, app.session.RefreshToken)
+	assert.Equal(t, "new-master-key", app.masterKey)
 }
 
 // TestApp_CardRecordRoundTrip выполняет для приватной записи банковской карты ограниченную проверку - маппинг payload
@@ -651,8 +840,8 @@ func TestApp_CardRecordRoundTrip(t *testing.T) {
 
 	// Act
 	created, err := app.CreateCard(ctx, CreateCardInput{
-		Title:       "Main card",
-		Description: "personal",
+		Title:       "Основная карта",
+		Description: "личная",
 		Number:      "4111111111111111",
 		HolderName:  "IVAN IVANOV",
 		ExpiresAt:   "12/30",
@@ -663,8 +852,8 @@ func TestApp_CardRecordRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	got, err := app.GetCard(ctx, created.RecordID)
 	require.NoError(t, err)
-	assert.Equal(t, "Main card", got.Title)
-	assert.Equal(t, "personal", got.Description)
+	assert.Equal(t, "Основная карта", got.Title)
+	assert.Equal(t, "личная", got.Description)
 	assert.Equal(t, "4111111111111111", got.Number)
 	assert.Equal(t, "IVAN IVANOV", got.HolderName)
 	assert.Equal(t, "12/30", got.ExpiresAt)
@@ -674,8 +863,8 @@ func TestApp_CardRecordRoundTrip(t *testing.T) {
 	updated, err := app.UpdateCard(ctx, UpdateCardInput{
 		RecordID:        created.RecordID,
 		ExpectedVersion: got.Version,
-		Title:           "Backup card",
-		Description:     "family",
+		Title:           "Запасная карта",
+		Description:     "семейная",
 		Number:          "5555555555554444",
 		HolderName:      "petr petrov",
 		ExpiresAt:       "11/31",
@@ -688,8 +877,8 @@ func TestApp_CardRecordRoundTrip(t *testing.T) {
 	assert.Equal(t, int64(2), updated.Version)
 	got, err = app.GetCard(ctx, created.RecordID)
 	require.NoError(t, err)
-	assert.Equal(t, "Backup card", got.Title)
-	assert.Equal(t, "family", got.Description)
+	assert.Equal(t, "Запасная карта", got.Title)
+	assert.Equal(t, "семейная", got.Description)
 	assert.Equal(t, "5555555555554444", got.Number)
 	assert.Equal(t, "PETR PETROV", got.HolderName)
 	assert.Equal(t, "11/31", got.ExpiresAt)
@@ -705,8 +894,8 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 
 	// Act
 	created, err := app.CreateBinary(ctx, CreateBinaryInput{
-		Title:       "Passport",
-		Description: "scan",
+		Title:       "Паспорт",
+		Description: "Скан",
 		Filename:    "passport.pdf",
 		ContentType: "application/pdf",
 		File:        []byte("original file"),
@@ -732,8 +921,8 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	updatedMetadata, err := app.UpdateBinaryMetadata(ctx, UpdateBinaryMetadataInput{
 		RecordID:        created.RecordID,
 		ExpectedVersion: created.Version,
-		Title:           "Passport updated",
-		Description:     "new open metadata",
+		Title:           "Паспорт исправленный",
+		Description:     "новые паспортный данные",
 	})
 
 	// Assert
@@ -750,8 +939,8 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	updatedFile, err := app.UpdateBinary(ctx, UpdateBinaryInput{
 		RecordID:        created.RecordID,
 		ExpectedVersion: updatedMetadata.Version,
-		Title:           "Passport updated",
-		Description:     "new file",
+		Title:           "Паспорт исправленный",
+		Description:     "новый файл",
 		Filename:        "passport.png",
 		ContentType:     "image/png",
 		File:            []byte("new file"),

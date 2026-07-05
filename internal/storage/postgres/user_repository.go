@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
@@ -79,4 +81,34 @@ WHERE login = $1
 		RegisteredAt:      u.RegisteredAt,
 		UpdatedAt:         u.UpdatedAt,
 	}, nil
+}
+
+// UpdateMasterKey обновляет соль и верификатор мастер-ключа пользователя.
+func (r *UserRepository) UpdateMasterKey(
+	ctx context.Context,
+	userID uuid.UUID,
+	salt []byte,
+	verifier []byte,
+	updatedAt time.Time,
+) error {
+	const q = `
+UPDATE app_user
+SET master_key_salt = $1,
+    master_key_verifier = $2,
+    updated_at = $3
+WHERE id = $4
+`
+	exec := executorFromContext(ctx, r.db)
+	result, err := exec.ExecContext(ctx, q, salt, verifier, updatedAt, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update user master key data: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read affected rows count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return usecase.ErrUserNotFound
+	}
+	return nil
 }

@@ -109,7 +109,8 @@ func Test_printRecordsMenu(t *testing.T) {
 	assert.Contains(t, out.String(), "Записи:\n")
 	assert.Contains(t, out.String(), "1  text  Моя заметка  Совершенно секретно!\n")
 	assert.Contains(t, out.String(), "Действия:\n")
-	assert.Contains(t, out.String(), "8. Завершить приложение\n")
+	assert.Contains(t, out.String(), "7. Сменить мастер-ключ\n")
+	assert.Contains(t, out.String(), "9. Завершить приложение\n")
 }
 
 // Test_operateSelectedRecord_EmptyList проверяет ошибку выбора записи из пустого списка.

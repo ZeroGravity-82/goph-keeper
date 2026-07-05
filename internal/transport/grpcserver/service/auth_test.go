@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -12,6 +13,7 @@ import (
 
 	"zerogravity-82/goph-keeper/internal/logging"
 	"zerogravity-82/goph-keeper/internal/pb"
+	"zerogravity-82/goph-keeper/internal/transport/grpcserver/authcontext"
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
@@ -30,6 +32,9 @@ type authUseCaseStub struct {
 
 	logoutInput usecase.LogoutInput
 	logoutErr   error
+
+	changeMasterKeyInput usecase.ChangeMasterKeyInput
+	changeMasterKeyErr   error
 }
 
 func (s *authUseCaseStub) Register(_ context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error) {
@@ -50,6 +55,11 @@ func (s *authUseCaseStub) Refresh(_ context.Context, in usecase.RefreshInput) (u
 func (s *authUseCaseStub) Logout(_ context.Context, in usecase.LogoutInput) error {
 	s.logoutInput = in
 	return s.logoutErr
+}
+
+func (s *authUseCaseStub) ChangeMasterKey(_ context.Context, in usecase.ChangeMasterKeyInput) error {
+	s.changeMasterKeyInput = in
+	return s.changeMasterKeyErr
 }
 
 // TestAuthService_Register_OK проверяет успешную регистрацию через gRPC-обработчик.
@@ -408,4 +418,91 @@ func TestAuthService_Logout_FailWithInternalError(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+// TestAuthService_ChangeMasterKey_OK проверяет успешную смену мастер-ключа через gRPC-обработчик.
+func TestAuthService_ChangeMasterKey_OK(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000012")
+	recordID := "018f6b7c-0000-7000-8000-200000000012"
+	expectedVersion := int64(3)
+	req := pb.ChangeMasterKeyRequest_builder{
+		MasterKeySalt:     []byte("abcdef1234567890"),
+		MasterKeyVerifier: []byte("new-verifier"),
+		Records: []*pb.ReencryptedRecordDEK{
+			pb.ReencryptedRecordDEK_builder{
+				RecordId:        &recordID,
+				ExpectedVersion: &expectedVersion,
+				EncryptedDek:    []byte("new-encrypted-dek"),
+			}.Build(),
+		},
+	}.Build()
+
+	// Act
+	resp, err := authService.ChangeMasterKey(authcontext.WithUserID(context.Background(), userID), req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, userID, uc.changeMasterKeyInput.UserID)
+	assert.Equal(t, []byte("abcdef1234567890"), uc.changeMasterKeyInput.MasterKeySalt)
+	require.Len(t, uc.changeMasterKeyInput.Records, 1)
+	assert.Equal(t, expectedVersion, uc.changeMasterKeyInput.Records[0].ExpectedVersion)
+}
+
+// TestAuthService_ChangeMasterKey_FailWithInvalidArgument проверяет валидацию запроса смены мастер-ключа.
+func TestAuthService_ChangeMasterKey_FailWithInvalidArgument(t *testing.T) {
+	tests := []struct {
+		name string
+		req  *pb.ChangeMasterKeyRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty salt", req: changeMasterKeyRequest(nil, []byte("verifier"))},
+		{name: "empty verifier", req: changeMasterKeyRequest([]byte("abcdef1234567890"), nil)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			authService, err := NewAuthService(&authUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000013")
+
+			// Act
+			_, err = authService.ChangeMasterKey(authcontext.WithUserID(context.Background(), userID), tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+// TestAuthService_ChangeMasterKey_FailWithConflict проверяет маппинг конфликта смены мастер-ключа в Aborted.
+func TestAuthService_ChangeMasterKey_FailWithConflict(t *testing.T) {
+	// Arrange
+	uc := &authUseCaseStub{changeMasterKeyErr: usecase.ErrMasterKeyChangeConflict}
+	authService, err := NewAuthService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000014")
+
+	// Act
+	_, err = authService.ChangeMasterKey(
+		authcontext.WithUserID(context.Background(), userID),
+		changeMasterKeyRequest([]byte("abcdef1234567890"), []byte("verifier")),
+	)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Aborted, status.Code(err))
+}
+
+func changeMasterKeyRequest(salt []byte, verifier []byte) *pb.ChangeMasterKeyRequest {
+	return pb.ChangeMasterKeyRequest_builder{
+		MasterKeySalt:     salt,
+		MasterKeyVerifier: verifier,
+	}.Build()
 }

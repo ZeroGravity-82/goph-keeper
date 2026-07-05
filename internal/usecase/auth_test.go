@@ -56,8 +56,11 @@ type userRepositoryStub struct {
 	usersByLogin map[string]model.User
 	getErr       error
 	createErr    error
+	updateErr    error
 	created      []model.User
 	createdInTx  []bool
+	updatedKeys  []model.User
+	updatedInTx  []bool
 }
 
 func (r *userRepositoryStub) Create(ctx context.Context, u model.User) error {
@@ -80,6 +83,46 @@ func (r *userRepositoryStub) GetByLogin(context.Context, string) (model.User, er
 		return u, nil
 	}
 	return model.User{}, ErrUserNotFound
+}
+
+func (r *userRepositoryStub) UpdateMasterKey(
+	ctx context.Context,
+	userID uuid.UUID,
+	salt []byte,
+	verifier []byte,
+	updatedAt time.Time,
+) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
+	r.updatedKeys = append(r.updatedKeys, model.User{
+		ID:                userID,
+		MasterKeySalt:     salt,
+		MasterKeyVerifier: verifier,
+		UpdatedAt:         updatedAt,
+	})
+	r.updatedInTx = append(r.updatedInTx, ctx.Value(txContextKey{}) == true)
+	return nil
+}
+
+type masterKeyRecordRepositoryStub struct {
+	reencryptErr  error
+	reencrypted   []ReencryptedRecordDEK
+	reencryptedTx []bool
+}
+
+func (r *masterKeyRecordRepositoryStub) ReencryptDEKs(
+	ctx context.Context,
+	_ uuid.UUID,
+	records []ReencryptedRecordDEK,
+	_ time.Time,
+) error {
+	if r.reencryptErr != nil {
+		return r.reencryptErr
+	}
+	r.reencrypted = append(r.reencrypted, records...)
+	r.reencryptedTx = append(r.reencryptedTx, ctx.Value(txContextKey{}) == true)
+	return nil
 }
 
 type refreshTokenRepositoryStub struct {
@@ -131,6 +174,7 @@ func (r *refreshTokenRepositoryStub) Revoke(ctx context.Context, tokenID uuid.UU
 func newTestAuthUseCase(t *testing.T) (
 	*AuthUseCase,
 	*userRepositoryStub,
+	*masterKeyRecordRepositoryStub,
 	*refreshTokenRepositoryStub,
 	*transactorStub,
 	*sessionTokenIssuerStub,
@@ -138,6 +182,7 @@ func newTestAuthUseCase(t *testing.T) (
 	t.Helper()
 
 	userRepo := &userRepositoryStub{}
+	recordRepo := &masterKeyRecordRepositoryStub{}
 	refreshRepo := &refreshTokenRepositoryStub{}
 	tx := &transactorStub{}
 	issuer := &sessionTokenIssuerStub{accessToken: "access-token", refreshToken: "refresh-token"}
@@ -147,9 +192,9 @@ func newTestAuthUseCase(t *testing.T) (
 		}
 		return nil
 	}
-	uc, err := NewAuthUseCase(userRepo, refreshRepo, tx, issuer, validateMasterKeySalt, time.Hour)
+	uc, err := NewAuthUseCase(userRepo, recordRepo, refreshRepo, tx, issuer, validateMasterKeySalt, time.Hour)
 	require.NoError(t, err)
-	return uc, userRepo, refreshRepo, tx, issuer
+	return uc, userRepo, recordRepo, refreshRepo, tx, issuer
 }
 
 func testRegisterInput() RegisterInput {
@@ -164,7 +209,7 @@ func testRegisterInput() RegisterInput {
 // TestAuthUseCase_Register проверяет успешную регистрацию пользователя.
 func TestAuthUseCase_Register(t *testing.T) {
 	// Arrange
-	uc, userRepo, refreshRepo, tx, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
 
 	// Act
 	out, err := uc.Register(context.Background(), testRegisterInput())
@@ -190,7 +235,7 @@ func TestAuthUseCase_Register(t *testing.T) {
 // TestAuthUseCase_Register_FailWithTakenLogin проверяет ошибку при занятом логине.
 func TestAuthUseCase_Register_FailWithTakenLogin(t *testing.T) {
 	// Arrange
-	uc, userRepo, refreshRepo, tx, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
 	userRepo.usersByLogin = map[string]model.User{"user": {ID: uuid.MustParse("018f6b7c-0000-7000-8000-000000000001")}}
 
 	// Act
@@ -206,7 +251,7 @@ func TestAuthUseCase_Register_FailWithTakenLogin(t *testing.T) {
 // TestAuthUseCase_Register_FailWithLoginLookupError проверяет ошибку проверки уникальности логина.
 func TestAuthUseCase_Register_FailWithLoginLookupError(t *testing.T) {
 	// Arrange
-	uc, userRepo, _, tx, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, _, tx, _ := newTestAuthUseCase(t)
 	userRepo.getErr = errTest
 
 	// Act
@@ -220,7 +265,7 @@ func TestAuthUseCase_Register_FailWithLoginLookupError(t *testing.T) {
 // TestAuthUseCase_Register_FailWithEmptyPassword проверяет ошибку хеширования пустого пароля.
 func TestAuthUseCase_Register_FailWithEmptyPassword(t *testing.T) {
 	// Arrange
-	uc, _, _, tx, _ := newTestAuthUseCase(t)
+	uc, _, _, _, tx, _ := newTestAuthUseCase(t)
 
 	in := testRegisterInput()
 	in.Password = ""
@@ -247,7 +292,7 @@ func TestAuthUseCase_Register_FailWithInvalidMasterKeyData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			uc, _, _, tx, _ := newTestAuthUseCase(t)
+			uc, _, _, _, tx, _ := newTestAuthUseCase(t)
 			in := testRegisterInput()
 			tt.edit(&in)
 
@@ -278,7 +323,7 @@ func TestAuthUseCase_Register_FailWithTokenIssueError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			uc, _, _, tx, issuer := newTestAuthUseCase(t)
+			uc, _, _, _, tx, issuer := newTestAuthUseCase(t)
 			issuer.accessErr = tt.accessErr
 			issuer.refreshErr = tt.refreshErr
 
@@ -295,7 +340,7 @@ func TestAuthUseCase_Register_FailWithTokenIssueError(t *testing.T) {
 // TestAuthUseCase_Register_FailWithCreateUserError проверяет ошибку создания пользователя в транзакции.
 func TestAuthUseCase_Register_FailWithCreateUserError(t *testing.T) {
 	// Arrange
-	uc, userRepo, refreshRepo, tx, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
 	userRepo.createErr = errTest
 
 	// Act
@@ -310,7 +355,7 @@ func TestAuthUseCase_Register_FailWithCreateUserError(t *testing.T) {
 // TestAuthUseCase_Register_FailWithCreateRefreshTokenError проверяет ошибку сохранения refresh-токена.
 func TestAuthUseCase_Register_FailWithCreateRefreshTokenError(t *testing.T) {
 	// Arrange
-	uc, userRepo, refreshRepo, tx, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
 	refreshRepo.createErr = errTest
 
 	// Act
@@ -325,7 +370,7 @@ func TestAuthUseCase_Register_FailWithCreateRefreshTokenError(t *testing.T) {
 // TestAuthUseCase_Login проверяет успешную аутентификацию пользователя.
 func TestAuthUseCase_Login(t *testing.T) {
 	// Arrange
-	uc, userRepo, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	passwordHash, err := auth.HashPassword("password")
 	require.NoError(t, err)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-000000000002")
@@ -356,7 +401,7 @@ func TestAuthUseCase_Login(t *testing.T) {
 func TestAuthUseCase_Login_FailWithAuthenticationFailed(t *testing.T) {
 	t.Run("user not found", func(t *testing.T) {
 		// Arrange
-		uc, _, _, _, _ := newTestAuthUseCase(t)
+		uc, _, _, _, _, _ := newTestAuthUseCase(t)
 
 		// Act
 		_, err := uc.Login(context.Background(), LoginInput{Login: "user", Password: "password"})
@@ -367,7 +412,7 @@ func TestAuthUseCase_Login_FailWithAuthenticationFailed(t *testing.T) {
 
 	t.Run("wrong password", func(t *testing.T) {
 		// Arrange
-		uc, userRepo, _, _, _ := newTestAuthUseCase(t)
+		uc, userRepo, _, _, _, _ := newTestAuthUseCase(t)
 		passwordHash, err := auth.HashPassword("password")
 		require.NoError(t, err)
 		userRepo.usersByLogin = map[string]model.User{"user": {PasswordHash: passwordHash}}
@@ -383,7 +428,7 @@ func TestAuthUseCase_Login_FailWithAuthenticationFailed(t *testing.T) {
 // TestAuthUseCase_Login_FailWithRepositoryError проверяет ошибку чтения пользователя.
 func TestAuthUseCase_Login_FailWithRepositoryError(t *testing.T) {
 	// Arrange
-	uc, userRepo, _, _, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, _, _, _ := newTestAuthUseCase(t)
 	userRepo.getErr = errTest
 
 	// Act
@@ -396,7 +441,7 @@ func TestAuthUseCase_Login_FailWithRepositoryError(t *testing.T) {
 // TestAuthUseCase_Login_FailWithCreateRefreshTokenError проверяет ошибку сохранения refresh-токена при логине.
 func TestAuthUseCase_Login_FailWithCreateRefreshTokenError(t *testing.T) {
 	// Arrange
-	uc, userRepo, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, userRepo, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	passwordHash, err := auth.HashPassword("password")
 	require.NoError(t, err)
 	userRepo.usersByLogin = map[string]model.User{"user": {PasswordHash: passwordHash}}
@@ -412,7 +457,7 @@ func TestAuthUseCase_Login_FailWithCreateRefreshTokenError(t *testing.T) {
 // TestAuthUseCase_Refresh проверяет успешную ротацию refresh-токена.
 func TestAuthUseCase_Refresh(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-000000000003")
 	oldTokenID := uuid.MustParse("018f6b7c-0000-7000-8000-000000000004")
 	refreshRepo.activeToken = model.RefreshToken{ID: oldTokenID, UserID: userID}
@@ -436,7 +481,7 @@ func TestAuthUseCase_Refresh(t *testing.T) {
 // TestAuthUseCase_Refresh_FailWithAuthenticationFailed проверяет ошибку при отсутствующем refresh-токене.
 func TestAuthUseCase_Refresh_FailWithAuthenticationFailed(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	refreshRepo.findErr = ErrRefreshTokenNotFound
 
 	// Act
@@ -449,7 +494,7 @@ func TestAuthUseCase_Refresh_FailWithAuthenticationFailed(t *testing.T) {
 // TestAuthUseCase_Refresh_FailWithRepositoryError проверяет ошибку поиска refresh-токена.
 func TestAuthUseCase_Refresh_FailWithRepositoryError(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	refreshRepo.findErr = errTest
 
 	// Act
@@ -462,7 +507,7 @@ func TestAuthUseCase_Refresh_FailWithRepositoryError(t *testing.T) {
 // TestAuthUseCase_Refresh_FailWithTokenIssueError проверяет ошибку выпуска новой пары токенов.
 func TestAuthUseCase_Refresh_FailWithTokenIssueError(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, _, issuer := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, _, issuer := newTestAuthUseCase(t)
 	refreshRepo.activeToken = model.RefreshToken{ID: uuid.MustParse("018f6b7c-0000-7000-8000-000000000005")}
 	issuer.accessErr = errTest
 
@@ -478,7 +523,7 @@ func TestAuthUseCase_Refresh_FailWithTokenIssueError(t *testing.T) {
 // TestAuthUseCase_Refresh_FailWithRevokeError проверяет ошибку отзыва старого refresh-токена.
 func TestAuthUseCase_Refresh_FailWithRevokeError(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	refreshRepo.activeToken = model.RefreshToken{ID: uuid.MustParse("018f6b7c-0000-7000-8000-000000000006")}
 	refreshRepo.revokeErr = errTest
 
@@ -493,7 +538,7 @@ func TestAuthUseCase_Refresh_FailWithRevokeError(t *testing.T) {
 // TestAuthUseCase_Refresh_FailWithCreateRefreshTokenError проверяет ошибку сохранения нового refresh-токена.
 func TestAuthUseCase_Refresh_FailWithCreateRefreshTokenError(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	refreshRepo.activeToken = model.RefreshToken{ID: uuid.MustParse("018f6b7c-0000-7000-8000-000000000007")}
 	refreshRepo.createErr = errTest
 
@@ -508,7 +553,7 @@ func TestAuthUseCase_Refresh_FailWithCreateRefreshTokenError(t *testing.T) {
 // TestAuthUseCase_Logout проверяет успешное завершение пользовательской сессии.
 func TestAuthUseCase_Logout(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
 	tokenID := uuid.MustParse("018f6b7c-0000-7000-8000-000000000008")
 	refreshRepo.activeToken = model.RefreshToken{ID: tokenID}
 
@@ -526,7 +571,7 @@ func TestAuthUseCase_Logout(t *testing.T) {
 // TestAuthUseCase_Logout_FailWithAuthenticationFailed проверяет ошибку при отсутствующем refresh-токене.
 func TestAuthUseCase_Logout_FailWithAuthenticationFailed(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	refreshRepo.findErr = ErrRefreshTokenNotFound
 
 	// Act
@@ -539,7 +584,7 @@ func TestAuthUseCase_Logout_FailWithAuthenticationFailed(t *testing.T) {
 // TestAuthUseCase_Logout_FailWithRevokeError проверяет ошибку отзыва refresh-токена.
 func TestAuthUseCase_Logout_FailWithRevokeError(t *testing.T) {
 	// Arrange
-	uc, _, refreshRepo, _, _ := newTestAuthUseCase(t)
+	uc, _, _, refreshRepo, _, _ := newTestAuthUseCase(t)
 	refreshRepo.activeToken = model.RefreshToken{ID: uuid.MustParse("018f6b7c-0000-7000-8000-000000000009")}
 	refreshRepo.revokeErr = errTest
 
@@ -548,4 +593,61 @@ func TestAuthUseCase_Logout_FailWithRevokeError(t *testing.T) {
 
 	// Assert
 	require.ErrorIs(t, err, errTest)
+}
+
+// TestAuthUseCase_ChangeMasterKey проверяет атомарное обновление данных мастер-ключа и DEK приватных записей.
+func TestAuthUseCase_ChangeMasterKey(t *testing.T) {
+	// Arrange
+	uc, userRepo, recordRepo, _, tx, _ := newTestAuthUseCase(t)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000010")
+	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-200000000010")
+	in := ChangeMasterKeyInput{
+		UserID:            userID,
+		MasterKeySalt:     []byte("abcdef1234567890"),
+		MasterKeyVerifier: []byte("new-verifier"),
+		Records: []ReencryptedRecordDEK{
+			{RecordID: recordID, ExpectedVersion: 2, EncryptedDEK: []byte("new-encrypted-dek")},
+		},
+	}
+
+	// Act
+	err := uc.ChangeMasterKey(context.Background(), in)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 1, tx.calls)
+	require.Len(t, recordRepo.reencrypted, 1)
+	assert.Equal(t, recordID, recordRepo.reencrypted[0].RecordID)
+	require.Len(t, userRepo.updatedKeys, 1)
+	assert.Equal(t, userID, userRepo.updatedKeys[0].ID)
+	assert.Equal(t, []byte("abcdef1234567890"), userRepo.updatedKeys[0].MasterKeySalt)
+	assert.Equal(t, []byte("new-verifier"), userRepo.updatedKeys[0].MasterKeyVerifier)
+	assert.True(t, recordRepo.reencryptedTx[0])
+	assert.True(t, userRepo.updatedInTx[0])
+}
+
+// TestAuthUseCase_ChangeMasterKey_FailWithRecordConflict проверяет проброс конфликта записей при смене мастер-ключа.
+func TestAuthUseCase_ChangeMasterKey_FailWithRecordConflict(t *testing.T) {
+	// Arrange
+	uc, userRepo, recordRepo, _, _, _ := newTestAuthUseCase(t)
+	recordRepo.reencryptErr = ErrMasterKeyChangeConflict
+	in := ChangeMasterKeyInput{
+		UserID:            uuid.MustParse("018f6b7c-0000-7000-8000-100000000011"),
+		MasterKeySalt:     []byte("abcdef1234567890"),
+		MasterKeyVerifier: []byte("new-verifier"),
+		Records: []ReencryptedRecordDEK{
+			{
+				RecordID:        uuid.MustParse("018f6b7c-0000-7000-8000-200000000011"),
+				ExpectedVersion: 2,
+				EncryptedDEK:    []byte("new-encrypted-dek"),
+			},
+		},
+	}
+
+	// Act
+	err := uc.ChangeMasterKey(context.Background(), in)
+
+	// Assert
+	require.ErrorIs(t, err, ErrMasterKeyChangeConflict)
+	assert.Empty(t, userRepo.updatedKeys)
 }

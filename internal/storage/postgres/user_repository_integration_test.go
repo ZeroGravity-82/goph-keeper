@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,31 @@ func TestUserRepository_CreateAndGetByLogin(t *testing.T) {
 	assert.Equal(t, u.MasterKeyVerifier, got.MasterKeyVerifier)
 	assert.True(t, got.RegisteredAt.Equal(u.RegisteredAt))
 	assert.True(t, got.UpdatedAt.Equal(u.UpdatedAt))
+}
+
+// TestUserRepository_UpdateMasterKey проверяет обновление соли и верификатора мастер-ключа пользователя.
+func TestUserRepository_UpdateMasterKey(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	repo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	u := newTestUser(t, "master-key-update-user")
+	require.NoError(t, repo.Create(ctx, u))
+	updatedAt := fixedTestTime().Add(time.Hour)
+	newSalt := []byte("abcdef1234567890")
+	newVerifier := []byte("new-master-key-verifier")
+
+	// Act
+	err = repo.UpdateMasterKey(ctx, u.ID, newSalt, newVerifier, updatedAt)
+
+	// Assert
+	require.NoError(t, err)
+	got, err := repo.GetByLogin(ctx, u.Login)
+	require.NoError(t, err)
+	assert.Equal(t, newSalt, got.MasterKeySalt)
+	assert.Equal(t, newVerifier, got.MasterKeyVerifier)
+	assert.True(t, got.UpdatedAt.Equal(updatedAt))
 }
 
 // TestUserRepository_GetByLogin_NotFound проверяет ошибку при поиске несуществующего пользователя.

@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/logging"
 	"zerogravity-82/goph-keeper/internal/pb"
+	"zerogravity-82/goph-keeper/internal/transport/grpcserver/authcontext"
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
@@ -20,6 +22,7 @@ type authUseCase interface {
 	Login(ctx context.Context, in usecase.LoginInput) (usecase.LoginOutput, error)
 	Refresh(ctx context.Context, in usecase.RefreshInput) (usecase.RefreshOutput, error)
 	Logout(ctx context.Context, in usecase.LogoutInput) error
+	ChangeMasterKey(ctx context.Context, in usecase.ChangeMasterKeyInput) error
 }
 
 // AuthService реализует gRPC-сервис аутентификации.
@@ -101,7 +104,8 @@ func isExpectedAuthError(err error) bool {
 	return errors.Is(err, usecase.ErrLoginAlreadyTaken) ||
 		errors.Is(err, usecase.ErrAuthenticationFailed) ||
 		errors.Is(err, usecase.ErrUserNotFound) ||
-		errors.Is(err, usecase.ErrInvalidMasterKeySalt)
+		errors.Is(err, usecase.ErrInvalidMasterKeySalt) ||
+		errors.Is(err, usecase.ErrMasterKeyChangeConflict)
 }
 
 // authErrorToStatus преобразует ошибку сценария аутентификации в gRPC-статус.
@@ -117,6 +121,9 @@ func authErrorToStatus(err error) error {
 	}
 	if errors.Is(err, usecase.ErrInvalidMasterKeySalt) {
 		return status.Error(codes.InvalidArgument, "master key salt has invalid length")
+	}
+	if errors.Is(err, usecase.ErrMasterKeyChangeConflict) {
+		return status.Error(codes.Aborted, "private records changed during master key change")
 	}
 	return status.Error(codes.Internal, "internal error")
 }
@@ -210,6 +217,74 @@ func (s *AuthService) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.Lo
 	}
 
 	return pb.LogoutResponse_builder{}.Build(), nil
+}
+
+// ChangeMasterKey обновляет данные мастер-ключа и зашифрованные DEK приватных записей пользователя.
+func (s *AuthService) ChangeMasterKey(
+	ctx context.Context,
+	req *pb.ChangeMasterKeyRequest,
+) (*pb.ChangeMasterKeyResponse, error) {
+	in, err := changeMasterKeyInputFromRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = s.uc.ChangeMasterKey(ctx, in); err != nil {
+		if !isExpectedAuthError(err) {
+			s.logger.Error("failed to change master key", slog.Any("err", err))
+		}
+		return nil, authErrorToStatus(err)
+	}
+
+	return pb.ChangeMasterKeyResponse_builder{}.Build(), nil
+}
+
+// changeMasterKeyInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария смены мастер-ключа.
+func changeMasterKeyInputFromRequest(
+	ctx context.Context,
+	req *pb.ChangeMasterKeyRequest,
+) (usecase.ChangeMasterKeyInput, error) {
+	if req == nil {
+		return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, ok := authcontext.UserIDFromContext(ctx)
+	if !ok {
+		return usecase.ChangeMasterKeyInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+	if len(req.GetMasterKeySalt()) == 0 {
+		return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "master key salt is required")
+	}
+	if len(req.GetMasterKeyVerifier()) == 0 {
+		return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "master key verifier is required")
+	}
+
+	records := make([]usecase.ReencryptedRecordDEK, 0, len(req.GetRecords()))
+	for _, item := range req.GetRecords() {
+		if item == nil {
+			return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "record item is required")
+		}
+		recordID, err := uuid.Parse(item.GetRecordId())
+		if err != nil || recordID == uuid.Nil {
+			return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "record ID is invalid")
+		}
+		if item.GetExpectedVersion() <= 0 {
+			return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "record expected version is invalid")
+		}
+		if len(item.GetEncryptedDek()) == 0 {
+			return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "record encrypted DEK is required")
+		}
+		records = append(records, usecase.ReencryptedRecordDEK{
+			RecordID:        recordID,
+			ExpectedVersion: item.GetExpectedVersion(),
+			EncryptedDEK:    item.GetEncryptedDek(),
+		})
+	}
+	return usecase.ChangeMasterKeyInput{
+		UserID:            userID,
+		MasterKeySalt:     req.GetMasterKeySalt(),
+		MasterKeyVerifier: req.GetMasterKeyVerifier(),
+		Records:           records,
+	}, nil
 }
 
 // logoutInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария завершения сессии.

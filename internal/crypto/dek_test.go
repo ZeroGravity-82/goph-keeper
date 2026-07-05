@@ -57,6 +57,35 @@ func Test_decryptDEK_FailWithWrongKEK(t *testing.T) {
 	assert.Nil(t, decryptedDEK)
 }
 
+// TestReencryptDEK проверяет переупаковку DEK с одного мастер-ключа на другой.
+func TestReencryptDEK(t *testing.T) {
+	// Arrange
+	dek, err := generateDEK()
+	require.NoError(t, err)
+	oldMasterKey := "old master key"
+	oldSalt := []byte("1234567890abcdef")
+	newMasterKey := "new master key"
+	newSalt := []byte("abcdef1234567890")
+	oldKEK, err := deriveKEK(oldMasterKey, oldSalt)
+	require.NoError(t, err)
+	encryptedDEK, err := encryptDEK(dek, oldKEK)
+	require.NoError(t, err)
+
+	// Act
+	reencryptedDEK, err := ReencryptDEK(oldMasterKey, oldSalt, newMasterKey, newSalt, encryptedDEK)
+
+	// Assert
+	require.NoError(t, err)
+	newKEK, err := deriveKEK(newMasterKey, newSalt)
+	require.NoError(t, err)
+	decryptedDEK, err := decryptDEK(reencryptedDEK, newKEK)
+	require.NoError(t, err)
+	assert.Equal(t, dek, decryptedDEK)
+
+	_, err = decryptDEK(reencryptedDEK, oldKEK)
+	require.Error(t, err)
+}
+
 // Test_decryptDEK_FailWithInvalidPlaintextLength проверяет ошибку, если расшифрованное значение не похоже на DEK.
 func Test_decryptDEK_FailWithInvalidPlaintextLength(t *testing.T) {
 	// Arrange

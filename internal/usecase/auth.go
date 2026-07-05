@@ -52,9 +52,27 @@ type LogoutInput struct {
 	RefreshToken string
 }
 
+type ReencryptedRecordDEK struct {
+	RecordID        uuid.UUID
+	ExpectedVersion int64
+	EncryptedDEK    []byte
+}
+
+type ChangeMasterKeyInput struct {
+	UserID            uuid.UUID
+	MasterKeySalt     []byte
+	MasterKeyVerifier []byte
+	Records           []ReencryptedRecordDEK
+}
+
 type userRepository interface {
 	Create(ctx context.Context, u model.User) error
 	GetByLogin(ctx context.Context, login string) (model.User, error)
+	UpdateMasterKey(ctx context.Context, userID uuid.UUID, salt []byte, verifier []byte, updatedAt time.Time) error
+}
+
+type masterKeyRecordRepository interface {
+	ReencryptDEKs(ctx context.Context, userID uuid.UUID, records []ReencryptedRecordDEK, updatedAt time.Time) error
 }
 
 type refreshTokenRepository interface {
@@ -76,6 +94,7 @@ type masterKeySaltValidator func(salt []byte) error
 
 type AuthUseCase struct {
 	userRepo              userRepository
+	recordRepo            masterKeyRecordRepository
 	refreshTokenRepo      refreshTokenRepository
 	transactor            transactor
 	tokenIssuer           sessionTokenIssuer
@@ -86,6 +105,7 @@ type AuthUseCase struct {
 // NewAuthUseCase создает AuthUseCase.
 func NewAuthUseCase(
 	userRepo userRepository,
+	recordRepo masterKeyRecordRepository,
 	refreshTokenRepo refreshTokenRepository,
 	transactor transactor,
 	tokenIssuer sessionTokenIssuer,
@@ -94,6 +114,9 @@ func NewAuthUseCase(
 ) (*AuthUseCase, error) {
 	if userRepo == nil {
 		return nil, errors.New("user repository is not provided")
+	}
+	if recordRepo == nil {
+		return nil, errors.New("record repository is not provided")
 	}
 	if refreshTokenRepo == nil {
 		return nil, errors.New("refresh token repository is not provided")
@@ -113,6 +136,7 @@ func NewAuthUseCase(
 
 	return &AuthUseCase{
 		userRepo:              userRepo,
+		recordRepo:            recordRepo,
 		refreshTokenRepo:      refreshTokenRepo,
 		transactor:            transactor,
 		tokenIssuer:           tokenIssuer,
@@ -275,6 +299,48 @@ func (uc *AuthUseCase) Logout(ctx context.Context, in LogoutInput) error {
 		return fmt.Errorf("failed to logout user: %w", err)
 	}
 
+	return nil
+}
+
+// ChangeMasterKey обновляет соль и верификатор мастер-ключа, а также заново зашифрованные DEK всех приватных записей
+// пользователя.
+func (uc *AuthUseCase) ChangeMasterKey(ctx context.Context, in ChangeMasterKeyInput) error {
+	if in.UserID == uuid.Nil {
+		return ErrAuthenticationFailed
+	}
+	if err := uc.validateMasterKeySalt(in.MasterKeySalt); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidMasterKeySalt, err)
+	}
+	if len(in.MasterKeyVerifier) == 0 {
+		return errors.New("master key verifier is required")
+	}
+	for _, record := range in.Records {
+		if record.RecordID == uuid.Nil {
+			return errors.New("record ID is required")
+		}
+		if record.ExpectedVersion <= 0 {
+			return errors.New("record expected version must be positive")
+		}
+		if len(record.EncryptedDEK) == 0 {
+			return errors.New("record encrypted DEK is required")
+		}
+	}
+
+	now := time.Now().UTC()
+	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		if err := uc.recordRepo.ReencryptDEKs(ctx, in.UserID, in.Records, now); err != nil {
+			return err
+		}
+		if err := uc.userRepo.UpdateMasterKey(ctx, in.UserID, in.MasterKeySalt, in.MasterKeyVerifier, now); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, ErrMasterKeyChangeConflict) || errors.Is(err, ErrUserNotFound) {
+			return err
+		}
+		return fmt.Errorf("failed to change master key: %w", err)
+	}
 	return nil
 }
 

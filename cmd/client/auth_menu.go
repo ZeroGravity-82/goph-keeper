@@ -33,7 +33,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 				continue
 			}
 			if loggedIn {
-				if err = runRecordsMenu(ctx, app, reader, out, loginName); err != nil {
+				if err = runRecordsMenu(ctx, app, reader, in, out, loginName); err != nil {
 					if errors.Is(err, errExitApplication) {
 						return nil
 					}
@@ -50,7 +50,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 				continue
 			}
 			if loggedIn {
-				if err = runRecordsMenu(ctx, app, reader, out, loginName); err != nil {
+				if err = runRecordsMenu(ctx, app, reader, in, out, loginName); err != nil {
 					if errors.Is(err, errExitApplication) {
 						return nil
 					}

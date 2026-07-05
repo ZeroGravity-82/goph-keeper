@@ -53,6 +53,14 @@ func (s *authClientStub) Logout(
 	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 
+func (s *authClientStub) ChangeMasterKey(
+	context.Context,
+	*pb.ChangeMasterKeyRequest,
+	...grpc.CallOption,
+) (*pb.ChangeMasterKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "not implemented")
+}
+
 // TestApp_withAccessTokenRefresh_RefreshesAndRetries проверяет, что клиент обновляет пару токенов и повторяет запрос
 // при истекшем access-токене.
 func TestApp_withAccessTokenRefresh_RefreshesAndRetries(t *testing.T) {

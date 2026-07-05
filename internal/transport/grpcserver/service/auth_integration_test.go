@@ -327,6 +327,8 @@ func newIntegrationAuthService(
 
 	userRepo, err := postgres.NewUserRepository(db)
 	require.NoError(t, err)
+	recordRepo, err := postgres.NewRecordRepository(db)
+	require.NoError(t, err)
 	refreshTokenRepo, err := postgres.NewRefreshTokenRepository(db)
 	require.NoError(t, err)
 	transactor, err := postgres.NewTransactor(db)
@@ -335,6 +337,7 @@ func newIntegrationAuthService(
 	require.NoError(t, err)
 	authUC, err := usecase.NewAuthUseCase(
 		userRepo,
+		recordRepo,
 		refreshTokenRepo,
 		transactor,
 		tokenManager,

@@ -44,9 +44,24 @@ message LogoutRequest {
 
 message LogoutResponse {}
 
+message ReencryptedRecordDEK {
+  string record_id = 1;
+  int64 expected_version = 2;
+  bytes encrypted_dek = 3;
+}
+
+message ChangeMasterKeyRequest {
+  bytes master_key_salt = 1;
+  bytes master_key_verifier = 2;
+  repeated ReencryptedRecordDEK records = 3;
+}
+
+message ChangeMasterKeyResponse {}
+
 service Auth {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc ChangeMasterKey(ChangeMasterKeyRequest) returns (ChangeMasterKeyResponse);
 }

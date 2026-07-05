@@ -17,6 +17,7 @@ import (
 const (
 	authorizationMetadataKey       = "authorization"
 	recordsServiceFullMethodPrefix = "/gophkeeper.v1.Records/"
+	authChangeMasterKeyFullMethod  = "/gophkeeper.v1.Auth/ChangeMasterKey"
 )
 
 type accessTokenParser interface {
@@ -98,7 +99,8 @@ func (s serverStreamWithContext) Context() context.Context {
 }
 
 func requiresAccessToken(fullMethod string) bool {
-	return strings.HasPrefix(fullMethod, recordsServiceFullMethodPrefix)
+	return strings.HasPrefix(fullMethod, recordsServiceFullMethodPrefix) ||
+		fullMethod == authChangeMasterKeyFullMethod
 }
 
 func accessTokenFromContext(ctx context.Context) (string, error) {

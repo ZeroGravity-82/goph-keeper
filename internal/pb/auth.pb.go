@@ -939,6 +939,317 @@ func (b0 LogoutResponse_builder) Build() *LogoutResponse {
 	return m0
 }
 
+type ReencryptedRecordDEK struct {
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_RecordId        *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
+	xxx_hidden_ExpectedVersion int64                  `protobuf:"varint,2,opt,name=expected_version,json=expectedVersion"`
+	xxx_hidden_EncryptedDek    []byte                 `protobuf:"bytes,3,opt,name=encrypted_dek,json=encryptedDek"`
+	XXX_raceDetectHookData     protoimpl.RaceDetectHookData
+	XXX_presence               [1]uint32
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *ReencryptedRecordDEK) Reset() {
+	*x = ReencryptedRecordDEK{}
+	mi := &file_api_auth_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReencryptedRecordDEK) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReencryptedRecordDEK) ProtoMessage() {}
+
+func (x *ReencryptedRecordDEK) ProtoReflect() protoreflect.Message {
+	mi := &file_api_auth_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ReencryptedRecordDEK) GetRecordId() string {
+	if x != nil {
+		if x.xxx_hidden_RecordId != nil {
+			return *x.xxx_hidden_RecordId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ReencryptedRecordDEK) GetExpectedVersion() int64 {
+	if x != nil {
+		return x.xxx_hidden_ExpectedVersion
+	}
+	return 0
+}
+
+func (x *ReencryptedRecordDEK) GetEncryptedDek() []byte {
+	if x != nil {
+		return x.xxx_hidden_EncryptedDek
+	}
+	return nil
+}
+
+func (x *ReencryptedRecordDEK) SetRecordId(v string) {
+	x.xxx_hidden_RecordId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+}
+
+func (x *ReencryptedRecordDEK) SetExpectedVersion(v int64) {
+	x.xxx_hidden_ExpectedVersion = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
+}
+
+func (x *ReencryptedRecordDEK) SetEncryptedDek(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_EncryptedDek = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+}
+
+func (x *ReencryptedRecordDEK) HasRecordId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ReencryptedRecordDEK) HasExpectedVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *ReencryptedRecordDEK) HasEncryptedDek() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *ReencryptedRecordDEK) ClearRecordId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_RecordId = nil
+}
+
+func (x *ReencryptedRecordDEK) ClearExpectedVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_ExpectedVersion = 0
+}
+
+func (x *ReencryptedRecordDEK) ClearEncryptedDek() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_EncryptedDek = nil
+}
+
+type ReencryptedRecordDEK_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	RecordId        *string
+	ExpectedVersion *int64
+	EncryptedDek    []byte
+}
+
+func (b0 ReencryptedRecordDEK_builder) Build() *ReencryptedRecordDEK {
+	m0 := &ReencryptedRecordDEK{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.RecordId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_RecordId = b.RecordId
+	}
+	if b.ExpectedVersion != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		x.xxx_hidden_ExpectedVersion = *b.ExpectedVersion
+	}
+	if b.EncryptedDek != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		x.xxx_hidden_EncryptedDek = b.EncryptedDek
+	}
+	return m0
+}
+
+type ChangeMasterKeyRequest struct {
+	state                        protoimpl.MessageState   `protogen:"opaque.v1"`
+	xxx_hidden_MasterKeySalt     []byte                   `protobuf:"bytes,1,opt,name=master_key_salt,json=masterKeySalt"`
+	xxx_hidden_MasterKeyVerifier []byte                   `protobuf:"bytes,2,opt,name=master_key_verifier,json=masterKeyVerifier"`
+	xxx_hidden_Records           *[]*ReencryptedRecordDEK `protobuf:"bytes,3,rep,name=records"`
+	XXX_raceDetectHookData       protoimpl.RaceDetectHookData
+	XXX_presence                 [1]uint32
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
+}
+
+func (x *ChangeMasterKeyRequest) Reset() {
+	*x = ChangeMasterKeyRequest{}
+	mi := &file_api_auth_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeMasterKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeMasterKeyRequest) ProtoMessage() {}
+
+func (x *ChangeMasterKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_auth_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ChangeMasterKeyRequest) GetMasterKeySalt() []byte {
+	if x != nil {
+		return x.xxx_hidden_MasterKeySalt
+	}
+	return nil
+}
+
+func (x *ChangeMasterKeyRequest) GetMasterKeyVerifier() []byte {
+	if x != nil {
+		return x.xxx_hidden_MasterKeyVerifier
+	}
+	return nil
+}
+
+func (x *ChangeMasterKeyRequest) GetRecords() []*ReencryptedRecordDEK {
+	if x != nil {
+		if x.xxx_hidden_Records != nil {
+			return *x.xxx_hidden_Records
+		}
+	}
+	return nil
+}
+
+func (x *ChangeMasterKeyRequest) SetMasterKeySalt(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_MasterKeySalt = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+}
+
+func (x *ChangeMasterKeyRequest) SetMasterKeyVerifier(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_MasterKeyVerifier = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
+}
+
+func (x *ChangeMasterKeyRequest) SetRecords(v []*ReencryptedRecordDEK) {
+	x.xxx_hidden_Records = &v
+}
+
+func (x *ChangeMasterKeyRequest) HasMasterKeySalt() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ChangeMasterKeyRequest) HasMasterKeyVerifier() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *ChangeMasterKeyRequest) ClearMasterKeySalt() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_MasterKeySalt = nil
+}
+
+func (x *ChangeMasterKeyRequest) ClearMasterKeyVerifier() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_MasterKeyVerifier = nil
+}
+
+type ChangeMasterKeyRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	MasterKeySalt     []byte
+	MasterKeyVerifier []byte
+	Records           []*ReencryptedRecordDEK
+}
+
+func (b0 ChangeMasterKeyRequest_builder) Build() *ChangeMasterKeyRequest {
+	m0 := &ChangeMasterKeyRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.MasterKeySalt != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_MasterKeySalt = b.MasterKeySalt
+	}
+	if b.MasterKeyVerifier != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		x.xxx_hidden_MasterKeyVerifier = b.MasterKeyVerifier
+	}
+	x.xxx_hidden_Records = &b.Records
+	return m0
+}
+
+type ChangeMasterKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"opaque.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeMasterKeyResponse) Reset() {
+	*x = ChangeMasterKeyResponse{}
+	mi := &file_api_auth_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeMasterKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeMasterKeyResponse) ProtoMessage() {}
+
+func (x *ChangeMasterKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_auth_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+type ChangeMasterKeyResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+}
+
+func (b0 ChangeMasterKeyResponse_builder) Build() *ChangeMasterKeyResponse {
+	m0 := &ChangeMasterKeyResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	return m0
+}
+
 var File_api_auth_proto protoreflect.FileDescriptor
 
 const file_api_auth_proto_rawDesc = "" +
@@ -968,38 +1279,54 @@ const file_api_auth_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"4\n" +
 	"\rLogoutRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"\x10\n" +
-	"\x0eLogoutResponse2\xa8\x02\n" +
+	"\x0eLogoutResponse\"\x83\x01\n" +
+	"\x14ReencryptedRecordDEK\x12\x1b\n" +
+	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12)\n" +
+	"\x10expected_version\x18\x02 \x01(\x03R\x0fexpectedVersion\x12#\n" +
+	"\rencrypted_dek\x18\x03 \x01(\fR\fencryptedDek\"\xaf\x01\n" +
+	"\x16ChangeMasterKeyRequest\x12&\n" +
+	"\x0fmaster_key_salt\x18\x01 \x01(\fR\rmasterKeySalt\x12.\n" +
+	"\x13master_key_verifier\x18\x02 \x01(\fR\x11masterKeyVerifier\x12=\n" +
+	"\arecords\x18\x03 \x03(\v2#.gophkeeper.v1.ReencryptedRecordDEKR\arecords\"\x19\n" +
+	"\x17ChangeMasterKeyResponse2\x8a\x03\n" +
 	"\x04Auth\x12K\n" +
 	"\bRegister\x12\x1e.gophkeeper.v1.RegisterRequest\x1a\x1f.gophkeeper.v1.RegisterResponse\x12B\n" +
 	"\x05Login\x12\x1b.gophkeeper.v1.LoginRequest\x1a\x1c.gophkeeper.v1.LoginResponse\x12H\n" +
 	"\aRefresh\x12\x1d.gophkeeper.v1.RefreshRequest\x1a\x1e.gophkeeper.v1.RefreshResponse\x12E\n" +
-	"\x06Logout\x12\x1c.gophkeeper.v1.LogoutRequest\x1a\x1d.gophkeeper.v1.LogoutResponseB+Z)zerogravity-82/goph-keeper/internal/pb;pbb\beditionsp\xe8\a"
+	"\x06Logout\x12\x1c.gophkeeper.v1.LogoutRequest\x1a\x1d.gophkeeper.v1.LogoutResponse\x12`\n" +
+	"\x0fChangeMasterKey\x12%.gophkeeper.v1.ChangeMasterKeyRequest\x1a&.gophkeeper.v1.ChangeMasterKeyResponseB+Z)zerogravity-82/goph-keeper/internal/pb;pbb\beditionsp\xe8\a"
 
-var file_api_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_api_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_api_auth_proto_goTypes = []any{
-	(*RegisterRequest)(nil),  // 0: gophkeeper.v1.RegisterRequest
-	(*RegisterResponse)(nil), // 1: gophkeeper.v1.RegisterResponse
-	(*LoginRequest)(nil),     // 2: gophkeeper.v1.LoginRequest
-	(*LoginResponse)(nil),    // 3: gophkeeper.v1.LoginResponse
-	(*RefreshRequest)(nil),   // 4: gophkeeper.v1.RefreshRequest
-	(*RefreshResponse)(nil),  // 5: gophkeeper.v1.RefreshResponse
-	(*LogoutRequest)(nil),    // 6: gophkeeper.v1.LogoutRequest
-	(*LogoutResponse)(nil),   // 7: gophkeeper.v1.LogoutResponse
+	(*RegisterRequest)(nil),         // 0: gophkeeper.v1.RegisterRequest
+	(*RegisterResponse)(nil),        // 1: gophkeeper.v1.RegisterResponse
+	(*LoginRequest)(nil),            // 2: gophkeeper.v1.LoginRequest
+	(*LoginResponse)(nil),           // 3: gophkeeper.v1.LoginResponse
+	(*RefreshRequest)(nil),          // 4: gophkeeper.v1.RefreshRequest
+	(*RefreshResponse)(nil),         // 5: gophkeeper.v1.RefreshResponse
+	(*LogoutRequest)(nil),           // 6: gophkeeper.v1.LogoutRequest
+	(*LogoutResponse)(nil),          // 7: gophkeeper.v1.LogoutResponse
+	(*ReencryptedRecordDEK)(nil),    // 8: gophkeeper.v1.ReencryptedRecordDEK
+	(*ChangeMasterKeyRequest)(nil),  // 9: gophkeeper.v1.ChangeMasterKeyRequest
+	(*ChangeMasterKeyResponse)(nil), // 10: gophkeeper.v1.ChangeMasterKeyResponse
 }
 var file_api_auth_proto_depIdxs = []int32{
-	0, // 0: gophkeeper.v1.Auth.Register:input_type -> gophkeeper.v1.RegisterRequest
-	2, // 1: gophkeeper.v1.Auth.Login:input_type -> gophkeeper.v1.LoginRequest
-	4, // 2: gophkeeper.v1.Auth.Refresh:input_type -> gophkeeper.v1.RefreshRequest
-	6, // 3: gophkeeper.v1.Auth.Logout:input_type -> gophkeeper.v1.LogoutRequest
-	1, // 4: gophkeeper.v1.Auth.Register:output_type -> gophkeeper.v1.RegisterResponse
-	3, // 5: gophkeeper.v1.Auth.Login:output_type -> gophkeeper.v1.LoginResponse
-	5, // 6: gophkeeper.v1.Auth.Refresh:output_type -> gophkeeper.v1.RefreshResponse
-	7, // 7: gophkeeper.v1.Auth.Logout:output_type -> gophkeeper.v1.LogoutResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	8,  // 0: gophkeeper.v1.ChangeMasterKeyRequest.records:type_name -> gophkeeper.v1.ReencryptedRecordDEK
+	0,  // 1: gophkeeper.v1.Auth.Register:input_type -> gophkeeper.v1.RegisterRequest
+	2,  // 2: gophkeeper.v1.Auth.Login:input_type -> gophkeeper.v1.LoginRequest
+	4,  // 3: gophkeeper.v1.Auth.Refresh:input_type -> gophkeeper.v1.RefreshRequest
+	6,  // 4: gophkeeper.v1.Auth.Logout:input_type -> gophkeeper.v1.LogoutRequest
+	9,  // 5: gophkeeper.v1.Auth.ChangeMasterKey:input_type -> gophkeeper.v1.ChangeMasterKeyRequest
+	1,  // 6: gophkeeper.v1.Auth.Register:output_type -> gophkeeper.v1.RegisterResponse
+	3,  // 7: gophkeeper.v1.Auth.Login:output_type -> gophkeeper.v1.LoginResponse
+	5,  // 8: gophkeeper.v1.Auth.Refresh:output_type -> gophkeeper.v1.RefreshResponse
+	7,  // 9: gophkeeper.v1.Auth.Logout:output_type -> gophkeeper.v1.LogoutResponse
+	10, // 10: gophkeeper.v1.Auth.ChangeMasterKey:output_type -> gophkeeper.v1.ChangeMasterKeyResponse
+	6,  // [6:11] is the sub-list for method output_type
+	1,  // [1:6] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_api_auth_proto_init() }
@@ -1013,7 +1340,7 @@ func file_api_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_auth_proto_rawDesc), len(file_api_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

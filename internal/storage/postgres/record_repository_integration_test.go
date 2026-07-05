@@ -262,6 +262,115 @@ func TestRecordRepository_Update_VersionConflict(t *testing.T) {
 	assert.Equal(t, originalVersion, got.Version)
 }
 
+// TestRecordRepository_ReencryptDEKs проверяет обновление зашифрованных DEK всех активных записей пользователя.
+func TestRecordRepository_ReencryptDEKs(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-reencrypt-deks-user")
+	otherUser := newTestUser(t, "record-reencrypt-deks-other-user")
+	now := fixedTestTime()
+	firstRecord := newTestRecord(t, user.ID, model.RecordTypeText, "первая запись", now)
+	secondRecord := newTestRecord(t, user.ID, model.RecordTypeCredential, "вторая запись", now.Add(time.Minute))
+	deletedRecord := newTestRecord(t, user.ID, model.RecordTypeCard, "удаленная запись", now.Add(2*time.Minute))
+	deletedAt := now.Add(3 * time.Minute)
+	deletedRecord.DeletedAt = &deletedAt
+	otherRecord := newTestRecord(t, otherUser.ID, model.RecordTypeText, "еще одна запись", now)
+	updatedAt := now.Add(4 * time.Minute)
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, userRepo.Create(ctx, otherUser))
+	require.NoError(t, recordRepo.Create(ctx, firstRecord))
+	require.NoError(t, recordRepo.Create(ctx, secondRecord))
+	require.NoError(t, recordRepo.Create(ctx, deletedRecord))
+	require.NoError(t, recordRepo.Create(ctx, otherRecord))
+
+	// Act
+	err = recordRepo.ReencryptDEKs(
+		ctx,
+		user.ID,
+		[]usecase.ReencryptedRecordDEK{
+			{
+				RecordID:        firstRecord.ID,
+				ExpectedVersion: firstRecord.Version,
+				EncryptedDEK:    []byte("first-new-encrypted-dek"),
+			},
+			{
+				RecordID:        secondRecord.ID,
+				ExpectedVersion: secondRecord.Version,
+				EncryptedDEK:    []byte("second-new-encrypted-dek"),
+			},
+		},
+		updatedAt,
+	)
+
+	// Assert
+	require.NoError(t, err)
+
+	gotFirst, err := recordRepo.GetByIDAndUserID(ctx, firstRecord.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("first-new-encrypted-dek"), gotFirst.EncryptedDEK.Data)
+	assert.Equal(t, firstRecord.Version+1, gotFirst.Version)
+	assert.Equal(t, firstRecord.Title, gotFirst.Title)
+	assert.Equal(t, firstRecord.EncryptedPayload.Data, gotFirst.EncryptedPayload.Data)
+	assert.True(t, gotFirst.UpdatedAt.Equal(updatedAt))
+
+	gotSecond, err := recordRepo.GetByIDAndUserID(ctx, secondRecord.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("second-new-encrypted-dek"), gotSecond.EncryptedDEK.Data)
+	assert.Equal(t, secondRecord.Version+1, gotSecond.Version)
+	assert.Equal(t, secondRecord.Title, gotSecond.Title)
+	assert.Equal(t, secondRecord.EncryptedPayload.Data, gotSecond.EncryptedPayload.Data)
+	assert.True(t, gotSecond.UpdatedAt.Equal(updatedAt))
+
+	gotOther, err := recordRepo.GetByIDAndUserID(ctx, otherRecord.ID, otherUser.ID)
+	require.NoError(t, err)
+	assertRecordEqual(t, otherRecord, gotOther)
+}
+
+// TestRecordRepository_ReencryptDEKs_VersionConflict проверяет конфликт при смене мастер-ключа, если версия записи
+// изменилась после чтения клиентом.
+func TestRecordRepository_ReencryptDEKs_VersionConflict(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-reencrypt-deks-conflict-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "просто запись", fixedTestTime())
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, recordRepo.Create(ctx, record))
+
+	// Act
+	err = recordRepo.ReencryptDEKs(
+		ctx,
+		user.ID,
+		[]usecase.ReencryptedRecordDEK{
+			{
+				RecordID:        record.ID,
+				ExpectedVersion: record.Version + 1,
+				EncryptedDEK:    []byte("new-encrypted-dek"),
+			},
+		},
+		fixedTestTime().Add(time.Minute),
+	)
+
+	// Assert
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, usecase.ErrMasterKeyChangeConflict))
+
+	got, err := recordRepo.GetByIDAndUserID(ctx, record.ID, user.ID)
+	require.NoError(t, err)
+	assertRecordEqual(t, record, got)
+}
+
 // TestRecordRepository_Delete проверяет мягкое удаление приватной записи.
 func TestRecordRepository_Delete(t *testing.T) {
 	// Arrange

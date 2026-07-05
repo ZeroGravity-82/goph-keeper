@@ -25,3 +25,26 @@ func decryptDEK(encryptedDEK model.EncryptedBlob, kek []byte) ([]byte, error) {
 	}
 	return dek, nil
 }
+
+// ReencryptDEK расшифровывает DEK старым мастер-ключом и заново шифрует тот же DEK новым мастер-ключом.
+func ReencryptDEK(
+	oldMasterKey string,
+	oldSalt []byte,
+	newMasterKey string,
+	newSalt []byte,
+	encryptedDEK model.EncryptedBlob,
+) (model.EncryptedBlob, error) {
+	oldKEK, err := deriveKEK(oldMasterKey, oldSalt)
+	if err != nil {
+		return model.EncryptedBlob{}, err
+	}
+	dek, err := decryptDEK(encryptedDEK, oldKEK)
+	if err != nil {
+		return model.EncryptedBlob{}, err
+	}
+	newKEK, err := deriveKEK(newMasterKey, newSalt)
+	if err != nil {
+		return model.EncryptedBlob{}, err
+	}
+	return encryptDEK(dek, newKEK)
+}

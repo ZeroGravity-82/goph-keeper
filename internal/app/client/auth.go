@@ -104,6 +104,89 @@ func (a *App) StartSession(session AuthSession, masterKey string) error {
 	return nil
 }
 
+// ChangeMasterKey меняет мастер-ключ пользователя без перешифрования payload приватных записей.
+func (a *App) ChangeMasterKey(ctx context.Context, currentMasterKey string, newMasterKey string) error {
+	if err := a.requireSession(); err != nil {
+		return err
+	}
+	if currentMasterKey == "" {
+		return errors.New("текущий мастер-ключ обязателен")
+	}
+	if newMasterKey == "" {
+		return errors.New("новый мастер-ключ обязателен")
+	}
+	if currentMasterKey == newMasterKey {
+		return errors.New("новый мастер-ключ должен отличаться от текущего")
+	}
+	if err := crypto.VerifyMasterKey(
+		currentMasterKey,
+		a.session.MasterKeySalt,
+		model.EncryptedBlob{Data: a.session.MasterKeyVerifier},
+	); err != nil {
+		if errors.Is(err, crypto.ErrInvalidMasterKey) {
+			return errors.New("неверный текущий мастер-ключ")
+		}
+		return fmt.Errorf("не удалось проверить текущий мастер-ключ: %w", err)
+	}
+
+	newSalt, err := crypto.GenerateMasterKeySalt()
+	if err != nil {
+		return fmt.Errorf("не удалось сгенерировать новую соль мастер-ключа: %w", err)
+	}
+	newVerifier, err := crypto.EncryptMasterKeyVerifier(newMasterKey, newSalt)
+	if err != nil {
+		return fmt.Errorf("не удалось зашифровать проверочные данные нового мастер-ключа: %w", err)
+	}
+
+	items, err := a.ListRecords(ctx)
+	if err != nil {
+		return err
+	}
+	records := make([]*pb.ReencryptedRecordDEK, 0, len(items))
+	for _, item := range items {
+		record, err := a.getRawRecord(ctx, item.RecordID)
+		if err != nil {
+			return err
+		}
+		encryptedDEK, err := crypto.ReencryptDEK(
+			currentMasterKey,
+			a.session.MasterKeySalt,
+			newMasterKey,
+			newSalt,
+			model.EncryptedBlob{Data: record.EncryptedDEK},
+		)
+		if err != nil {
+			return fmt.Errorf("не удалось переупаковать ключ приватной записи: %w", err)
+		}
+		records = append(records, pb.ReencryptedRecordDEK_builder{
+			RecordId:        &record.RecordID,
+			ExpectedVersion: &record.Version,
+			EncryptedDek:    encryptedDEK.Data,
+		}.Build())
+	}
+
+	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		_, err := a.auth.ChangeMasterKey(ctx, pb.ChangeMasterKeyRequest_builder{
+			MasterKeySalt:     newSalt,
+			MasterKeyVerifier: newVerifier.Data,
+			Records:           records,
+		}.Build())
+		return err
+	})
+	if err != nil {
+		return rpcError(err, "не удалось сменить мастер-ключ", map[codes.Code]string{
+			codes.Unauthenticated: "сессия недействительна, войдите снова",
+			codes.InvalidArgument: "некорректные данные нового мастер-ключа",
+			codes.Aborted:         "приватные записи изменились во время смены мастер-ключа, повторите действие",
+		})
+	}
+
+	a.session.MasterKeySalt = newSalt
+	a.session.MasterKeyVerifier = newVerifier.Data
+	a.masterKey = newMasterKey
+	return nil
+}
+
 func validateSessionTokens(session AuthSession) error {
 	if session.AccessToken == "" {
 		return errors.New("access-токен отсутствует")

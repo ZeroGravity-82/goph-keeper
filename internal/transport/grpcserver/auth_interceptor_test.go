@@ -181,6 +181,32 @@ func TestAuthenticateUnary_AddsUserIDToContext(t *testing.T) {
 	assert.True(t, parser.called)
 }
 
+// TestAuthenticateUnary_ProtectsChangeMasterKey проверяет, что смена мастер-ключа требует access-токен.
+func TestAuthenticateUnary_ProtectsChangeMasterKey(t *testing.T) {
+	// Arrange
+	userID, err := uuid.NewV7()
+	require.NoError(t, err)
+	parser := &accessTokenParserStub{claims: &auth.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: userID.String()},
+	}}
+	srv := &GRPCServer{tokenParser: parser}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
+	info := &grpc.UnaryServerInfo{FullMethod: pb.Auth_ChangeMasterKey_FullMethodName}
+
+	// Act
+	resp, err := srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+		actualUserID, ok := authcontext.UserIDFromContext(ctx)
+		require.True(t, ok)
+		assert.Equal(t, userID, actualUserID)
+		return "ok", nil
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "ok", resp)
+	assert.True(t, parser.called)
+}
+
 // TestAuthenticateStream_AddsUserIDToContext проверяет успешную аутентификацию streaming Records-метода.
 func TestAuthenticateStream_AddsUserIDToContext(t *testing.T) {
 	// Arrange

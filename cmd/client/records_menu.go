@@ -12,7 +12,14 @@ import (
 )
 
 // runRecordsMenu запускает меню действий с приватными записями для активной пользовательской сессии.
-func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reader, out io.Writer, login string) error {
+func runRecordsMenu(
+	ctx context.Context,
+	app *clientApp.App,
+	reader *bufio.Reader,
+	in io.Reader,
+	out io.Writer,
+	login string,
+) error {
 	state := newRecordsMenuState()
 	if err := state.refresh(ctx, app); err != nil {
 		printError(out, err)
@@ -79,6 +86,15 @@ func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reade
 			}
 			continue
 		case "7":
+			if err := changeMasterKey(ctx, app, reader, in, out); err != nil {
+				printActionError(out, err)
+				break
+			}
+			state = newRecordsMenuState()
+			if err := state.refresh(ctx, app); err != nil {
+				printError(out, err)
+			}
+		case "8":
 			confirmed, err := confirm(reader, out, "Выйти из аккаунта?")
 			if err != nil {
 				return err
@@ -90,7 +106,7 @@ func runRecordsMenu(ctx context.Context, app *clientApp.App, reader *bufio.Reade
 				printError(out, err)
 			}
 			return nil
-		case "8":
+		case "9":
 			confirmed, err := confirm(reader, out, "Завершить приложение?")
 			if err != nil {
 				return err
@@ -123,8 +139,9 @@ func printRecordsMenu(out io.Writer, items []clientApp.RecordListItem) {
 	fmt.Fprintln(out, "4. Создать запись для банковской карты")
 	fmt.Fprintln(out, "5. Создать бинарную запись с файлом")
 	fmt.Fprintln(out, "6. Обновить список записей")
-	fmt.Fprintln(out, "7. Выйти из аккаунта")
-	fmt.Fprintln(out, "8. Завершить приложение")
+	fmt.Fprintln(out, "7. Сменить мастер-ключ")
+	fmt.Fprintln(out, "8. Выйти из аккаунта")
+	fmt.Fprintln(out, "9. Завершить приложение")
 }
 
 // operateSelectedRecord открывает выбранную пользователем запись и выполняет действие над ней.

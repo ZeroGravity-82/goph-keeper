@@ -123,6 +123,10 @@ func buildAuthUseCase(db *sqlx.DB, tokenManager *auth.TokenManager) (*usecase.Au
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user repository: %w", err)
 	}
+	recordRepo, err := postgres.NewRecordRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create record repository: %w", err)
+	}
 	refreshTokenRepo, err := postgres.NewRefreshTokenRepository(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create refresh token repository: %w", err)
@@ -133,6 +137,7 @@ func buildAuthUseCase(db *sqlx.DB, tokenManager *auth.TokenManager) (*usecase.Au
 	}
 	authUC, err := usecase.NewAuthUseCase(
 		userRepo,
+		recordRepo,
 		refreshTokenRepo,
 		transactor,
 		tokenManager,
