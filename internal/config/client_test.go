@@ -84,6 +84,21 @@ func Test_loadClientFromFlags_RequiresGRPCServerAddr(t *testing.T) {
 	assert.Contains(t, err.Error(), "gRPC server address is required")
 }
 
+// Test_loadClientFromFlags_RejectsInvalidGRPCServerAddr проверяет запрет адреса gRPC-сервера с некорректным форматом.
+func Test_loadClientFromFlags_RejectsInvalidGRPCServerAddr(t *testing.T) {
+	// Arrange
+	flags := newTestClientFlagSet(t)
+	parseTestFlags(t, flags, "--grpc-address", "http://localhost:3202", "--ca-cert", "certs/ca.crt")
+	unsetConfigEnv(t)
+
+	// Act
+	_, err := loadClientFromFlags(flags)
+
+	// Assert
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server address must be in the format host:port")
+}
+
 func parseTestFlags(t *testing.T, flags *pflag.FlagSet, args ...string) {
 	t.Helper()
 

@@ -62,6 +62,78 @@ func TestLoadServer_RequiresJWTSecret(t *testing.T) {
 	assert.Contains(t, err.Error(), "JWT secret is required")
 }
 
+// TestLoadServer_RequiresFileStorageFields проверяет обязательность настроек файлового хранилища.
+func TestLoadServer_RequiresFileStorageFields(t *testing.T) {
+	tests := []struct {
+		name       string
+		unsetKey   string
+		wantErrMsg string
+	}{
+		{
+			name:       "endpoint",
+			unsetKey:   "GOPHKEEPER_FILE_STORAGE_ENDPOINT",
+			wantErrMsg: "file storage endpoint is required",
+		},
+		{
+			name:       "access key",
+			unsetKey:   "GOPHKEEPER_FILE_STORAGE_ACCESS_KEY",
+			wantErrMsg: "file storage access key is required",
+		},
+		{
+			name:       "secret key",
+			unsetKey:   "GOPHKEEPER_FILE_STORAGE_SECRET_KEY",
+			wantErrMsg: "file storage secret key is required",
+		},
+		{
+			name:       "bucket",
+			unsetKey:   "GOPHKEEPER_FILE_STORAGE_BUCKET",
+			wantErrMsg: "file storage bucket is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			setArgs(t, "server")
+			unsetConfigEnv(t)
+			t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
+			t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+			t.Setenv(tt.unsetKey, "")
+
+			// Act
+			_, err := LoadServer()
+
+			// Assert
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErrMsg)
+		})
+	}
+}
+
+// TestLoadServer_RejectsInvalidGRPCServerAddr проверяет ошибку при некорректном формате адреса gRPC-сервера.
+func TestLoadServer_RejectsInvalidGRPCServerAddr(t *testing.T) {
+	// Arrange
+	setArgs(t, "server", "--grpc-address", "http://localhost:3201")
+	unsetConfigEnv(t)
+	t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
+	t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+
+	// Act
+	_, err := LoadServer()
+
+	// Assert
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server address must be in the format host:port")
+}
+
 // TestLoadServer_LoadsDefaults проверяет значения по умолчанию.
 func TestLoadServer_LoadsDefaults(t *testing.T) {
 	// Arrange
@@ -90,6 +162,38 @@ func TestLoadServer_LoadsDefaults(t *testing.T) {
 	assert.Equal(t, "json", cfg.Logging.Format)
 	assert.Equal(t, "info", cfg.Logging.Level)
 	assert.Equal(t, false, cfg.Logging.AddSource)
+}
+
+// Test_validateServerAddr проверяет допустимые и недопустимые форматы сетевого адреса.
+func Test_validateServerAddr(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    string
+		wantErr bool
+	}{
+		{name: "host and port", addr: "localhost:3201"},
+		{name: "ip and port", addr: "127.0.0.1:3201"},
+		{name: "empty", wantErr: true},
+		{name: "without port", addr: "localhost", wantErr: true},
+		{name: "without host", addr: ":3201", wantErr: true},
+		{name: "with scheme", addr: "http://localhost:3201", wantErr: true},
+		{name: "only port separator", addr: "localhost:", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Act
+			err := validateServerAddr(tt.addr)
+
+			// Assert
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Equal(t, "server address must be in the format host:port (without specifying a scheme)", err.Error())
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 // TestLoadServer_Priority проверяет приоритет "дефолтное значение < значение из конфигурационного файла < флаг командной
