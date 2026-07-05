@@ -382,7 +382,40 @@ internal/usecase/                      # сценарии использован
 migrations/                            # SQL-миграции базы данных
 ```
 
-Unit-тесты и интеграционные тесты размещаются рядом с тестируемыми пакетами. Интеграционные тесты, которым нужен PostgreSQL, включаются build tag `integration` и запускаются через `make test-integration`.
+## Тестирование
+
+Unit-тесты и интеграционные тесты размещаются рядом с тестируемыми пакетами.
+
+Запуск unit-тестов:
+
+```bash
+make test
+```
+
+Интеграционные тесты, которым нужны PostgreSQL и MinIO, включаются тегом сборки `integration` и запускаются через `make test-integration`.
+
+Общий процент покрытия тестами считается с учетом unit-тестов и интеграционных тестов с тегом сборки `integration`.
+Перед расчетом должны быть подняты тестовые PostgreSQL и MinIO, например через `make integration-up`.
+
+Из расчета исключаются пакеты без собственной логики приложения:
+
+- `internal/domain/model` - доменные структуры, типы и sentinel-ошибки;
+- `internal/pb` - сгенерированный protobuf/gRPC-код;
+- `internal/storage/postgres/dto` - DTO-структуры PostgreSQL;
+- `migrations` - SQL-миграции.
+
+Команда для расчета покрытия:
+
+```bash
+pkgs=$(go list ./... | rg -v '/internal/domain/model$|/internal/pb$|/internal/storage/postgres/dto$|/migrations$')
+TEST_DATABASE_URI='postgres://gophkeeper:userpassword@localhost:15432/gophkeeper_test?sslmode=disable' \
+TEST_FILE_STORAGE_ENDPOINT='localhost:19000' \
+TEST_FILE_STORAGE_ACCESS_KEY='gophkeeper' \
+TEST_FILE_STORAGE_SECRET_KEY='userpassword' \
+TEST_FILE_STORAGE_BUCKET='gophkeeper-test' \
+  go test -p 1 -tags=integration -coverprofile=coverage.out $pkgs
+go tool cover -func=coverage.out | tail -n 1
+```
 
 ## Планируемый стек
 

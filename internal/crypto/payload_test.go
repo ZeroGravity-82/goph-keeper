@@ -250,6 +250,16 @@ func Test_unmarshalPayload_FailWithInvalidJSON(t *testing.T) {
 	}
 }
 
+// Test_unmarshalPayload_FailWithInvalidBinaryPayloadFieldType проверяет ошибку при несовместимом типе поля JSON.
+func Test_unmarshalPayload_FailWithInvalidBinaryPayloadFieldType(t *testing.T) {
+	// Act
+	payload, err := unmarshalPayload[model.BinaryPayload]([]byte(`{"filename":"file.bin","size":"bad"}`))
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, payload)
+}
+
 // TestEncryptDecryptRecordData проверяет полный цикл шифрования и расшифровки данных приватной записи.
 func TestEncryptDecryptRecordData(t *testing.T) {
 	// Arrange
@@ -307,6 +317,88 @@ func TestDecryptBinaryRecordFile_FailWithWrongMasterKey(t *testing.T) {
 
 	// Act
 	file, err := DecryptBinaryRecordFile("wrong master key", salt, encrypted.EncryptedDEK, encrypted.EncryptedFile)
+
+	// Assert
+	require.Error(t, err)
+	assert.Nil(t, file)
+}
+
+// TestEncryptBinaryRecordData_FailWithInvalidMasterKey проверяет ошибку бинарного шифрования при пустом мастер-ключе.
+func TestEncryptBinaryRecordData_FailWithInvalidMasterKey(t *testing.T) {
+	// Arrange
+	salt := []byte("1234567890abcdef")
+	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
+
+	// Act
+	encrypted, err := EncryptBinaryRecordData("", salt, payload, []byte("file-secret"))
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, encrypted.EncryptedDEK.Data)
+	assert.Empty(t, encrypted.EncryptedPayload.Data)
+	assert.Empty(t, encrypted.EncryptedFile.Data)
+}
+
+// TestEncryptBinaryRecordData_FailWithInvalidSalt проверяет ошибку бинарного шифрования при соли некорректной длины.
+func TestEncryptBinaryRecordData_FailWithInvalidSalt(t *testing.T) {
+	// Arrange
+	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
+
+	// Act
+	encrypted, err := EncryptBinaryRecordData("master key", []byte("short"), payload, []byte("file-secret"))
+
+	// Assert
+	require.Error(t, err)
+	assert.Empty(t, encrypted.EncryptedDEK.Data)
+	assert.Empty(t, encrypted.EncryptedPayload.Data)
+	assert.Empty(t, encrypted.EncryptedFile.Data)
+}
+
+// TestDecryptBinaryRecordFile_FailWithInvalidSalt проверяет ошибку расшифровки файла при соли некорректной длины.
+func TestDecryptBinaryRecordFile_FailWithInvalidSalt(t *testing.T) {
+	// Act
+	file, err := DecryptBinaryRecordFile(
+		"master key",
+		[]byte("short"),
+		model.EncryptedBlob{Data: []byte("encrypted-dek")},
+		model.EncryptedBlob{Data: []byte("encrypted-file")},
+	)
+
+	// Assert
+	require.Error(t, err)
+	assert.Nil(t, file)
+}
+
+// TestDecryptBinaryRecordFile_FailWithDamagedEncryptedDEK проверяет ошибку при поврежденном encrypted DEK.
+func TestDecryptBinaryRecordFile_FailWithDamagedEncryptedDEK(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
+	encrypted, err := EncryptBinaryRecordData(masterKey, salt, payload, []byte("file-secret"))
+	require.NoError(t, err)
+	encrypted.EncryptedDEK.Data[len(encrypted.EncryptedDEK.Data)-1] ^= 1
+
+	// Act
+	file, err := DecryptBinaryRecordFile(masterKey, salt, encrypted.EncryptedDEK, encrypted.EncryptedFile)
+
+	// Assert
+	require.Error(t, err)
+	assert.Nil(t, file)
+}
+
+// TestDecryptBinaryRecordFile_FailWithDamagedEncryptedFile проверяет ошибку при поврежденном encrypted file.
+func TestDecryptBinaryRecordFile_FailWithDamagedEncryptedFile(t *testing.T) {
+	// Arrange
+	masterKey := "correct horse battery staple"
+	salt := []byte("1234567890abcdef")
+	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
+	encrypted, err := EncryptBinaryRecordData(masterKey, salt, payload, []byte("file-secret"))
+	require.NoError(t, err)
+	encrypted.EncryptedFile.Data[len(encrypted.EncryptedFile.Data)-1] ^= 1
+
+	// Act
+	file, err := DecryptBinaryRecordFile(masterKey, salt, encrypted.EncryptedDEK, encrypted.EncryptedFile)
 
 	// Assert
 	require.Error(t, err)

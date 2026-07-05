@@ -55,10 +55,46 @@ func TestVerifyMasterKey_FailWithWrongMasterKey(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidMasterKey)
 }
 
+// TestEncryptMasterKeyVerifier_FailWithInvalidInput проверяет ошибки при некорректных входных данных верификатора.
+func TestEncryptMasterKeyVerifier_FailWithInvalidInput(t *testing.T) {
+	tests := []struct {
+		name      string
+		masterKey string
+		salt      []byte
+	}{
+		{name: "empty master key", salt: testMasterKeySalt()},
+		{name: "invalid salt", masterKey: "master-key", salt: []byte("short")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Act
+			verifier, err := EncryptMasterKeyVerifier(tt.masterKey, tt.salt)
+
+			// Assert
+			require.Error(t, err)
+			assert.Empty(t, verifier.Data)
+		})
+	}
+}
+
 // TestVerifyMasterKey_FailWithEmptyVerifier проверяет ошибку при отсутствии верификатора.
 func TestVerifyMasterKey_FailWithEmptyVerifier(t *testing.T) {
 	// Act
 	err := VerifyMasterKey("master-key", testMasterKeySalt(), model.EncryptedBlob{})
+
+	// Assert
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, ErrInvalidMasterKey))
+}
+
+// TestVerifyMasterKey_FailWithInvalidSalt проверяет ошибку проверки мастер-ключа при соли некорректной длины.
+func TestVerifyMasterKey_FailWithInvalidSalt(t *testing.T) {
+	// Arrange
+	verifier := model.EncryptedBlob{Data: []byte("not-empty")}
+
+	// Act
+	err := VerifyMasterKey("master-key", []byte("short"), verifier)
 
 	// Assert
 	require.Error(t, err)

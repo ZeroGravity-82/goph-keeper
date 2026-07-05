@@ -3,8 +3,12 @@ DC := docker compose
 
 # DSN по умолчанию для локальных интеграционных тестов (compose.test.yaml).
 TEST_DATABASE_URI ?= postgres://gophkeeper:userpassword@localhost:15432/gophkeeper_test?sslmode=disable
+TEST_FILE_STORAGE_ENDPOINT ?= localhost:19000
+TEST_FILE_STORAGE_ACCESS_KEY ?= gophkeeper
+TEST_FILE_STORAGE_SECRET_KEY ?= userpassword
+TEST_FILE_STORAGE_BUCKET ?= gophkeeper-test
 
-.PHONY: help fmt test lint up down proto db-test-up db-test-down test-integration
+.PHONY: help fmt test lint up down proto integration-up integration-down test-integration
 
 help: ## Показать доступные цели
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "%-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,15 +37,20 @@ proto: ## Перегенерировать Go-код из .proto-файлов
 	  --go_opt=default_api_level=API_OPAQUE \
 	  api/*.proto
 
-# --- Интеграционная БД (Docker Compose) ---
+# --- Интеграционная инфраструктура (Docker Compose) ---
 
-db-test-up: ## Запустить изолированный PostgreSQL для интеграционных тестов
+integration-up: ## Запустить изолированные PostgreSQL и MinIO для интеграционных тестов
 	docker compose --project-name gophkeeper-itest -f compose.test.yaml up -d
 
-db-test-down: ## Остановить и удалить контейнер с PostgreSQL для интеграционных тестов
+integration-down: ## Остановить и удалить контейнеры PostgreSQL и MinIO для интеграционных тестов
 	docker compose --project-name gophkeeper-itest -f compose.test.yaml down
 
 # --- Интеграционные тесты ---
 
-test-integration: db-test-up ## Запустить интеграционные тесты PostgreSQL
-	TEST_DATABASE_URI='$(TEST_DATABASE_URI)' go test -p 1 -tags=integration ./internal/...
+test-integration: integration-up ## Запустить интеграционные тесты
+	TEST_DATABASE_URI='$(TEST_DATABASE_URI)' \
+	TEST_FILE_STORAGE_ENDPOINT='$(TEST_FILE_STORAGE_ENDPOINT)' \
+	TEST_FILE_STORAGE_ACCESS_KEY='$(TEST_FILE_STORAGE_ACCESS_KEY)' \
+	TEST_FILE_STORAGE_SECRET_KEY='$(TEST_FILE_STORAGE_SECRET_KEY)' \
+	TEST_FILE_STORAGE_BUCKET='$(TEST_FILE_STORAGE_BUCKET)' \
+	go test -p 1 -tags=integration ./internal/...
