@@ -103,7 +103,7 @@ func Test_printRecordsMenu(t *testing.T) {
 	items := []clientApp.RecordListItem{{Type: "text", Title: "Моя заметка", Description: "Совершенно секретно!"}}
 
 	// Act
-	printRecordsMenu(out, items)
+	printRecordsMenu(out, items, false)
 
 	// Assert
 	assert.Contains(t, out.String(), "Записи:\n")
@@ -111,6 +111,33 @@ func Test_printRecordsMenu(t *testing.T) {
 	assert.Contains(t, out.String(), "Действия:\n")
 	assert.Contains(t, out.String(), "7. Сменить мастер-ключ\n")
 	assert.Contains(t, out.String(), "9. Завершить приложение\n")
+}
+
+// Test_printRecordsMenu_Readonly проверяет вывод статуса режима чтения.
+func Test_printRecordsMenu_Readonly(t *testing.T) {
+	// Arrange
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	printRecordsMenu(out, nil, true)
+
+	// Assert
+	assert.Contains(t, out.String(), "Режим чтения: создание, изменение и удаление записей временно недоступны.\n")
+}
+
+// Test_handleConnectionError_ReadonlyPrintsReminder проверяет сообщение о том, что режим чтения все еще активен.
+func Test_handleConnectionError_ReadonlyPrintsReminder(t *testing.T) {
+	// Arrange
+	state := newRecordsMenuState()
+	state.readonly = true
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	handleConnectionError(state, out, clientApp.ErrServerUnavailable)
+
+	// Assert
+	assert.True(t, state.readonly)
+	assert.Equal(t, "режим чтения: связь с сервером все еще недоступна\n", out.String())
 }
 
 // Test_operateSelectedRecord_EmptyList проверяет ошибку выбора записи из пустого списка.
@@ -141,6 +168,46 @@ func Test_openSelectedRecord_UnknownType(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, "неподдерживаемый тип приватной записи: unknown", err.Error())
+}
+
+// Test_openSelectedRecord_ReadonlyUsesCache проверяет открытие уже загруженной записи без обращения к серверу в режиме
+// чтения.
+func Test_openSelectedRecord_ReadonlyUsesCache(t *testing.T) {
+	// Arrange
+	state := newRecordsMenuState()
+	state.readonly = true
+	state.storeText(clientApp.TextRecord{
+		RecordID:    "record-1",
+		Title:       "Заметка",
+		Description: "Кешированная",
+		Text:        "секрет",
+	})
+	item := clientApp.RecordListItem{RecordID: "record-1", Type: "text"}
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	err := openSelectedRecord(context.Background(), nil, state, item, out)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "* текст: секрет\n")
+}
+
+// Test_openSelectedRecord_ReadonlyFailsWithoutCachedRecord проверяет ошибку, если запись не была загружена до перехода
+// в режим чтения.
+func Test_openSelectedRecord_ReadonlyFailsWithoutCachedRecord(t *testing.T) {
+	// Arrange
+	state := newRecordsMenuState()
+	state.readonly = true
+	item := clientApp.RecordListItem{RecordID: "record-1", Type: "text"}
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	err := openSelectedRecord(context.Background(), nil, state, item, out)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "запись не загружена за текущий запуск приложения", err.Error())
 }
 
 // Test_updateSelectedRecord_UnknownType проверяет ошибку обновления записи неизвестного типа.

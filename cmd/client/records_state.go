@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 )
@@ -13,8 +15,9 @@ import (
 // cache хранит последние полученные данные по record_id, включая полную расшифрованную запись и ее версию для
 // последующего обновления.
 type recordsMenuState struct {
-	items []clientApp.RecordListItem
-	cache map[string]cachedRecord
+	items    []clientApp.RecordListItem
+	cache    map[string]cachedRecord
+	readonly bool
 }
 
 // cachedRecord объединяет краткую информацию из списка и полные данные конкретного типа записи.
@@ -32,6 +35,33 @@ type cachedRecord struct {
 // newRecordsMenuState создает состояние меню приватных записей с пустым кешем.
 func newRecordsMenuState() *recordsMenuState {
 	return &recordsMenuState{cache: make(map[string]cachedRecord)}
+}
+
+// enterReadonly переводит меню записей в режим чтения и уведомляет пользователя один раз.
+func (s *recordsMenuState) enterReadonly(out io.Writer) {
+	if s.readonly {
+		return
+	}
+	s.readonly = true
+	fmt.Fprintln(out, "потеряна связь с сервером, включен режим чтения")
+	fmt.Fprintln(out, "доступны только список и записи, уже загруженные за текущий запуск приложения")
+}
+
+// exitReadonly возвращает меню записей в обычный режим и уведомляет пользователя один раз.
+func (s *recordsMenuState) exitReadonly(out io.Writer) {
+	if !s.readonly {
+		return
+	}
+	s.readonly = false
+	fmt.Fprintln(out, "связь с сервером восстановлена, режим чтения выключен")
+}
+
+// ensureWritable проверяет, что текущее меню записей не находится в режиме чтения.
+func (s *recordsMenuState) ensureWritable() error {
+	if s.readonly {
+		return errReadonlyMode
+	}
+	return nil
 }
 
 // refresh загружает список записей и синхронизирует краткие данные в кеше.

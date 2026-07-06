@@ -21,7 +21,7 @@ func runRecordsMenu(
 	login string,
 ) error {
 	state := newRecordsMenuState()
-	if err := state.refresh(ctx, app); err != nil {
+	if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 		printError(out, err)
 	}
 	welcomeLogin := login
@@ -32,7 +32,7 @@ func runRecordsMenu(
 			fmt.Fprintln(out)
 			welcomeLogin = ""
 		}
-		printRecordsMenu(out, state.items)
+		printRecordsMenu(out, state.items, state.readonly)
 		fmt.Fprintln(out)
 		choice, err := promptRequiredRetry(reader, out, "Выберите действие: ", "действие обязательно")
 		if err != nil {
@@ -45,53 +45,83 @@ func runRecordsMenu(
 				if errors.Is(err, errBackToRecordsList) {
 					continue
 				}
+				handleConnectionError(state, out, err)
 				printActionError(out, err)
 			}
 		case "2":
-			if err := createCredential(ctx, app, reader, out); err != nil {
+			if err := state.ensureWritable(); err != nil {
 				printActionError(out, err)
 				break
 			}
-			if err := state.refresh(ctx, app); err != nil {
+			if err := createCredential(ctx, app, reader, out); err != nil {
+				handleConnectionError(state, out, err)
+				printActionError(out, err)
+				break
+			}
+			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
 			}
 		case "3":
-			if err := createText(ctx, app, reader, out); err != nil {
+			if err := state.ensureWritable(); err != nil {
 				printActionError(out, err)
 				break
 			}
-			if err := state.refresh(ctx, app); err != nil {
+			if err := createText(ctx, app, reader, out); err != nil {
+				handleConnectionError(state, out, err)
+				printActionError(out, err)
+				break
+			}
+			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
 			}
 		case "4":
-			if err := createCard(ctx, app, reader, out); err != nil {
+			if err := state.ensureWritable(); err != nil {
 				printActionError(out, err)
 				break
 			}
-			if err := state.refresh(ctx, app); err != nil {
+			if err := createCard(ctx, app, reader, out); err != nil {
+				handleConnectionError(state, out, err)
+				printActionError(out, err)
+				break
+			}
+			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
 			}
 		case "5":
-			if err := createBinary(ctx, app, reader, out); err != nil {
+			if err := state.ensureWritable(); err != nil {
 				printActionError(out, err)
 				break
 			}
-			if err := state.refresh(ctx, app); err != nil {
+			if err := createBinary(ctx, app, reader, out); err != nil {
+				handleConnectionError(state, out, err)
+				printActionError(out, err)
+				break
+			}
+			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
 			}
 		case "6":
-			if err := state.refresh(ctx, app); err != nil {
+			wasReadonly := state.readonly
+			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
+				break
+			}
+			if wasReadonly {
 				break
 			}
 			continue
 		case "7":
+			if err := state.ensureWritable(); err != nil {
+				printActionError(out, err)
+				break
+			}
 			if err := changeMasterKey(ctx, app, reader, in, out); err != nil {
+				handleConnectionError(state, out, err)
 				printActionError(out, err)
 				break
 			}
 			state = newRecordsMenuState()
-			if err := state.refresh(ctx, app); err != nil {
+			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
 			}
 		case "8":
@@ -129,8 +159,12 @@ func runRecordsMenu(
 }
 
 // printRecordsMenu печатает меню действий, доступных после успешного входа в аккаунт.
-func printRecordsMenu(out io.Writer, items []clientApp.RecordListItem) {
+func printRecordsMenu(out io.Writer, items []clientApp.RecordListItem, readonly bool) {
 	printRecordsTable(out, items)
+	if readonly {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Режим чтения: создание, изменение и удаление записей временно недоступны.")
+	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Действия:")
 	fmt.Fprintln(out, "1. Выполнить действие над записью из списка")
@@ -142,6 +176,27 @@ func printRecordsMenu(out io.Writer, items []clientApp.RecordListItem) {
 	fmt.Fprintln(out, "7. Сменить мастер-ключ")
 	fmt.Fprintln(out, "8. Выйти из аккаунта")
 	fmt.Fprintln(out, "9. Завершить приложение")
+}
+
+// refreshRecordsMenu обновляет список записей и переключает режим чтения по результату запроса.
+func refreshRecordsMenu(ctx context.Context, app *clientApp.App, state *recordsMenuState, out io.Writer) error {
+	if err := state.refresh(ctx, app); err != nil {
+		handleConnectionError(state, out, err)
+		return err
+	}
+	state.exitReadonly(out)
+	return nil
+}
+
+// handleConnectionError переводит меню в режим чтения при ошибке связи с сервером.
+func handleConnectionError(state *recordsMenuState, out io.Writer, err error) {
+	if clientApp.IsConnectionError(err) {
+		if state.readonly {
+			fmt.Fprintln(out, "режим чтения: связь с сервером все еще недоступна")
+			return
+		}
+		state.enterReadonly(out)
+	}
 }
 
 // operateSelectedRecord открывает выбранную пользователем запись и выполняет действие над ней.
@@ -174,15 +229,27 @@ func operateSelectedRecord(
 	case "0":
 		return errBackToRecordsList
 	case "1":
+		if err := state.ensureWritable(); err != nil {
+			return err
+		}
 		return updateSelectedRecord(ctx, app, state, item, reader, out)
 	case "2":
+		if err := state.ensureWritable(); err != nil {
+			return err
+		}
 		return deleteSelectedRecord(ctx, app, state, item, reader, out)
 	case "3":
 		if item.Type == "binary" {
+			if err := state.ensureWritable(); err != nil {
+				return err
+			}
 			return downloadSelectedBinaryFile(ctx, app, item, reader, out)
 		}
 	case "4":
 		if item.Type == "binary" {
+			if err := state.ensureWritable(); err != nil {
+				return err
+			}
 			return replaceSelectedBinaryFile(ctx, app, state, item, reader, out)
 		}
 	}
@@ -226,35 +293,85 @@ func openSelectedRecord(
 	item clientApp.RecordListItem,
 	out io.Writer,
 ) error {
+	if state.readonly {
+		return openCachedSelectedRecord(state, item, out)
+	}
 	switch item.Type {
 	case "credential":
 		record, err := loadCredential(ctx, app, item.RecordID)
 		if err != nil {
-			return err
+			return openCachedAfterConnectionError(state, item, out, err)
 		}
 		state.storeCredential(record)
 		printCredentialRecord(out, record)
 	case "text":
 		record, err := loadText(ctx, app, item.RecordID)
 		if err != nil {
-			return err
+			return openCachedAfterConnectionError(state, item, out, err)
 		}
 		state.storeText(record)
 		printTextRecord(out, record)
 	case "card":
 		record, err := loadCard(ctx, app, item.RecordID)
 		if err != nil {
-			return err
+			return openCachedAfterConnectionError(state, item, out, err)
 		}
 		state.storeCard(record)
 		printCardRecord(out, record)
 	case "binary":
 		record, err := loadBinary(ctx, app, item.RecordID)
 		if err != nil {
-			return err
+			return openCachedAfterConnectionError(state, item, out, err)
 		}
 		state.storeBinary(record)
 		printBinaryRecord(out, record)
+	default:
+		return fmt.Errorf("неподдерживаемый тип приватной записи: %s", item.Type)
+	}
+	return nil
+}
+
+// openCachedAfterConnectionError включает режим чтения при потере связи и пытается открыть запись из кеша.
+func openCachedAfterConnectionError(
+	state *recordsMenuState,
+	item clientApp.RecordListItem,
+	out io.Writer,
+	err error,
+) error {
+	if !clientApp.IsConnectionError(err) {
+		return err
+	}
+	state.enterReadonly(out)
+	return openCachedSelectedRecord(state, item, out)
+}
+
+// openCachedSelectedRecord печатает полные данные записи, если они уже были загружены за текущий запуск приложения.
+func openCachedSelectedRecord(state *recordsMenuState, item clientApp.RecordListItem, out io.Writer) error {
+	entry, ok := state.cache[item.RecordID]
+	if !ok {
+		return errors.New("запись не загружена за текущий запуск приложения")
+	}
+	switch item.Type {
+	case "credential":
+		if entry.credential == nil {
+			return errors.New("запись не загружена за текущий запуск приложения")
+		}
+		printCredentialRecord(out, *entry.credential)
+	case "text":
+		if entry.text == nil {
+			return errors.New("запись не загружена за текущий запуск приложения")
+		}
+		printTextRecord(out, *entry.text)
+	case "card":
+		if entry.card == nil {
+			return errors.New("запись не загружена за текущий запуск приложения")
+		}
+		printCardRecord(out, *entry.card)
+	case "binary":
+		if entry.binary == nil {
+			return errors.New("запись не загружена за текущий запуск приложения")
+		}
+		printBinaryRecord(out, *entry.binary)
 	default:
 		return fmt.Errorf("неподдерживаемый тип приватной записи: %s", item.Type)
 	}

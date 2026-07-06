@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -19,6 +20,56 @@ func Test_newRecordsMenuState_CreatesEmptyCache(t *testing.T) {
 	require.NotNil(t, state.cache)
 	assert.Empty(t, state.items)
 	assert.Empty(t, state.cache)
+	assert.False(t, state.readonly)
+}
+
+// Test_recordsMenuState_enterReadonly проверяет переход меню записей в режим чтения с однократным уведомлением.
+func Test_recordsMenuState_enterReadonly(t *testing.T) {
+	// Arrange
+	state := newRecordsMenuState()
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	state.enterReadonly(out)
+	state.enterReadonly(out)
+
+	// Assert
+	assert.True(t, state.readonly)
+	assert.Equal(
+		t,
+		"потеряна связь с сервером, включен режим чтения\n"+
+			"доступны только список и записи, уже загруженные за текущий запуск приложения\n",
+		out.String(),
+	)
+}
+
+// Test_recordsMenuState_exitReadonly проверяет выход из режима чтения с однократным уведомлением.
+func Test_recordsMenuState_exitReadonly(t *testing.T) {
+	// Arrange
+	state := newRecordsMenuState()
+	state.readonly = true
+	out := bytes.NewBuffer(nil)
+
+	// Act
+	state.exitReadonly(out)
+	state.exitReadonly(out)
+
+	// Assert
+	assert.False(t, state.readonly)
+	assert.Equal(t, "связь с сервером восстановлена, режим чтения выключен\n", out.String())
+}
+
+// Test_recordsMenuState_ensureWritable_FailsInReadonly проверяет запрет изменяющих действий в режиме чтения.
+func Test_recordsMenuState_ensureWritable_FailsInReadonly(t *testing.T) {
+	// Arrange
+	state := newRecordsMenuState()
+	state.readonly = true
+
+	// Act
+	err := state.ensureWritable()
+
+	// Assert
+	assert.ErrorIs(t, err, errReadonlyMode)
 }
 
 // Test_recordsMenuState_storeItem_UpdatesExistingItem проверяет, что повторное сохранение записи не дублирует строку.
