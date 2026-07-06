@@ -113,7 +113,12 @@ func (f *authClientFake) ChangeMasterKey(
 			}.Build()
 		}
 	}
-	return pb.ChangeMasterKeyResponse_builder{}.Build(), nil
+	accessToken := "changed-master-key-access-token"
+	refreshToken := "changed-master-key-refresh-token"
+	return pb.ChangeMasterKeyResponse_builder{
+		AccessToken:  &accessToken,
+		RefreshToken: &refreshToken,
+	}.Build(), nil
 }
 
 type recordsClientFake struct {
@@ -714,6 +719,8 @@ func TestApp_ChangeMasterKey_ReencryptsExistingRecords(t *testing.T) {
 	assert.NotEqual(t, []byte(nil), authClient.changeMasterKeyReq.GetMasterKeySalt())
 	require.Len(t, authClient.changeMasterKeyReq.GetRecords(), 1)
 	assert.Equal(t, created.RecordID, authClient.changeMasterKeyReq.GetRecords()[0].GetRecordId())
+	assert.Equal(t, "changed-master-key-access-token", app.session.AccessToken)
+	assert.Equal(t, "changed-master-key-refresh-token", app.session.RefreshToken)
 	assert.Equal(t, "new-master-key", app.masterKey)
 
 	got, err := app.GetText(ctx, created.RecordID)
@@ -826,8 +833,8 @@ func TestApp_ChangeMasterKey_RefreshesAccessToken(t *testing.T) {
 	assert.Equal(t, 2, authClient.changeMasterKeyCalls)
 	require.NotNil(t, authClient.refreshReq)
 	assert.Equal(t, "refresh-token", authClient.refreshReq.GetRefreshToken())
-	assert.Equal(t, newAccessToken, app.session.AccessToken)
-	assert.Equal(t, newRefreshToken, app.session.RefreshToken)
+	assert.Equal(t, "changed-master-key-access-token", app.session.AccessToken)
+	assert.Equal(t, "changed-master-key-refresh-token", app.session.RefreshToken)
 	assert.Equal(t, "new-master-key", app.masterKey)
 }
 

@@ -56,7 +56,12 @@ func New(cfg config.ServerConfig, logger *slog.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to create token manager: %w", err)
 	}
-	authUC, err := buildAuthUseCase(db, tokenManager)
+	userRepo, err := postgres.NewUserRepository(db)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to create user repository: %w", err)
+	}
+	authUC, err := buildAuthUseCase(db, tokenManager, userRepo)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -66,7 +71,7 @@ func New(cfg config.ServerConfig, logger *slog.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	grpcSrv, err := buildGRPCServer(cfg.GRPCServerAddr, tlsCert, authUC, recordUC, tokenManager, logger)
+	grpcSrv, err := buildGRPCServer(cfg.GRPCServerAddr, tlsCert, authUC, recordUC, tokenManager, userRepo, logger)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -80,6 +85,7 @@ func buildGRPCServer(
 	authUC *usecase.AuthUseCase,
 	recordUC *usecase.RecordUseCase,
 	tokenManager *auth.TokenManager,
+	sessionChecker grpcserver.UserSessionChecker,
 	logger *slog.Logger,
 ) (*grpcserver.GRPCServer, error) {
 	authService, err := buildAuthService(authUC, logger)
@@ -98,6 +104,7 @@ func buildGRPCServer(
 		authService,
 		recordsService,
 		tokenManager,
+		sessionChecker,
 		logger,
 	)
 	if err != nil {
@@ -118,11 +125,11 @@ func buildAuthService(
 	return authService, nil
 }
 
-func buildAuthUseCase(db *sqlx.DB, tokenManager *auth.TokenManager) (*usecase.AuthUseCase, error) {
-	userRepo, err := postgres.NewUserRepository(db)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create user repository: %w", err)
-	}
+func buildAuthUseCase(
+	db *sqlx.DB,
+	tokenManager *auth.TokenManager,
+	userRepo *postgres.UserRepository,
+) (*usecase.AuthUseCase, error) {
 	recordRepo, err := postgres.NewRecordRepository(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create record repository: %w", err)

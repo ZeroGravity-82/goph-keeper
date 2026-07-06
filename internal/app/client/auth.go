@@ -165,8 +165,9 @@ func (a *App) ChangeMasterKey(ctx context.Context, currentMasterKey string, newM
 		}.Build())
 	}
 
+	var resp *pb.ChangeMasterKeyResponse
 	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
-		_, err := a.auth.ChangeMasterKey(ctx, pb.ChangeMasterKeyRequest_builder{
+		resp, err = a.auth.ChangeMasterKey(ctx, pb.ChangeMasterKeyRequest_builder{
 			MasterKeySalt:     newSalt,
 			MasterKeyVerifier: newVerifier.Data,
 			Records:           records,
@@ -180,9 +181,16 @@ func (a *App) ChangeMasterKey(ctx context.Context, currentMasterKey string, newM
 			codes.Aborted:         "приватные записи изменились во время смены мастер-ключа, повторите действие",
 		})
 	}
+	session := a.session
+	session.AccessToken = resp.GetAccessToken()
+	session.RefreshToken = resp.GetRefreshToken()
+	if err = validateSessionTokens(session); err != nil {
+		return err
+	}
 
-	a.session.MasterKeySalt = newSalt
-	a.session.MasterKeyVerifier = newVerifier.Data
+	session.MasterKeySalt = newSalt
+	session.MasterKeyVerifier = newVerifier.Data
+	a.session = session
 	a.masterKey = newMasterKey
 	return nil
 }

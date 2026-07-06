@@ -32,6 +32,23 @@ func (s *accessTokenParserStub) ParseAccessToken(_ string) (*auth.AccessClaims, 
 	return s.claims, s.err
 }
 
+type userSessionCheckerStub struct {
+	securityVersion int64
+	err             error
+	called          bool
+}
+
+func (s *userSessionCheckerStub) GetSecurityVersion(context.Context, uuid.UUID) (int64, error) {
+	s.called = true
+	if s.err != nil {
+		return 0, s.err
+	}
+	if s.securityVersion > 0 {
+		return s.securityVersion, nil
+	}
+	return 1, nil
+}
+
 // TestNewGRPCServer_RequiresDependencies проверяет валидацию обязательных зависимостей gRPC-сервера.
 func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 	tests := []struct {
@@ -41,6 +58,7 @@ func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 		authService    pb.AuthServer
 		recordsService pb.RecordsServer
 		tokenParser    accessTokenParser
+		sessionChecker UserSessionChecker
 		wantErr        string
 	}{
 		{
@@ -49,6 +67,7 @@ func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 			authService:    &pb.UnimplementedAuthServer{},
 			recordsService: &pb.UnimplementedRecordsServer{},
 			tokenParser:    &accessTokenParserStub{},
+			sessionChecker: &userSessionCheckerStub{},
 			wantErr:        "grpc server address is not provided",
 		},
 		{
@@ -57,6 +76,7 @@ func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 			authService:    &pb.UnimplementedAuthServer{},
 			recordsService: &pb.UnimplementedRecordsServer{},
 			tokenParser:    &accessTokenParserStub{},
+			sessionChecker: &userSessionCheckerStub{},
 			wantErr:        "transport credentials are not provided",
 		},
 		{
@@ -65,15 +85,17 @@ func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 			creds:          true,
 			recordsService: &pb.UnimplementedRecordsServer{},
 			tokenParser:    &accessTokenParserStub{},
+			sessionChecker: &userSessionCheckerStub{},
 			wantErr:        "auth service is not provided",
 		},
 		{
-			name:        "records service",
-			addr:        "127.0.0.1:0",
-			creds:       true,
-			authService: &pb.UnimplementedAuthServer{},
-			tokenParser: &accessTokenParserStub{},
-			wantErr:     "records service is not provided",
+			name:           "records service",
+			addr:           "127.0.0.1:0",
+			creds:          true,
+			authService:    &pb.UnimplementedAuthServer{},
+			tokenParser:    &accessTokenParserStub{},
+			sessionChecker: &userSessionCheckerStub{},
+			wantErr:        "records service is not provided",
 		},
 		{
 			name:           "token parser",
@@ -81,7 +103,17 @@ func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 			creds:          true,
 			authService:    &pb.UnimplementedAuthServer{},
 			recordsService: &pb.UnimplementedRecordsServer{},
+			sessionChecker: &userSessionCheckerStub{},
 			wantErr:        "access token parser is not provided",
+		},
+		{
+			name:           "session checker",
+			addr:           "127.0.0.1:0",
+			creds:          true,
+			authService:    &pb.UnimplementedAuthServer{},
+			recordsService: &pb.UnimplementedRecordsServer{},
+			tokenParser:    &accessTokenParserStub{},
+			wantErr:        "user session checker is not provided",
 		},
 	}
 
@@ -99,6 +131,7 @@ func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 				tt.authService,
 				tt.recordsService,
 				tt.tokenParser,
+				tt.sessionChecker,
 				nil,
 			)
 
@@ -113,6 +146,7 @@ func TestNewGRPCServer_RequiresDependencies(t *testing.T) {
 func TestNewGRPCServer_CreatesServerWithDefaultLogger(t *testing.T) {
 	// Arrange
 	parser := &accessTokenParserStub{}
+	sessionChecker := &userSessionCheckerStub{}
 
 	// Act
 	srv, err := NewGRPCServer(
@@ -121,6 +155,7 @@ func TestNewGRPCServer_CreatesServerWithDefaultLogger(t *testing.T) {
 		&pb.UnimplementedAuthServer{},
 		&pb.UnimplementedRecordsServer{},
 		parser,
+		sessionChecker,
 		nil,
 	)
 
@@ -130,6 +165,7 @@ func TestNewGRPCServer_CreatesServerWithDefaultLogger(t *testing.T) {
 	assert.Equal(t, "127.0.0.1:0", srv.addr)
 	assert.NotNil(t, srv.logger)
 	assert.Same(t, parser, srv.tokenParser)
+	assert.Same(t, sessionChecker, srv.sessionChecker)
 }
 
 // TestAuthenticateUnary_SkipsAuthMethods проверяет, что методы аутентификации не требуют access-токен.
@@ -162,8 +198,10 @@ func TestAuthenticateUnary_AddsUserIDToContext(t *testing.T) {
 	require.NoError(t, err)
 	parser := &accessTokenParserStub{claims: &auth.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: userID.String()},
+		SecurityVersion:  1,
 	}}
-	srv := &GRPCServer{tokenParser: parser}
+	sessionChecker := &userSessionCheckerStub{securityVersion: 1}
+	srv := &GRPCServer{tokenParser: parser, sessionChecker: sessionChecker}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
@@ -179,6 +217,7 @@ func TestAuthenticateUnary_AddsUserIDToContext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp)
 	assert.True(t, parser.called)
+	assert.True(t, sessionChecker.called)
 }
 
 // TestAuthenticateUnary_ProtectsChangeMasterKey проверяет, что смена мастер-ключа требует access-токен.
@@ -188,8 +227,10 @@ func TestAuthenticateUnary_ProtectsChangeMasterKey(t *testing.T) {
 	require.NoError(t, err)
 	parser := &accessTokenParserStub{claims: &auth.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: userID.String()},
+		SecurityVersion:  1,
 	}}
-	srv := &GRPCServer{tokenParser: parser}
+	sessionChecker := &userSessionCheckerStub{securityVersion: 1}
+	srv := &GRPCServer{tokenParser: parser, sessionChecker: sessionChecker}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Auth_ChangeMasterKey_FullMethodName}
 
@@ -205,6 +246,7 @@ func TestAuthenticateUnary_ProtectsChangeMasterKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp)
 	assert.True(t, parser.called)
+	assert.True(t, sessionChecker.called)
 }
 
 // TestAuthenticateStream_AddsUserIDToContext проверяет успешную аутентификацию streaming Records-метода.
@@ -214,8 +256,10 @@ func TestAuthenticateStream_AddsUserIDToContext(t *testing.T) {
 	require.NoError(t, err)
 	parser := &accessTokenParserStub{claims: &auth.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: userID.String()},
+		SecurityVersion:  1,
 	}}
-	srv := &GRPCServer{tokenParser: parser}
+	sessionChecker := &userSessionCheckerStub{securityVersion: 1}
+	srv := &GRPCServer{tokenParser: parser, sessionChecker: sessionChecker}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
 	stream := &authTestServerStream{ctx: ctx}
 	info := &grpc.StreamServerInfo{FullMethod: pb.Records_CreateBinaryRecord_FullMethodName}
@@ -231,12 +275,13 @@ func TestAuthenticateStream_AddsUserIDToContext(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	assert.True(t, parser.called)
+	assert.True(t, sessionChecker.called)
 }
 
 // TestAuthenticateUnary_FailsWithoutAuthorization проверяет ошибку при отсутствии метаданных authorization.
 func TestAuthenticateUnary_FailsWithoutAuthorization(t *testing.T) {
 	// Arrange
-	srv := &GRPCServer{tokenParser: &accessTokenParserStub{}}
+	srv := &GRPCServer{tokenParser: &accessTokenParserStub{}, sessionChecker: &userSessionCheckerStub{}}
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
 	// Act
@@ -266,7 +311,7 @@ func (s *authTestServerStream) Context() context.Context {
 // TestAuthenticateUnary_FailsWithInvalidBearerScheme проверяет ошибку при неверном формате authorization metadata.
 func TestAuthenticateUnary_FailsWithInvalidBearerScheme(t *testing.T) {
 	// Arrange
-	srv := &GRPCServer{tokenParser: &accessTokenParserStub{}}
+	srv := &GRPCServer{tokenParser: &accessTokenParserStub{}, sessionChecker: &userSessionCheckerStub{}}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Basic token"))
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
@@ -283,7 +328,7 @@ func TestAuthenticateUnary_FailsWithInvalidBearerScheme(t *testing.T) {
 // TestAuthenticateUnary_FailsWithInvalidToken проверяет ошибку при невалидном access-токене.
 func TestAuthenticateUnary_FailsWithInvalidToken(t *testing.T) {
 	// Arrange
-	srv := &GRPCServer{tokenParser: &accessTokenParserStub{err: auth.ErrInvalidToken}}
+	srv := &GRPCServer{tokenParser: &accessTokenParserStub{err: auth.ErrInvalidToken}, sessionChecker: &userSessionCheckerStub{}}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer invalid-token"))
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
@@ -302,8 +347,9 @@ func TestAuthenticateUnary_FailsWithInvalidSubject(t *testing.T) {
 	// Arrange
 	parser := &accessTokenParserStub{claims: &auth.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: "not-a-uuid"},
+		SecurityVersion:  1,
 	}}
-	srv := &GRPCServer{tokenParser: parser}
+	srv := &GRPCServer{tokenParser: parser, sessionChecker: &userSessionCheckerStub{}}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
 	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
 
@@ -315,4 +361,30 @@ func TestAuthenticateUnary_FailsWithInvalidSubject(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+// TestAuthenticateUnary_FailsWithOutdatedSecurityVersion проверяет ошибку при устаревшей версии security-состояния
+// пользователя в access-токене.
+func TestAuthenticateUnary_FailsWithOutdatedSecurityVersion(t *testing.T) {
+	// Arrange
+	userID, err := uuid.NewV7()
+	require.NoError(t, err)
+	parser := &accessTokenParserStub{claims: &auth.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: userID.String()},
+		SecurityVersion:  1,
+	}}
+	sessionChecker := &userSessionCheckerStub{securityVersion: 2}
+	srv := &GRPCServer{tokenParser: parser, sessionChecker: sessionChecker}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
+	info := &grpc.UnaryServerInfo{FullMethod: pb.Records_CreateRecord_FullMethodName}
+
+	// Act
+	_, err = srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+		return nil, errors.New("handler must not be called")
+	})
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.True(t, sessionChecker.called)
 }

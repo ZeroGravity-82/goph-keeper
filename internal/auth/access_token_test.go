@@ -80,7 +80,7 @@ func TestIssueAndParseAccessToken_OK(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	tok, err := m.IssueAccessToken(userID)
+	tok, err := m.IssueAccessToken(userID, 1)
 	require.NoError(t, err)
 	assert.NotEmpty(t, tok)
 
@@ -89,9 +89,27 @@ func TestIssueAndParseAccessToken_OK(t *testing.T) {
 
 	// Assert
 	assert.Equal(t, userID.String(), claims.Subject)
+	assert.Equal(t, int64(1), claims.SecurityVersion)
 	assert.NotNil(t, claims.IssuedAt)
 	assert.NotNil(t, claims.ExpiresAt)
 	assert.True(t, claims.ExpiresAt.After(claims.IssuedAt.Time))
+}
+
+// TestIssueAccessToken_FailWithInvalidSecurityVersion проверяет ошибку при некорректной версии security-состояния
+// пользователя.
+func TestIssueAccessToken_FailWithInvalidSecurityVersion(t *testing.T) {
+	// Arrange
+	m, err := NewTokenManager("secret", 15*time.Minute)
+	require.NoError(t, err)
+	userID, err := uuid.NewV7()
+	require.NoError(t, err)
+
+	// Act
+	_, err = m.IssueAccessToken(userID, 0)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "security version must be positive", err.Error())
 }
 
 // TestParseAccessToken_FailWithInvalidToken проверяет ошибку при разборе некорректного токена.
@@ -118,7 +136,7 @@ func TestParseAccessToken_FailWithWrongSecret(t *testing.T) {
 	userID, err := uuid.NewV7()
 	require.NoError(t, err)
 
-	tok, err := m1.IssueAccessToken(userID)
+	tok, err := m1.IssueAccessToken(userID, 1)
 	require.NoError(t, err)
 
 	// Act
@@ -137,7 +155,7 @@ func TestParseAccessToken_FailWithExpiredToken(t *testing.T) {
 	userID, err := uuid.NewV7()
 	require.NoError(t, err)
 
-	tok, err := m.IssueAccessToken(userID)
+	tok, err := m.IssueAccessToken(userID, 1)
 	require.NoError(t, err)
 
 	// Гарантируем, что токен истек

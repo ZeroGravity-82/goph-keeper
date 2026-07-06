@@ -1208,9 +1208,13 @@ func (b0 ChangeMasterKeyRequest_builder) Build() *ChangeMasterKeyRequest {
 }
 
 type ChangeMasterKeyResponse struct {
-	state         protoimpl.MessageState `protogen:"opaque.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_AccessToken  *string                `protobuf:"bytes,1,opt,name=access_token,json=accessToken"`
+	xxx_hidden_RefreshToken *string                `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken"`
+	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
+	XXX_presence            [1]uint32
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *ChangeMasterKeyResponse) Reset() {
@@ -1238,15 +1242,79 @@ func (x *ChangeMasterKeyResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
+func (x *ChangeMasterKeyResponse) GetAccessToken() string {
+	if x != nil {
+		if x.xxx_hidden_AccessToken != nil {
+			return *x.xxx_hidden_AccessToken
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ChangeMasterKeyResponse) GetRefreshToken() string {
+	if x != nil {
+		if x.xxx_hidden_RefreshToken != nil {
+			return *x.xxx_hidden_RefreshToken
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ChangeMasterKeyResponse) SetAccessToken(v string) {
+	x.xxx_hidden_AccessToken = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+}
+
+func (x *ChangeMasterKeyResponse) SetRefreshToken(v string) {
+	x.xxx_hidden_RefreshToken = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
+}
+
+func (x *ChangeMasterKeyResponse) HasAccessToken() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ChangeMasterKeyResponse) HasRefreshToken() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *ChangeMasterKeyResponse) ClearAccessToken() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_AccessToken = nil
+}
+
+func (x *ChangeMasterKeyResponse) ClearRefreshToken() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_RefreshToken = nil
+}
+
 type ChangeMasterKeyResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
+	AccessToken  *string
+	RefreshToken *string
 }
 
 func (b0 ChangeMasterKeyResponse_builder) Build() *ChangeMasterKeyResponse {
 	m0 := &ChangeMasterKeyResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
+	if b.AccessToken != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
+		x.xxx_hidden_AccessToken = b.AccessToken
+	}
+	if b.RefreshToken != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		x.xxx_hidden_RefreshToken = b.RefreshToken
+	}
 	return m0
 }
 
@@ -1287,8 +1355,10 @@ const file_api_auth_proto_rawDesc = "" +
 	"\x16ChangeMasterKeyRequest\x12&\n" +
 	"\x0fmaster_key_salt\x18\x01 \x01(\fR\rmasterKeySalt\x12.\n" +
 	"\x13master_key_verifier\x18\x02 \x01(\fR\x11masterKeyVerifier\x12=\n" +
-	"\arecords\x18\x03 \x03(\v2#.gophkeeper.v1.ReencryptedRecordDEKR\arecords\"\x19\n" +
-	"\x17ChangeMasterKeyResponse2\x8a\x03\n" +
+	"\arecords\x18\x03 \x03(\v2#.gophkeeper.v1.ReencryptedRecordDEKR\arecords\"a\n" +
+	"\x17ChangeMasterKeyResponse\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken2\x8a\x03\n" +
 	"\x04Auth\x12K\n" +
 	"\bRegister\x12\x1e.gophkeeper.v1.RegisterRequest\x1a\x1f.gophkeeper.v1.RegisterResponse\x12B\n" +
 	"\x05Login\x12\x1b.gophkeeper.v1.LoginRequest\x1a\x1c.gophkeeper.v1.LoginResponse\x12H\n" +

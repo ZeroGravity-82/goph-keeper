@@ -21,6 +21,7 @@ func TestGRPCServer_RunStopsOnContextCancel(t *testing.T) {
 		&pb.UnimplementedAuthServer{},
 		&pb.UnimplementedRecordsServer{},
 		&accessTokenParserStub{},
+		&userSessionCheckerStub{},
 		nil,
 	)
 	require.NoError(t, err)

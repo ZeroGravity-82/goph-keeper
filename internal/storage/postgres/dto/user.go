@@ -13,6 +13,7 @@ type User struct {
 	PasswordHash      string    `db:"password_hash"`
 	MasterKeySalt     []byte    `db:"master_key_salt"`
 	MasterKeyVerifier []byte    `db:"master_key_verifier"`
+	SecurityVersion   int64     `db:"security_version"`
 	RegisteredAt      time.Time `db:"registered_at"`
 	UpdatedAt         time.Time `db:"updated_at"`
 }

@@ -70,6 +70,7 @@ func newTestUser(t *testing.T, login string) model.User {
 		PasswordHash:      "password-hash",
 		MasterKeySalt:     []byte("1234567890abcdef"),
 		MasterKeyVerifier: []byte("master-key-verifier"),
+		SecurityVersion:   1,
 		RegisteredAt:      now,
 		UpdatedAt:         now,
 	}
@@ -83,11 +84,12 @@ func newTestRefreshToken(t *testing.T, userID uuid.UUID, tokenHash string, issue
 	issuedAt = issuedAt.UTC().Truncate(time.Microsecond)
 
 	return model.RefreshToken{
-		ID:        id,
-		UserID:    userID,
-		TokenHash: tokenHash,
-		IssuedAt:  issuedAt,
-		ExpiresAt: issuedAt.Add(time.Hour),
-		RevokedAt: nil,
+		ID:              id,
+		UserID:          userID,
+		TokenHash:       tokenHash,
+		SecurityVersion: 1,
+		IssuedAt:        issuedAt,
+		ExpiresAt:       issuedAt.Add(time.Hour),
+		RevokedAt:       nil,
 	}
 }

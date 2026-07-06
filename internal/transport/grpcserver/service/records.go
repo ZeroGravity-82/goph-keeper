@@ -28,7 +28,8 @@ var (
 
 const downloadChunkSize = 64 * 1024
 
-// recordsUseCase описывает сценарии работы с приватными записями, которые нужны gRPC-сервису.
+// recordsUseCase описывает сценарии работы с приватными записями: создание, чтение, обновление, удаление приватных
+// записей и работу с бинарными файлами.
 type recordsUseCase interface {
 	CreateRecord(ctx context.Context, in usecase.CreateRecordInput) (usecase.CreateRecordOutput, error)
 	CreateBinaryRecord(ctx context.Context, in usecase.CreateBinaryRecordInput) (usecase.CreateBinaryRecordOutput, error)

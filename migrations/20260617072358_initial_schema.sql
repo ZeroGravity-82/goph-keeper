@@ -6,18 +6,20 @@ CREATE TABLE IF NOT EXISTS app_user
     password_hash       TEXT        NOT NULL,
     master_key_salt     BYTEA       NOT NULL,
     master_key_verifier BYTEA       NOT NULL,
+    security_version    BIGINT      NOT NULL DEFAULT 1,
     registered_at       TIMESTAMPTZ NOT NULL,
     updated_at          TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS refresh_token
 (
-    id          UUID PRIMARY KEY,
-    app_user_id UUID        NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
-    token_hash  TEXT        NOT NULL UNIQUE,
-    issued_at   TIMESTAMPTZ NOT NULL,
-    expires_at  TIMESTAMPTZ NOT NULL,
-    revoked_at  TIMESTAMPTZ NULL
+    id               UUID PRIMARY KEY,
+    app_user_id      UUID        NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
+    token_hash       TEXT        NOT NULL UNIQUE,
+    security_version BIGINT      NOT NULL DEFAULT 1,
+    issued_at        TIMESTAMPTZ NOT NULL,
+    expires_at       TIMESTAMPTZ NOT NULL,
+    revoked_at       TIMESTAMPTZ NULL
 );
 CREATE INDEX idx_refresh_token_app_user_id ON refresh_token(app_user_id);
 

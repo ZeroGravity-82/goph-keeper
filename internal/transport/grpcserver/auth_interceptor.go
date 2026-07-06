@@ -2,6 +2,7 @@ package grpcserver
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 
 	"zerogravity-82/goph-keeper/internal/auth"
 	"zerogravity-82/goph-keeper/internal/transport/grpcserver/authcontext"
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
 const (
@@ -22,6 +24,11 @@ const (
 
 type accessTokenParser interface {
 	ParseAccessToken(tokenString string) (*auth.AccessClaims, error)
+}
+
+// UserSessionChecker проверяет актуальную версию security-состояния пользователя для access-токена.
+type UserSessionChecker interface {
+	GetSecurityVersion(ctx context.Context, userID uuid.UUID) (int64, error)
 }
 
 func (s *GRPCServer) authenticateUnaryInterceptor(
@@ -45,12 +52,12 @@ func (s *GRPCServer) authenticateUnaryInterceptor(
 	if claims == nil {
 		return nil, status.Error(codes.Unauthenticated, "access token is invalid")
 	}
-	userID, err := uuid.Parse(claims.Subject)
+	userID, err := s.authenticateClaims(ctx, claims)
 	if err != nil || userID == uuid.Nil {
-		return nil, status.Error(codes.Unauthenticated, "access token subject is invalid")
+		return nil, err
 	}
 
-	return handler(authcontext.WithUserID(ctx, userID), req)
+	return handler(authcontext.WithUserSession(ctx, userID, claims.SecurityVersion), req)
 }
 
 func (s *GRPCServer) authenticateStreamInterceptor(
@@ -82,11 +89,32 @@ func (s *GRPCServer) authenticateContext(ctx context.Context) (context.Context, 
 	if claims == nil {
 		return nil, status.Error(codes.Unauthenticated, "access token is invalid")
 	}
+	userID, err := s.authenticateClaims(ctx, claims)
+	if err != nil || userID == uuid.Nil {
+		return nil, err
+	}
+	return authcontext.WithUserSession(ctx, userID, claims.SecurityVersion), nil
+}
+
+func (s *GRPCServer) authenticateClaims(ctx context.Context, claims *auth.AccessClaims) (uuid.UUID, error) {
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil || userID == uuid.Nil {
-		return nil, status.Error(codes.Unauthenticated, "access token subject is invalid")
+		return uuid.Nil, status.Error(codes.Unauthenticated, "access token subject is invalid")
 	}
-	return authcontext.WithUserID(ctx, userID), nil
+	if claims.SecurityVersion <= 0 {
+		return uuid.Nil, status.Error(codes.Unauthenticated, "access token security version is invalid")
+	}
+	currentSecurityVersion, err := s.sessionChecker.GetSecurityVersion(ctx, userID)
+	if err != nil {
+		if errors.Is(err, usecase.ErrUserNotFound) {
+			return uuid.Nil, status.Error(codes.Unauthenticated, "user session is invalid")
+		}
+		return uuid.Nil, status.Error(codes.Internal, "failed to validate user session")
+	}
+	if currentSecurityVersion != claims.SecurityVersion {
+		return uuid.Nil, status.Error(codes.Unauthenticated, "user session is outdated")
+	}
+	return userID, nil
 }
 
 type serverStreamWithContext struct {

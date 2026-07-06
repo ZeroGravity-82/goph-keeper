@@ -16,13 +16,14 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-// authUseCase описывает сценарии аутентификации, которые нужны gRPC-сервису.
+// authUseCase описывает сценарии сервиса аутентификации: регистрация, вход в аккаунт, обновление пары токенов, выход
+// из аккаунта и смена мастер-ключа.
 type authUseCase interface {
 	Register(ctx context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error)
 	Login(ctx context.Context, in usecase.LoginInput) (usecase.LoginOutput, error)
 	Refresh(ctx context.Context, in usecase.RefreshInput) (usecase.RefreshOutput, error)
 	Logout(ctx context.Context, in usecase.LogoutInput) error
-	ChangeMasterKey(ctx context.Context, in usecase.ChangeMasterKeyInput) error
+	ChangeMasterKey(ctx context.Context, in usecase.ChangeMasterKeyInput) (usecase.ChangeMasterKeyOutput, error)
 }
 
 // AuthService реализует gRPC-сервис аутентификации.
@@ -229,14 +230,18 @@ func (s *AuthService) ChangeMasterKey(
 		return nil, err
 	}
 
-	if err = s.uc.ChangeMasterKey(ctx, in); err != nil {
+	out, err := s.uc.ChangeMasterKey(ctx, in)
+	if err != nil {
 		if !isExpectedAuthError(err) {
 			s.logger.Error("failed to change master key", slog.Any("err", err))
 		}
 		return nil, authErrorToStatus(err)
 	}
 
-	return pb.ChangeMasterKeyResponse_builder{}.Build(), nil
+	return pb.ChangeMasterKeyResponse_builder{
+		AccessToken:  &out.AuthTokens.AccessToken,
+		RefreshToken: &out.AuthTokens.RefreshToken,
+	}.Build(), nil
 }
 
 // changeMasterKeyInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария смены мастер-ключа.
@@ -250,6 +255,10 @@ func changeMasterKeyInputFromRequest(
 	userID, ok := authcontext.UserIDFromContext(ctx)
 	if !ok {
 		return usecase.ChangeMasterKeyInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+	securityVersion, ok := authcontext.SecurityVersionFromContext(ctx)
+	if !ok {
+		return usecase.ChangeMasterKeyInput{}, status.Error(codes.Unauthenticated, "security version is required")
 	}
 	if len(req.GetMasterKeySalt()) == 0 {
 		return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "master key salt is required")
@@ -281,6 +290,7 @@ func changeMasterKeyInputFromRequest(
 	}
 	return usecase.ChangeMasterKeyInput{
 		UserID:            userID,
+		SecurityVersion:   securityVersion,
 		MasterKeySalt:     req.GetMasterKeySalt(),
 		MasterKeyVerifier: req.GetMasterKeyVerifier(),
 		Records:           records,

@@ -12,6 +12,8 @@ import (
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
 
+const initialSecurityVersion int64 = 1
+
 // AuthTokens содержит пару access/refresh-токенов пользовательской сессии.
 type AuthTokens struct {
 	AccessToken  string
@@ -70,15 +72,29 @@ type ReencryptedRecordDEK struct {
 // ChangeMasterKeyInput описывает входные данные сценария смены мастер-ключа.
 type ChangeMasterKeyInput struct {
 	UserID            uuid.UUID
+	SecurityVersion   int64
 	MasterKeySalt     []byte
 	MasterKeyVerifier []byte
 	Records           []ReencryptedRecordDEK
 }
 
+// ChangeMasterKeyOutput описывает результат сценария смены мастер-ключа.
+type ChangeMasterKeyOutput struct {
+	AuthTokens AuthTokens
+}
+
 type userRepository interface {
 	Create(ctx context.Context, u model.User) error
 	GetByLogin(ctx context.Context, login string) (model.User, error)
-	UpdateMasterKey(ctx context.Context, userID uuid.UUID, salt []byte, verifier []byte, updatedAt time.Time) error
+	GetSecurityVersion(ctx context.Context, userID uuid.UUID) (int64, error)
+	UpdateMasterKey(
+		ctx context.Context,
+		userID uuid.UUID,
+		salt []byte,
+		verifier []byte,
+		updatedAt time.Time,
+		expectedSecurityVersion int64,
+	) (int64, error)
 }
 
 type masterKeyRecordRepository interface {
@@ -89,6 +105,7 @@ type refreshTokenRepository interface {
 	Create(ctx context.Context, t model.RefreshToken) error
 	FindActiveByHash(ctx context.Context, tokenHash string, now time.Time) (model.RefreshToken, error)
 	Revoke(ctx context.Context, tokenID uuid.UUID, revokedAt time.Time) error
+	RevokeActiveByUserID(ctx context.Context, userID uuid.UUID, revokedAt time.Time) error
 }
 
 type transactor interface {
@@ -96,7 +113,7 @@ type transactor interface {
 }
 
 type sessionTokenIssuer interface {
-	IssueAccessToken(userID uuid.UUID) (string, error)
+	IssueAccessToken(userID uuid.UUID, securityVersion int64) (string, error)
 	GenerateRefreshToken() (string, error)
 }
 
@@ -191,11 +208,12 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 		PasswordHash:      h,
 		MasterKeySalt:     in.MasterKeySalt,
 		MasterKeyVerifier: in.MasterKeyVerifier,
+		SecurityVersion:   initialSecurityVersion,
 		RegisteredAt:      now,
 		UpdatedAt:         now,
 	}
 
-	tokens, rt, err := uc.issueTokens(u.ID, now)
+	tokens, rt, err := uc.issueTokens(u.ID, u.SecurityVersion, now)
 	if err != nil {
 		return RegisterOutput{}, fmt.Errorf("failed to issue tokens: %w", err)
 	}
@@ -229,7 +247,7 @@ func (uc *AuthUseCase) Login(ctx context.Context, in LoginInput) (LoginOutput, e
 	}
 
 	now := time.Now().UTC()
-	tokens, rt, err := uc.issueTokens(u.ID, now)
+	tokens, rt, err := uc.issueTokens(u.ID, u.SecurityVersion, now)
 	if err != nil {
 		return LoginOutput{}, fmt.Errorf("failed to issue tokens: %w", err)
 	}
@@ -260,7 +278,18 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, in RefreshInput) (RefreshOut
 			return fmt.Errorf("failed to find active refresh token: %w", err)
 		}
 
-		newTokens, newRefreshToken, err := uc.issueTokens(activeRefreshToken.UserID, now)
+		securityVersion, err := uc.userRepo.GetSecurityVersion(ctx, activeRefreshToken.UserID)
+		if err != nil {
+			if errors.Is(err, ErrUserNotFound) {
+				return ErrAuthenticationFailed
+			}
+			return err
+		}
+		if securityVersion != activeRefreshToken.SecurityVersion {
+			return ErrAuthenticationFailed
+		}
+
+		newTokens, newRefreshToken, err := uc.issueTokens(activeRefreshToken.UserID, securityVersion, now)
 		if err != nil {
 			return fmt.Errorf("failed to issue tokens: %w", err)
 		}
@@ -313,50 +342,77 @@ func (uc *AuthUseCase) Logout(ctx context.Context, in LogoutInput) error {
 	return nil
 }
 
-// ChangeMasterKey обновляет соль и верификатор мастер-ключа, а также заново зашифрованные DEK всех приватных записей
-// пользователя.
-func (uc *AuthUseCase) ChangeMasterKey(ctx context.Context, in ChangeMasterKeyInput) error {
+// ChangeMasterKey меняет мастер-ключ пользователя: обновляет соль и верификатор, переупаковывает DEK приватных записей,
+// повышает security_version, отзывает активные refresh-токены и возвращает новую пару токенов.
+func (uc *AuthUseCase) ChangeMasterKey(ctx context.Context, in ChangeMasterKeyInput) (ChangeMasterKeyOutput, error) {
 	if in.UserID == uuid.Nil {
-		return ErrAuthenticationFailed
+		return ChangeMasterKeyOutput{}, ErrAuthenticationFailed
+	}
+	if in.SecurityVersion <= 0 {
+		return ChangeMasterKeyOutput{}, ErrAuthenticationFailed
 	}
 	if err := uc.validateMasterKeySalt(in.MasterKeySalt); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidMasterKeySalt, err)
+		return ChangeMasterKeyOutput{}, fmt.Errorf("%w: %v", ErrInvalidMasterKeySalt, err)
 	}
 	if len(in.MasterKeyVerifier) == 0 {
-		return errors.New("master key verifier is required")
+		return ChangeMasterKeyOutput{}, errors.New("master key verifier is required")
 	}
 	for _, record := range in.Records {
 		if record.RecordID == uuid.Nil {
-			return errors.New("record ID is required")
+			return ChangeMasterKeyOutput{}, errors.New("record ID is required")
 		}
 		if record.ExpectedVersion <= 0 {
-			return errors.New("record expected version must be positive")
+			return ChangeMasterKeyOutput{}, errors.New("record expected version must be positive")
 		}
 		if len(record.EncryptedDEK) == 0 {
-			return errors.New("record encrypted DEK is required")
+			return ChangeMasterKeyOutput{}, errors.New("record encrypted DEK is required")
 		}
 	}
 
 	now := time.Now().UTC()
+	var tokens AuthTokens
 	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
 		if err := uc.recordRepo.ReencryptDEKs(ctx, in.UserID, in.Records, now); err != nil {
 			return err
 		}
-		if err := uc.userRepo.UpdateMasterKey(ctx, in.UserID, in.MasterKeySalt, in.MasterKeyVerifier, now); err != nil {
+		newSecurityVersion, err := uc.userRepo.UpdateMasterKey(
+			ctx,
+			in.UserID,
+			in.MasterKeySalt,
+			in.MasterKeyVerifier,
+			now,
+			in.SecurityVersion,
+		)
+		if err != nil {
 			return err
 		}
+		if err = uc.refreshTokenRepo.RevokeActiveByUserID(ctx, in.UserID, now); err != nil {
+			return err
+		}
+		newTokens, newRefreshToken, err := uc.issueTokens(in.UserID, newSecurityVersion, now)
+		if err != nil {
+			return fmt.Errorf("failed to issue tokens: %w", err)
+		}
+		if err = uc.refreshTokenRepo.Create(ctx, newRefreshToken); err != nil {
+			return fmt.Errorf("failed to persist refresh token: %w", err)
+		}
+		tokens = newTokens
 		return nil
 	}); err != nil {
 		if errors.Is(err, ErrMasterKeyChangeConflict) || errors.Is(err, ErrUserNotFound) {
-			return err
+			return ChangeMasterKeyOutput{}, err
 		}
-		return fmt.Errorf("failed to change master key: %w", err)
+		return ChangeMasterKeyOutput{}, fmt.Errorf("failed to change master key: %w", err)
 	}
-	return nil
+	return ChangeMasterKeyOutput{AuthTokens: tokens}, nil
 }
 
-func (uc *AuthUseCase) issueTokens(userID uuid.UUID, now time.Time) (AuthTokens, model.RefreshToken, error) {
-	access, err := uc.tokenIssuer.IssueAccessToken(userID)
+func (uc *AuthUseCase) issueTokens(
+	userID uuid.UUID,
+	securityVersion int64,
+	now time.Time,
+) (AuthTokens, model.RefreshToken, error) {
+	access, err := uc.tokenIssuer.IssueAccessToken(userID, securityVersion)
 	if err != nil {
 		return AuthTokens{}, model.RefreshToken{}, err
 	}
@@ -370,12 +426,13 @@ func (uc *AuthUseCase) issueTokens(userID uuid.UUID, now time.Time) (AuthTokens,
 		return AuthTokens{}, model.RefreshToken{}, fmt.Errorf("failed to generate ID for refresh token: %w", err)
 	}
 	rt := model.RefreshToken{
-		ID:        uuidV7,
-		UserID:    userID,
-		TokenHash: auth.HashRefreshToken(refresh),
-		ExpiresAt: now.Add(uc.refreshTokenTTL),
-		IssuedAt:  now,
-		RevokedAt: nil,
+		ID:              uuidV7,
+		UserID:          userID,
+		TokenHash:       auth.HashRefreshToken(refresh),
+		SecurityVersion: securityVersion,
+		ExpiresAt:       now.Add(uc.refreshTokenTTL),
+		IssuedAt:        now,
+		RevokedAt:       nil,
 	}
 
 	return AuthTokens{AccessToken: access, RefreshToken: refresh}, rt, nil

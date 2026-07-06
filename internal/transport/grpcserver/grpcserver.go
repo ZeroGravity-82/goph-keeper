@@ -26,6 +26,7 @@ type GRPCServer struct {
 	authService    pb.AuthServer
 	recordsService pb.RecordsServer
 	tokenParser    accessTokenParser
+	sessionChecker UserSessionChecker
 	logger         *slog.Logger
 }
 
@@ -36,6 +37,7 @@ func NewGRPCServer(
 	authService pb.AuthServer,
 	recordsService pb.RecordsServer,
 	tokenParser accessTokenParser,
+	sessionChecker UserSessionChecker,
 	logger *slog.Logger,
 ) (*GRPCServer, error) {
 	if addr == "" {
@@ -53,6 +55,9 @@ func NewGRPCServer(
 	if tokenParser == nil {
 		return nil, errors.New("access token parser is not provided")
 	}
+	if sessionChecker == nil {
+		return nil, errors.New("user session checker is not provided")
+	}
 	if logger == nil {
 		logger = logging.NopLogger()
 	}
@@ -63,6 +68,7 @@ func NewGRPCServer(
 		authService:    authService,
 		recordsService: recordsService,
 		tokenParser:    tokenParser,
+		sessionChecker: sessionChecker,
 		logger:         logger,
 	}, nil
 }

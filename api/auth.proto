@@ -56,7 +56,10 @@ message ChangeMasterKeyRequest {
   repeated ReencryptedRecordDEK records = 3;
 }
 
-message ChangeMasterKeyResponse {}
+message ChangeMasterKeyResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
 
 service Auth {
   rpc Register(RegisterRequest) returns (RegisterResponse);

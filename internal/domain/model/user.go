@@ -13,6 +13,7 @@ type User struct {
 	PasswordHash      string
 	MasterKeySalt     []byte
 	MasterKeyVerifier []byte
+	SecurityVersion   int64
 	RegisteredAt      time.Time
 	UpdatedAt         time.Time
 }

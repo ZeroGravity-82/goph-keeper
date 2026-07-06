@@ -37,17 +37,21 @@ func NewTokenManager(secret string, accessTokenTTL time.Duration) (*TokenManager
 	return &TokenManager{secret: []byte(secret), accessTokenTTL: accessTokenTTL}, nil
 }
 
-// AccessClaims содержит стандартные зарегистрированные утверждения JWT.
+// AccessClaims содержит утверждения access JWT.
 //
-// Subject (sub) используется как идентификатор пользователя.
+// Subject (sub) используется как идентификатор пользователя, SecurityVersion - как версия security-состояния пользователя.
 type AccessClaims struct {
 	jwt.RegisteredClaims
+	SecurityVersion int64 `json:"security_version"`
 }
 
 // IssueAccessToken создает и подписывает новый access-токен для указанного userID.
 //
 // Возвращаемое значение — компактная строка JWT, подходящая для заголовка `Authorization: Bearer <token>`.
-func (m *TokenManager) IssueAccessToken(userID uuid.UUID) (string, error) {
+func (m *TokenManager) IssueAccessToken(userID uuid.UUID, securityVersion int64) (string, error) {
+	if securityVersion <= 0 {
+		return "", errors.New("security version must be positive")
+	}
 	now := time.Now().UTC()
 	claims := AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -55,6 +59,7 @@ func (m *TokenManager) IssueAccessToken(userID uuid.UUID) (string, error) {
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTokenTTL)),
 		},
+		SecurityVersion: securityVersion,
 	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -40,9 +40,45 @@ func TestRefreshTokenRepository_CreateAndFindActiveByHash(t *testing.T) {
 	assert.Equal(t, token.ID, got.ID)
 	assert.Equal(t, token.UserID, got.UserID)
 	assert.Equal(t, token.TokenHash, got.TokenHash)
+	assert.Equal(t, token.SecurityVersion, got.SecurityVersion)
 	assert.True(t, got.IssuedAt.Equal(token.IssuedAt))
 	assert.True(t, got.ExpiresAt.Equal(token.ExpiresAt))
 	assert.Nil(t, got.RevokedAt)
+}
+
+// TestRefreshTokenRepository_RevokeActiveByUserID проверяет отзыв всех активных refresh-токенов пользователя.
+func TestRefreshTokenRepository_RevokeActiveByUserID(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	tokenRepo, err := NewRefreshTokenRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "revoke-user-tokens")
+	otherUser := newTestUser(t, "revoke-other-user-tokens")
+	now := fixedTestTime()
+	userToken := newTestRefreshToken(t, user.ID, "user-token-hash", now)
+	otherToken := newTestRefreshToken(t, otherUser.ID, "other-token-hash", now)
+	revokedAt := now.Add(time.Minute)
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, userRepo.Create(ctx, otherUser))
+	require.NoError(t, tokenRepo.Create(ctx, userToken))
+	require.NoError(t, tokenRepo.Create(ctx, otherToken))
+
+	// Act
+	err = tokenRepo.RevokeActiveByUserID(ctx, user.ID, revokedAt)
+
+	// Assert
+	require.NoError(t, err)
+	_, err = tokenRepo.FindActiveByHash(ctx, userToken.TokenHash, revokedAt)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, usecase.ErrRefreshTokenNotFound))
+
+	gotOther, err := tokenRepo.FindActiveByHash(ctx, otherToken.TokenHash, revokedAt)
+	require.NoError(t, err)
+	assert.Equal(t, otherToken.ID, gotOther.ID)
 }
 
 // TestRefreshTokenRepository_FindActiveByHash_NotFound проверяет ошибку при поиске отсутствующего refresh-токена.

@@ -31,8 +31,8 @@ func NewRefreshTokenRepository(db *sqlx.DB) (*RefreshTokenRepository, error) {
 // Create сохраняет refresh-токен в БД.
 func (r *RefreshTokenRepository) Create(ctx context.Context, token model.RefreshToken) error {
 	const q = `
-INSERT INTO refresh_token (id, app_user_id, token_hash, issued_at, expires_at, revoked_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO refresh_token (id, app_user_id, token_hash, security_version, issued_at, expires_at, revoked_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 	exec := executorFromContext(ctx, r.db)
 	_, err := exec.ExecContext(
@@ -41,6 +41,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 		token.ID,
 		token.UserID,
 		token.TokenHash,
+		token.SecurityVersion,
 		token.IssuedAt,
 		token.ExpiresAt,
 		token.RevokedAt,
@@ -61,7 +62,7 @@ func (r *RefreshTokenRepository) FindActiveByHash(
 	now time.Time,
 ) (model.RefreshToken, error) {
 	const q = `
-SELECT id, app_user_id, token_hash, issued_at, expires_at, revoked_at
+SELECT id, app_user_id, token_hash, security_version, issued_at, expires_at, revoked_at
 FROM refresh_token
 WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > $2
 FOR UPDATE
@@ -102,13 +103,30 @@ WHERE id = $1
 	return nil
 }
 
+// RevokeActiveByUserID отзывает все активные refresh-токены пользователя.
+func (r *RefreshTokenRepository) RevokeActiveByUserID(ctx context.Context, userID uuid.UUID, revokedAt time.Time) error {
+	const q = `
+UPDATE refresh_token
+SET revoked_at = $2
+WHERE app_user_id = $1
+  AND revoked_at IS NULL
+  AND expires_at > $2
+`
+	exec := executorFromContext(ctx, r.db)
+	if _, err := exec.ExecContext(ctx, q, userID, revokedAt); err != nil {
+		return fmt.Errorf("failed to revoke active refresh tokens by user ID: %w", err)
+	}
+	return nil
+}
+
 func refreshTokenToModel(token dto.RefreshToken) model.RefreshToken {
 	return model.RefreshToken{
-		ID:        token.ID,
-		UserID:    token.UserID,
-		TokenHash: token.TokenHash,
-		IssuedAt:  token.IssuedAt,
-		ExpiresAt: token.ExpiresAt,
-		RevokedAt: token.RevokedAt,
+		ID:              token.ID,
+		UserID:          token.UserID,
+		TokenHash:       token.TokenHash,
+		SecurityVersion: token.SecurityVersion,
+		IssuedAt:        token.IssuedAt,
+		ExpiresAt:       token.ExpiresAt,
+		RevokedAt:       token.RevokedAt,
 	}
 }

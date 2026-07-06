@@ -85,6 +85,7 @@ func createIntegrationUser(t *testing.T, ctx context.Context, db *sqlx.DB, login
 		PasswordHash:      "password-hash",
 		MasterKeySalt:     []byte("master-key-salt"),
 		MasterKeyVerifier: []byte("master-key-verifier"),
+		SecurityVersion:   1,
 		RegisteredAt:      now,
 		UpdatedAt:         now,
 	}

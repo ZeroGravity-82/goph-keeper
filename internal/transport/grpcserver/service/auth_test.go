@@ -33,8 +33,9 @@ type authUseCaseStub struct {
 	logoutInput usecase.LogoutInput
 	logoutErr   error
 
-	changeMasterKeyInput usecase.ChangeMasterKeyInput
-	changeMasterKeyErr   error
+	changeMasterKeyInput  usecase.ChangeMasterKeyInput
+	changeMasterKeyOutput usecase.ChangeMasterKeyOutput
+	changeMasterKeyErr    error
 }
 
 func (s *authUseCaseStub) Register(_ context.Context, in usecase.RegisterInput) (usecase.RegisterOutput, error) {
@@ -57,9 +58,12 @@ func (s *authUseCaseStub) Logout(_ context.Context, in usecase.LogoutInput) erro
 	return s.logoutErr
 }
 
-func (s *authUseCaseStub) ChangeMasterKey(_ context.Context, in usecase.ChangeMasterKeyInput) error {
+func (s *authUseCaseStub) ChangeMasterKey(
+	_ context.Context,
+	in usecase.ChangeMasterKeyInput,
+) (usecase.ChangeMasterKeyOutput, error) {
 	s.changeMasterKeyInput = in
-	return s.changeMasterKeyErr
+	return s.changeMasterKeyOutput, s.changeMasterKeyErr
 }
 
 // TestAuthService_Register_OK проверяет успешную регистрацию через gRPC-обработчик.
@@ -347,7 +351,12 @@ func TestAuthService_Refresh_FailWithInternalError(t *testing.T) {
 // TestAuthService_Logout_OK проверяет успешное завершение сессии через gRPC-обработчик.
 func TestAuthService_Logout_OK(t *testing.T) {
 	// Arrange
-	uc := &authUseCaseStub{}
+	uc := &authUseCaseStub{changeMasterKeyOutput: usecase.ChangeMasterKeyOutput{
+		AuthTokens: usecase.AuthTokens{
+			AccessToken:  "new-access-token",
+			RefreshToken: "new-refresh-token",
+		},
+	}}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	req := pb.LogoutRequest_builder{RefreshToken: new("active-refresh-token")}.Build()
@@ -423,7 +432,12 @@ func TestAuthService_Logout_FailWithInternalError(t *testing.T) {
 // TestAuthService_ChangeMasterKey_OK проверяет успешную смену мастер-ключа через gRPC-обработчик.
 func TestAuthService_ChangeMasterKey_OK(t *testing.T) {
 	// Arrange
-	uc := &authUseCaseStub{}
+	uc := &authUseCaseStub{changeMasterKeyOutput: usecase.ChangeMasterKeyOutput{
+		AuthTokens: usecase.AuthTokens{
+			AccessToken:  "new-access-token",
+			RefreshToken: "new-refresh-token",
+		},
+	}}
 	authService, err := NewAuthService(uc, logging.NopLogger())
 	require.NoError(t, err)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000012")
@@ -442,12 +456,14 @@ func TestAuthService_ChangeMasterKey_OK(t *testing.T) {
 	}.Build()
 
 	// Act
-	resp, err := authService.ChangeMasterKey(authcontext.WithUserID(context.Background(), userID), req)
+	resp, err := authService.ChangeMasterKey(authcontext.WithUserSession(context.Background(), userID, 7), req)
 
 	// Assert
 	require.NoError(t, err)
-	assert.NotNil(t, resp)
+	assert.Equal(t, "new-access-token", resp.GetAccessToken())
+	assert.Equal(t, "new-refresh-token", resp.GetRefreshToken())
 	assert.Equal(t, userID, uc.changeMasterKeyInput.UserID)
+	assert.Equal(t, int64(7), uc.changeMasterKeyInput.SecurityVersion)
 	assert.Equal(t, []byte("abcdef1234567890"), uc.changeMasterKeyInput.MasterKeySalt)
 	require.Len(t, uc.changeMasterKeyInput.Records, 1)
 	assert.Equal(t, expectedVersion, uc.changeMasterKeyInput.Records[0].ExpectedVersion)
@@ -472,7 +488,7 @@ func TestAuthService_ChangeMasterKey_FailWithInvalidArgument(t *testing.T) {
 			userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000013")
 
 			// Act
-			_, err = authService.ChangeMasterKey(authcontext.WithUserID(context.Background(), userID), tt.req)
+			_, err = authService.ChangeMasterKey(authcontext.WithUserSession(context.Background(), userID, 1), tt.req)
 
 			// Assert
 			require.Error(t, err)
@@ -491,7 +507,7 @@ func TestAuthService_ChangeMasterKey_FailWithConflict(t *testing.T) {
 
 	// Act
 	_, err = authService.ChangeMasterKey(
-		authcontext.WithUserID(context.Background(), userID),
+		authcontext.WithUserSession(context.Background(), userID, 1),
 		changeMasterKeyRequest([]byte("abcdef1234567890"), []byte("verifier")),
 	)
 

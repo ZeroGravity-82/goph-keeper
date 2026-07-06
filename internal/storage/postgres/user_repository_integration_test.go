@@ -36,6 +36,7 @@ func TestUserRepository_CreateAndGetByLogin(t *testing.T) {
 	assert.Equal(t, u.PasswordHash, got.PasswordHash)
 	assert.Equal(t, u.MasterKeySalt, got.MasterKeySalt)
 	assert.Equal(t, u.MasterKeyVerifier, got.MasterKeyVerifier)
+	assert.Equal(t, u.SecurityVersion, got.SecurityVersion)
 	assert.True(t, got.RegisteredAt.Equal(u.RegisteredAt))
 	assert.True(t, got.UpdatedAt.Equal(u.UpdatedAt))
 }
@@ -54,15 +55,36 @@ func TestUserRepository_UpdateMasterKey(t *testing.T) {
 	newVerifier := []byte("new-master-key-verifier")
 
 	// Act
-	err = repo.UpdateMasterKey(ctx, u.ID, newSalt, newVerifier, updatedAt)
+	version, err := repo.UpdateMasterKey(ctx, u.ID, newSalt, newVerifier, updatedAt, u.SecurityVersion)
 
 	// Assert
 	require.NoError(t, err)
+	assert.Equal(t, int64(2), version)
 	got, err := repo.GetByLogin(ctx, u.Login)
 	require.NoError(t, err)
 	assert.Equal(t, newSalt, got.MasterKeySalt)
 	assert.Equal(t, newVerifier, got.MasterKeyVerifier)
+	assert.Equal(t, int64(2), got.SecurityVersion)
 	assert.True(t, got.UpdatedAt.Equal(updatedAt))
+}
+
+// TestUserRepository_GetSecurityVersion проверяет получение текущей версии security-состояния пользователя.
+func TestUserRepository_GetSecurityVersion(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	repo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	u := newTestUser(t, "security-version-user")
+
+	require.NoError(t, repo.Create(ctx, u))
+
+	// Act
+	version, err := repo.GetSecurityVersion(ctx, u.ID)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, u.SecurityVersion, version)
 }
 
 // TestUserRepository_GetByLogin_NotFound проверяет ошибку при поиске несуществующего пользователя.
