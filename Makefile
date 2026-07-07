@@ -8,7 +8,7 @@ TEST_FILE_STORAGE_ACCESS_KEY ?= gophkeeper
 TEST_FILE_STORAGE_SECRET_KEY ?= userpassword
 TEST_FILE_STORAGE_BUCKET ?= gophkeeper-test
 
-.PHONY: help fmt test lint up down proto integration-up integration-down test-integration
+.PHONY: help fmt test lint vet up down proto integration-up integration-down test-integration
 
 help: ## Показать доступные цели
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "%-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -19,7 +19,10 @@ fmt: ## Отформатировать Go-файлы
 test: ## Запустить unit-тесты
 	go test ./...
 
-lint: ## Запустить базовые статические проверки (go vet)
+lint: ## Запустить линтер golangci-lint
+	golangci-lint run
+
+vet: ## Запустить базовые статические проверки go vet
 	go vet ./...
 
 up: ## Запустить контейнеры Docker Composer
