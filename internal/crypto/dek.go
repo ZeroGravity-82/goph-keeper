@@ -8,7 +8,7 @@ import (
 
 // encryptDEK шифрует DEK с помощью KEK.
 func encryptDEK(dek []byte, kek []byte) (model.EncryptedBlob, error) {
-	if len(dek) != dekLength {
+	if len(dek) != dekSizeBytes {
 		return model.EncryptedBlob{}, errors.New("DEK has invalid length")
 	}
 	return encrypt(dek, kek)
@@ -20,7 +20,7 @@ func decryptDEK(encryptedDEK model.EncryptedBlob, kek []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(dek) != dekLength {
+	if len(dek) != dekSizeBytes {
 		return nil, errors.New("decrypted DEK has invalid length")
 	}
 	return dek, nil

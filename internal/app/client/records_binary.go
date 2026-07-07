@@ -8,11 +8,20 @@ import (
 	"io"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
 )
+
+const (
+	binaryPlainFilePartSizeBytes int64 = 5 * 1024 * 1024
+	binaryUploadChunkSizeBytes         = 512 * 1024
+)
+
+// Бинарный файл шифруется на клиенте не целиком, а частями. Каждая исходная часть получает собственные служебные данные
+// AES-GCM, поэтому размер зашифрованной части равен размеру исходной части плюс crypto.EncryptedBlobOverhead().
 
 // CreateBinaryInput содержит данные для создания бинарной приватной записи.
 type CreateBinaryInput struct {
@@ -20,7 +29,8 @@ type CreateBinaryInput struct {
 	Description string
 	Filename    string
 	ContentType string
-	File        []byte
+	File        io.Reader
+	FileSize    int64
 }
 
 // UpdateBinaryInput содержит данные для обновления бинарной приватной записи.
@@ -31,7 +41,8 @@ type UpdateBinaryInput struct {
 	Description     string
 	Filename        string
 	ContentType     string
-	File            []byte
+	File            io.Reader
+	FileSize        int64
 }
 
 // UpdateBinaryMetadataInput содержит данные для обновления открытых метаданных бинарной приватной записи.
@@ -62,15 +73,19 @@ type BinaryFile struct {
 	Data         []byte
 }
 
-// CreateBinary шифрует payload и файл на клиенте, затем создает бинарную приватную запись через потоковый запрос.
+// CreateBinary валидирует метаданные и размер исходного файла, шифрует описание файла на клиенте и загружает
+// зашифрованный файл на сервер через multipart-загрузку.
 func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRecordOutput, error) {
 	if err := a.requireSession(); err != nil {
 		return CreateRecordOutput{}, err
 	}
-	if len(in.File) == 0 {
+	if in.File == nil {
+		return CreateRecordOutput{}, errors.New("файл не задан")
+	}
+	if in.FileSize == 0 {
 		return CreateRecordOutput{}, errors.New("файл не должен быть пустым")
 	}
-	if err := validateBinaryFileSize(in.File); err != nil {
+	if err := validateBinaryFileSize(in.FileSize); err != nil {
 		return CreateRecordOutput{}, err
 	}
 	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
@@ -80,47 +95,32 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 		return CreateRecordOutput{}, err
 	}
 
-	encrypted, err := crypto.EncryptBinaryRecordData(
+	encryption, err := crypto.NewBinaryRecordEncryption(
 		a.masterKey,
 		a.session.MasterKeySalt,
 		model.BinaryPayload{
 			Filename:    in.Filename,
 			ContentType: in.ContentType,
-			Size:        int64(len(in.File)),
+			Size:        in.FileSize,
 		},
-		in.File,
 	)
 	if err != nil {
 		return CreateRecordOutput{}, fmt.Errorf("не удалось зашифровать бинарную приватную запись: %w", err)
 	}
 
-	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
-	encryptedSize := int64(len(encrypted.EncryptedFile.Data))
-	var resp *pb.CreateBinaryRecordResponse
-	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
-		stream, err := a.records.CreateBinaryRecord(ctx)
-		if err != nil {
-			return err
-		}
-		if err = stream.Send(pb.CreateBinaryRecordRequest_builder{
-			Metadata: pb.CreateBinaryRecordMetadata_builder{
-				Title:            &in.Title,
-				Description:      &in.Description,
-				EncryptedDek:     encrypted.EncryptedDEK.Data,
-				EncryptedPayload: encrypted.EncryptedPayload.Data,
-				EncryptedSize:    &encryptedSize,
-				UploadMode:       &uploadMode,
-			}.Build(),
-		}.Build()); err != nil {
-			return err
-		}
-		if err = stream.Send(pb.CreateBinaryRecordRequest_builder{
-			Chunk: encrypted.EncryptedFile.Data,
-		}.Build()); err != nil {
-			return err
-		}
-		resp, err = stream.CloseAndRecv()
-		return err
+	encryptedSize, err := crypto.EncryptedChunkedBlobSize(in.FileSize, binaryPlainFilePartSizeBytes)
+	if err != nil {
+		return CreateRecordOutput{}, fmt.Errorf("не удалось рассчитать размер зашифрованного файла: %w", err)
+	}
+	resp, err := a.createOrReplaceBinaryMultipart(ctx, binaryMultipartUploadInput{
+		Title:            in.Title,
+		Description:      in.Description,
+		EncryptedDEK:     encryption.EncryptedDEK.Data,
+		EncryptedPayload: encryption.EncryptedPayload.Data,
+		File:             in.File,
+		FileSize:         in.FileSize,
+		Encryption:       encryption,
+		EncryptedSize:    encryptedSize,
 	})
 	if err != nil {
 		return CreateRecordOutput{}, rpcError(
@@ -130,10 +130,11 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 		)
 	}
 
-	return CreateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+	return CreateRecordOutput{RecordID: resp.recordID, Version: resp.version}, nil
 }
 
-// UpdateBinaryMetadata обновляет открытые метаданные бинарной приватной записи без замены файла.
+// UpdateBinaryMetadata обновляет открытые метаданные бинарной приватной записи, не меняя зашифрованное описание файла и
+// сам файл.
 func (a *App) UpdateBinaryMetadata(ctx context.Context, in UpdateBinaryMetadataInput) (UpdateRecordOutput, error) {
 	if err := a.requireSession(); err != nil {
 		return UpdateRecordOutput{}, err
@@ -178,15 +179,19 @@ func (a *App) UpdateBinaryMetadata(ctx context.Context, in UpdateBinaryMetadataI
 	)
 }
 
-// UpdateBinary шифрует новый payload и файл на клиенте, затем заменяет файл бинарной приватной записи.
+// UpdateBinary валидирует новые метаданные и файл, шифрует описание файла на клиенте и заменяет файл через
+// multipart-загрузку с учетом ожидаемой версии записи.
 func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRecordOutput, error) {
 	if err := a.requireSession(); err != nil {
 		return UpdateRecordOutput{}, err
 	}
-	if len(in.File) == 0 {
+	if in.File == nil {
+		return UpdateRecordOutput{}, errors.New("файл не задан")
+	}
+	if in.FileSize == 0 {
 		return UpdateRecordOutput{}, errors.New("файл не должен быть пустым")
 	}
-	if err := validateBinaryFileSize(in.File); err != nil {
+	if err := validateBinaryFileSize(in.FileSize); err != nil {
 		return UpdateRecordOutput{}, err
 	}
 	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
@@ -196,49 +201,34 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 		return UpdateRecordOutput{}, err
 	}
 
-	encrypted, err := crypto.EncryptBinaryRecordData(
+	encryption, err := crypto.NewBinaryRecordEncryption(
 		a.masterKey,
 		a.session.MasterKeySalt,
 		model.BinaryPayload{
 			Filename:    in.Filename,
 			ContentType: in.ContentType,
-			Size:        int64(len(in.File)),
+			Size:        in.FileSize,
 		},
-		in.File,
 	)
 	if err != nil {
 		return UpdateRecordOutput{}, fmt.Errorf("не удалось зашифровать новый файл бинарной приватной записи: %w", err)
 	}
 
-	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
-	encryptedSize := int64(len(encrypted.EncryptedFile.Data))
-	var resp *pb.UpdateBinaryRecordResponse
-	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
-		stream, err := a.records.UpdateBinaryRecord(ctx)
-		if err != nil {
-			return err
-		}
-		if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
-			Metadata: pb.UpdateBinaryRecordMetadata_builder{
-				RecordId:         &in.RecordID,
-				Title:            &in.Title,
-				Description:      &in.Description,
-				EncryptedDek:     encrypted.EncryptedDEK.Data,
-				EncryptedPayload: encrypted.EncryptedPayload.Data,
-				EncryptedSize:    &encryptedSize,
-				UploadMode:       &uploadMode,
-				ExpectedVersion:  &in.ExpectedVersion,
-			}.Build(),
-		}.Build()); err != nil {
-			return err
-		}
-		if err = stream.Send(pb.UpdateBinaryRecordRequest_builder{
-			Chunk: encrypted.EncryptedFile.Data,
-		}.Build()); err != nil {
-			return err
-		}
-		resp, err = stream.CloseAndRecv()
-		return err
+	encryptedSize, err := crypto.EncryptedChunkedBlobSize(in.FileSize, binaryPlainFilePartSizeBytes)
+	if err != nil {
+		return UpdateRecordOutput{}, fmt.Errorf("не удалось рассчитать размер зашифрованного файла: %w", err)
+	}
+	resp, err := a.createOrReplaceBinaryMultipart(ctx, binaryMultipartUploadInput{
+		RecordID:         in.RecordID,
+		ExpectedVersion:  in.ExpectedVersion,
+		Title:            in.Title,
+		Description:      in.Description,
+		EncryptedDEK:     encryption.EncryptedDEK.Data,
+		EncryptedPayload: encryption.EncryptedPayload.Data,
+		File:             in.File,
+		FileSize:         in.FileSize,
+		Encryption:       encryption,
+		EncryptedSize:    encryptedSize,
 	})
 	if err != nil {
 		return UpdateRecordOutput{}, rpcError(
@@ -248,10 +238,293 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 		)
 	}
 
-	return UpdateRecordOutput{RecordID: resp.GetRecordId(), Version: resp.GetVersion()}, nil
+	return UpdateRecordOutput{RecordID: resp.recordID, Version: resp.version}, nil
 }
 
-// GetBinary получает метаданные бинарной приватной записи и расшифровывает описание файла на клиенте.
+// binaryMultipartUploadInput содержит подготовленные данные для создания или замены бинарной записи через
+// multipart-загрузку.
+type binaryMultipartUploadInput struct {
+	RecordID         string
+	ExpectedVersion  int64
+	Title            string
+	Description      string
+	EncryptedDEK     []byte
+	EncryptedPayload []byte
+	File             io.Reader
+	FileSize         int64
+	Encryption       crypto.BinaryRecordEncryption
+	EncryptedSize    int64
+}
+
+// binaryMultipartUploadOutput содержит идентификатор и версию записи после завершения multipart-загрузки.
+type binaryMultipartUploadOutput struct {
+	recordID string
+	version  int64
+}
+
+// createOrReplaceBinaryMultipart выполняет общий сценарий создания бинарной записи и замены файла:
+// 1. открывает или восстанавливает multipart-загрузку на сервере;
+// 2. получает список уже загруженных частей;
+// 3. последовательно дочитывает исходный файл, пропуская части, которые сервер уже принял;
+// 4. завершает загрузку после отправки всех недостающих частей.
+func (a *App) createOrReplaceBinaryMultipart(
+	ctx context.Context,
+	in binaryMultipartUploadInput,
+) (binaryMultipartUploadOutput, error) {
+	partSize := chooseBinaryMultipartPartSize(in.FileSize, in.EncryptedSize)
+	var startResp *pb.StartBinaryMultipartUploadResponse
+	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		var err error
+		startResp, err = a.records.StartBinaryMultipartUpload(ctx, pb.StartBinaryMultipartUploadRequest_builder{
+			RecordId:         &in.RecordID,
+			ExpectedVersion:  &in.ExpectedVersion,
+			Title:            &in.Title,
+			Description:      &in.Description,
+			EncryptedDek:     in.EncryptedDEK,
+			EncryptedPayload: in.EncryptedPayload,
+			EncryptedSize:    &in.EncryptedSize,
+			PartSize:         &partSize,
+		}.Build())
+		return err
+	})
+	if err != nil {
+		return binaryMultipartUploadOutput{}, err
+	}
+
+	uploaded := uploadedMultipartParts(startResp.GetUploadedParts())
+	if err = a.uploadBinaryMultipartParts(
+		ctx,
+		startResp.GetUploadId(),
+		startResp.GetPartSize(),
+		in.File,
+		in.FileSize,
+		in.Encryption,
+		uploaded,
+	); err != nil {
+		return binaryMultipartUploadOutput{}, err
+	}
+
+	return a.completeBinaryMultipartUpload(ctx, startResp.GetUploadId())
+}
+
+// chooseBinaryMultipartPartSize выбирает размер зашифрованной части: весь файл для маленькой загрузки или один
+// зашифрованный блок исходных данных для multipart-сценария.
+func chooseBinaryMultipartPartSize(fileSize int64, encryptedSize int64) int64 {
+	if fileSize <= binaryPlainFilePartSizeBytes {
+		return encryptedSize
+	}
+	return binaryPlainFilePartSizeBytes + crypto.EncryptedBlobOverhead()
+}
+
+// uploadedMultipartParts преобразует список уже загруженных частей в мапу для быстрой проверки при восстановлении
+// прерванной загрузки.
+func uploadedMultipartParts(parts []*pb.MultipartUploadPart) map[int32]int64 {
+	uploaded := make(map[int32]int64, len(parts))
+	for _, part := range parts {
+		uploaded[part.GetPartNumber()] = part.GetSize()
+	}
+	return uploaded
+}
+
+// uploadBinaryMultipartParts читает исходный файл по частям, пропускает уже загруженные части, шифрует недостающие
+// части и отправляет их на сервер.
+func (a *App) uploadBinaryMultipartParts(
+	ctx context.Context,
+	uploadID string,
+	partSize int64,
+	file io.Reader,
+	fileSize int64,
+	encryption crypto.BinaryRecordEncryption,
+	uploaded map[int32]int64,
+) error {
+	partCount := int32((fileSize + binaryPlainFilePartSizeBytes - 1) / binaryPlainFilePartSizeBytes)
+	for partNumber := int32(1); partNumber <= partCount; partNumber++ {
+		plainPartSize := expectedPlainFilePartSize(fileSize, partNumber)
+		encryptedPartSize := plainPartSize + crypto.EncryptedBlobOverhead()
+		// Сервер возвращает размер зашифрованной части. Для всех частей, кроме последней, клиент ожидает один и тот же
+		// размер: стандартный блок исходных данных плюс служебные данные AES-GCM.
+		if partNumber < partCount && partSize != encryptedPartSize {
+			return fmt.Errorf("сервер вернул некорректный размер части multipart-загрузки")
+		}
+		if uploaded[partNumber] == encryptedPartSize {
+			// Даже если часть уже загружена, исходный файл читается последовательно, поэтому соответствующий диапазон
+			// нужно пропустить перед переходом к следующей части.
+			if err := discardPlainFilePart(file, plainPartSize); err != nil {
+				return err
+			}
+			continue
+		}
+		plainPart, err := readPlainFilePart(file, plainPartSize)
+		if err != nil {
+			return err
+		}
+		encryptedPart, err := encryption.EncryptFileChunk(partNumber, plainPart)
+		if err != nil {
+			return fmt.Errorf("не удалось зашифровать часть файла: %w", err)
+		}
+		part := encryptedPart.Data
+		if err := a.uploadBinaryMultipartPartRetry(ctx, uploadID, partNumber, part); err != nil {
+			statusResp, statusErr := a.getBinaryMultipartUploadStatus(ctx, uploadID)
+			if statusErr == nil {
+				uploaded = uploadedMultipartParts(statusResp.GetUploadedParts())
+				if uploaded[partNumber] == int64(len(part)) {
+					continue
+				}
+			}
+			return err
+		}
+		uploaded[partNumber] = int64(len(part))
+	}
+	return nil
+}
+
+// expectedPlainFilePartSize возвращает ожидаемый размер исходной части файла по номеру части с учетом возможной
+// короткой последней части.
+func expectedPlainFilePartSize(fileSize int64, partNumber int32) int64 {
+	offset := int64(partNumber-1) * binaryPlainFilePartSizeBytes
+	remaining := fileSize - offset
+	if remaining < binaryPlainFilePartSizeBytes {
+		return remaining
+	}
+	return binaryPlainFilePartSizeBytes
+}
+
+// readPlainFilePart читает из исходного файла ровно одну часть заданного размера.
+func readPlainFilePart(file io.Reader, size int64) ([]byte, error) {
+	part := make([]byte, size)
+	if _, err := io.ReadFull(file, part); err != nil {
+		return nil, fmt.Errorf("не удалось прочитать часть файла: %w", err)
+	}
+	return part, nil
+}
+
+// discardPlainFilePart пропускает часть исходного файла, которая уже есть на сервере после восстановления
+// multipart-загрузки.
+func discardPlainFilePart(file io.Reader, size int64) error {
+	if _, err := io.CopyN(io.Discard, file, size); err != nil {
+		return fmt.Errorf("не удалось пропустить уже загруженную часть файла: %w", err)
+	}
+	return nil
+}
+
+// uploadBinaryMultipartPartRetry отправляет одну зашифрованную часть с повторами для временных ошибок и проверяет
+// статус загрузки перед повторной отправкой.
+func (a *App) uploadBinaryMultipartPartRetry(
+	ctx context.Context,
+	uploadID string,
+	partNumber int32,
+	part []byte,
+) error {
+	backoff := defaultUnaryRetryBackoff()
+	for attempt := 0; ; attempt++ {
+		err := a.uploadBinaryMultipartPart(ctx, uploadID, partNumber, part)
+		if err == nil {
+			return nil
+		}
+		if attempt >= len(backoff) || !isRetriableUnaryError(err) {
+			return err
+		}
+		statusResp, statusErr := a.getBinaryMultipartUploadStatus(ctx, uploadID)
+		if statusErr == nil {
+			for _, uploadedPart := range statusResp.GetUploadedParts() {
+				if uploadedPart.GetPartNumber() == partNumber && uploadedPart.GetSize() == int64(len(part)) {
+					// Ответ на загрузку части мог потеряться после того, как сервер уже сохранил часть.
+					return nil
+				}
+			}
+		}
+		if err = sleepContext(ctx, backoff[attempt]); err != nil {
+			return err
+		}
+	}
+}
+
+// uploadBinaryMultipartPart отправляет одну зашифрованную часть через клиентский поток: сначала метаданные, затем
+// фрагменты данных.
+func (a *App) uploadBinaryMultipartPart(ctx context.Context, uploadID string, partNumber int32, part []byte) error {
+	partSize := int64(len(part))
+	return a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+		stream, err := a.records.UploadBinaryMultipartPart(ctx)
+		if err != nil {
+			return err
+		}
+		if err = stream.Send(pb.UploadBinaryMultipartPartRequest_builder{
+			Metadata: pb.UploadBinaryMultipartPartMetadata_builder{
+				UploadId:   &uploadID,
+				PartNumber: &partNumber,
+				PartSize:   &partSize,
+			}.Build(),
+		}.Build()); err != nil {
+			return err
+		}
+		for from := 0; from < len(part); from += binaryUploadChunkSizeBytes {
+			to := min(from+binaryUploadChunkSizeBytes, len(part))
+			if err = stream.Send(pb.UploadBinaryMultipartPartRequest_builder{Chunk: part[from:to]}.Build()); err != nil {
+				return err
+			}
+		}
+		_, err = stream.CloseAndRecv()
+		return err
+	})
+}
+
+// getBinaryMultipartUploadStatus получает состояние multipart-загрузки и список уже принятых сервером частей.
+func (a *App) getBinaryMultipartUploadStatus(
+	ctx context.Context,
+	uploadID string,
+) (*pb.GetBinaryMultipartUploadStatusResponse, error) {
+	var resp *pb.GetBinaryMultipartUploadStatusResponse
+	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
+		var err error
+		resp, err = a.records.GetBinaryMultipartUploadStatus(ctx, pb.GetBinaryMultipartUploadStatusRequest_builder{
+			UploadId: &uploadID,
+		}.Build())
+		return err
+	})
+	return resp, err
+}
+
+// completeBinaryMultipartUpload завершает multipart-загрузку и учитывает случай, когда сервер уже успел собрать файл
+// при повторе запроса.
+func (a *App) completeBinaryMultipartUpload(
+	ctx context.Context,
+	uploadID string,
+) (binaryMultipartUploadOutput, error) {
+	backoff := defaultUnaryRetryBackoff()
+	for attempt := 0; ; attempt++ {
+		var resp *pb.CompleteBinaryMultipartUploadResponse
+		err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
+			var err error
+			resp, err = a.records.CompleteBinaryMultipartUpload(ctx, pb.CompleteBinaryMultipartUploadRequest_builder{
+				UploadId: &uploadID,
+			}.Build())
+			return err
+		})
+		if err == nil {
+			return binaryMultipartUploadOutput{recordID: resp.GetRecordId(), version: resp.GetVersion()}, nil
+		}
+		if status.Code(err) == codes.FailedPrecondition || isRetriableUnaryError(err) {
+			statusResp, statusErr := a.getBinaryMultipartUploadStatus(ctx, uploadID)
+			if statusErr == nil && statusResp.GetUploadStatus() == pb.UploadStatus_UPLOAD_STATUS_UPLOADED {
+				// Complete мог успешно выполниться на сервере, но клиент получил сетевую ошибку или повторный
+				// запрос пришел уже после сборки файла.
+				return binaryMultipartUploadOutput{
+					recordID: statusResp.GetRecordId(),
+					version:  statusResp.GetVersion(),
+				}, nil
+			}
+		}
+		if attempt >= len(backoff) || !isRetriableUnaryError(err) {
+			return binaryMultipartUploadOutput{}, err
+		}
+		if err = sleepContext(ctx, backoff[attempt]); err != nil {
+			return binaryMultipartUploadOutput{}, err
+		}
+	}
+}
+
+// GetBinary получает бинарную приватную запись без скачивания файла и расшифровывает клиентские данные с описанием
+// файла.
 func (a *App) GetBinary(ctx context.Context, recordID string) (BinaryRecord, error) {
 	if err := a.requireSession(); err != nil {
 		return BinaryRecord{}, err
@@ -305,7 +578,8 @@ func (a *App) GetBinary(ctx context.Context, recordID string) (BinaryRecord, err
 	}, nil
 }
 
-// DownloadBinaryFile скачивает зашифрованный файл, расшифровывает его на клиенте и возвращает исходные данные.
+// DownloadBinaryFile получает метаданные записи, скачивает зашифрованный файл, расшифровывает его на клиенте и
+// проверяет размер исходного файла.
 func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFile, error) {
 	if err := a.requireSession(); err != nil {
 		return BinaryFile{}, err
@@ -381,11 +655,13 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 		)
 	}
 
-	file, err := crypto.DecryptBinaryRecordFile(
+	file, err := crypto.DecryptBinaryRecordFileChunks(
 		a.masterKey,
 		a.session.MasterKeySalt,
 		model.EncryptedBlob{Data: record.GetEncryptedDek()},
 		model.EncryptedBlob{Data: encryptedFile.Bytes()},
+		payload.Size,
+		binaryPlainFilePartSizeBytes,
 	)
 	if err != nil {
 		return BinaryFile{}, fmt.Errorf("не удалось расшифровать файл: %w", err)

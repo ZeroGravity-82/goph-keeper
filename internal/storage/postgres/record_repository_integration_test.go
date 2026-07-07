@@ -540,14 +540,12 @@ func newTestRecordFile(t *testing.T, recordID uuid.UUID, now time.Time) model.Re
 	require.NoError(t, err)
 	now = now.UTC().Truncate(time.Microsecond)
 	encryptedSize := int64(1024)
-	uploadMode := model.UploadModeSinglePart
 
 	return model.RecordFile{
 		ID:            id,
 		RecordID:      recordID,
 		ObjectKey:     "users/user-id/records/record-id/files/file-id/payload",
 		EncryptedSize: &encryptedSize,
-		UploadMode:    &uploadMode,
 		UploadStatus:  model.UploadStatusUploaded,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -578,8 +576,6 @@ func assertRecordFileEqual(t *testing.T, expected, actual model.RecordFile) {
 	assert.Equal(t, expected.ObjectKey, actual.ObjectKey)
 	require.NotNil(t, actual.EncryptedSize)
 	assert.Equal(t, *expected.EncryptedSize, *actual.EncryptedSize)
-	require.NotNil(t, actual.UploadMode)
-	assert.Equal(t, *expected.UploadMode, *actual.UploadMode)
 	assert.Equal(t, expected.UploadStatus, actual.UploadStatus)
 	assert.True(t, actual.CreatedAt.Equal(expected.CreatedAt))
 	assert.True(t, actual.UpdatedAt.Equal(expected.UpdatedAt))

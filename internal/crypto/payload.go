@@ -3,6 +3,7 @@ package crypto
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
@@ -40,6 +41,18 @@ type EncryptedBinaryRecordData struct {
 type EncryptedRecordData struct {
 	EncryptedDEK     model.EncryptedBlob
 	EncryptedPayload model.EncryptedBlob
+}
+
+// BinaryRecordEncryption содержит зашифрованные метаданные бинарной записи и DEK для потокового шифрования файла.
+type BinaryRecordEncryption struct {
+	EncryptedDEK     model.EncryptedBlob
+	EncryptedPayload model.EncryptedBlob
+	dek              []byte
+}
+
+// BinaryRecordFileDecryption содержит DEK для расшифровки файла бинарной записи по частям.
+type BinaryRecordFileDecryption struct {
+	dek []byte
 }
 
 // EncryptRecordData шифрует payload приватной записи и DEK, которым он был зашифрован.
@@ -101,6 +114,7 @@ func marshalPayload[T any](payload T) ([]byte, error) {
 	return data, nil
 }
 
+// payloadToJSON преобразует доменный payload приватной записи в JSON DTO с явно заданным набором полей.
 func payloadToJSON[T any](payload T) (any, error) {
 	switch p := any(payload).(type) {
 	case model.CredentialPayload:
@@ -162,34 +176,62 @@ func EncryptBinaryRecordData(
 	payload model.BinaryPayload,
 	file []byte,
 ) (EncryptedBinaryRecordData, error) {
+	encryption, err := NewBinaryRecordEncryption(masterKey, salt, payload)
+	if err != nil {
+		return EncryptedBinaryRecordData{}, err
+	}
+
+	encryptedFile, err := encryption.EncryptFileChunk(1, file)
+	if err != nil {
+		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to encrypt binary record file: %w", err)
+	}
+
+	return EncryptedBinaryRecordData{
+		EncryptedDEK:     encryption.EncryptedDEK,
+		EncryptedPayload: encryption.EncryptedPayload,
+		EncryptedFile:    encryptedFile,
+	}, nil
+}
+
+// NewBinaryRecordEncryption подготавливает зашифрованные метаданные бинарной записи и DEK для шифрования файла.
+func NewBinaryRecordEncryption(
+	masterKey string,
+	salt []byte,
+	payload model.BinaryPayload,
+) (BinaryRecordEncryption, error) {
 	kek, err := deriveKEK(masterKey, salt)
 	if err != nil {
-		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to derive KEK: %w", err)
+		return BinaryRecordEncryption{}, fmt.Errorf("failed to derive KEK: %w", err)
 	}
 
 	dek, err := generateDEK()
 	if err != nil {
-		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to generate DEK: %w", err)
+		return BinaryRecordEncryption{}, fmt.Errorf("failed to generate DEK: %w", err)
 	}
 
 	encryptedPayload, err := encryptPayload(payload, dek)
 	if err != nil {
-		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to encrypt binary record payload: %w", err)
-	}
-	encryptedFile, err := encrypt(file, dek)
-	if err != nil {
-		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to encrypt binary record file: %w", err)
+		return BinaryRecordEncryption{}, fmt.Errorf("failed to encrypt binary record payload: %w", err)
 	}
 	encryptedDEK, err := encryptDEK(dek, kek)
 	if err != nil {
-		return EncryptedBinaryRecordData{}, fmt.Errorf("failed to encrypt DEK: %w", err)
+		return BinaryRecordEncryption{}, fmt.Errorf("failed to encrypt DEK: %w", err)
 	}
 
-	return EncryptedBinaryRecordData{
+	return BinaryRecordEncryption{
 		EncryptedDEK:     encryptedDEK,
 		EncryptedPayload: encryptedPayload,
-		EncryptedFile:    encryptedFile,
+		dek:              dek,
 	}, nil
+}
+
+// EncryptFileChunk шифрует одну часть файла бинарной записи в формате nonce + ciphertext.
+func (e BinaryRecordEncryption) EncryptFileChunk(partNumber int32, chunk []byte) (model.EncryptedBlob, error) {
+	encrypted, err := encryptWithAAD(chunk, e.dek, binaryFileChunkAAD(partNumber))
+	if err != nil {
+		return model.EncryptedBlob{}, fmt.Errorf("failed to encrypt binary record file chunk: %w", err)
+	}
+	return encrypted, nil
 }
 
 // DecryptBinaryRecordFile расшифровывает файл бинарной приватной записи через DEK, сохраненный в encrypted DEK.
@@ -199,19 +241,109 @@ func DecryptBinaryRecordFile(
 	encryptedDEK model.EncryptedBlob,
 	encryptedFile model.EncryptedBlob,
 ) ([]byte, error) {
+	decryption, err := NewBinaryRecordFileDecryption(masterKey, salt, encryptedDEK)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := decryption.DecryptFileChunk(1, encryptedFile)
+	if err != nil {
+		file, fallbackErr := decrypt(encryptedFile, decryption.dek)
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("failed to decrypt binary record file: %w", err)
+		}
+		return file, nil
+	}
+	return file, nil
+}
+
+// NewBinaryRecordFileDecryption подготавливает DEK для расшифровки файла бинарной записи.
+func NewBinaryRecordFileDecryption(
+	masterKey string,
+	salt []byte,
+	encryptedDEK model.EncryptedBlob,
+) (BinaryRecordFileDecryption, error) {
 	kek, err := deriveKEK(masterKey, salt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to derive KEK: %w", err)
+		return BinaryRecordFileDecryption{}, fmt.Errorf("failed to derive KEK: %w", err)
 	}
 
 	dek, err := decryptDEK(encryptedDEK, kek)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt DEK: %w", err)
+		return BinaryRecordFileDecryption{}, fmt.Errorf("failed to decrypt DEK: %w", err)
+	}
+	return BinaryRecordFileDecryption{dek: dek}, nil
+}
+
+// DecryptFileChunk расшифровывает одну часть файла бинарной записи в формате nonce + ciphertext.
+func (d BinaryRecordFileDecryption) DecryptFileChunk(
+	partNumber int32,
+	encryptedChunk model.EncryptedBlob,
+) ([]byte, error) {
+	file, err := decryptWithAAD(encryptedChunk, d.dek, binaryFileChunkAAD(partNumber))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt binary record file chunk: %w", err)
+	}
+	return file, nil
+}
+
+func binaryFileChunkAAD(partNumber int32) []byte {
+	return []byte("binary-file-chunk:" + strconv.FormatInt(int64(partNumber), 10))
+}
+
+// DecryptBinaryRecordFileChunks расшифровывает файл, сохраненный как последовательность зашифрованных частей.
+func DecryptBinaryRecordFileChunks(
+	masterKey string,
+	salt []byte,
+	encryptedDEK model.EncryptedBlob,
+	encryptedFile model.EncryptedBlob,
+	plainSize int64,
+	plainChunkSize int64,
+) ([]byte, error) {
+	if plainSize <= 0 {
+		return nil, fmt.Errorf("plain size is invalid")
+	}
+	if plainChunkSize <= 0 {
+		return nil, fmt.Errorf("plain chunk size is invalid")
 	}
 
-	file, err := decrypt(encryptedFile, dek)
+	if int64(len(encryptedFile.Data)) == plainSize+EncryptedBlobOverhead() {
+		return DecryptBinaryRecordFile(masterKey, salt, encryptedDEK, encryptedFile)
+	}
+
+	expectedSize, err := EncryptedChunkedBlobSize(plainSize, plainChunkSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt binary record file: %w", err)
+		return nil, err
+	}
+	if int64(len(encryptedFile.Data)) != expectedSize {
+		return nil, fmt.Errorf("encrypted file size does not match declared plain size")
+	}
+
+	decryption, err := NewBinaryRecordFileDecryption(masterKey, salt, encryptedDEK)
+	if err != nil {
+		return nil, err
+	}
+
+	file := make([]byte, 0, plainSize)
+	offset := 0
+	remainingPlain := plainSize
+	for partNumber := int32(1); remainingPlain > 0; partNumber++ {
+		plainPartSize := min(plainChunkSize, remainingPlain)
+		encryptedPartSize := plainPartSize + EncryptedBlobOverhead()
+		to := offset + int(encryptedPartSize)
+		if to > len(encryptedFile.Data) {
+			return nil, fmt.Errorf("encrypted file chunk is incomplete")
+		}
+		chunk, err := decryption.DecryptFileChunk(partNumber, model.EncryptedBlob{Data: encryptedFile.Data[offset:to]})
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(chunk)) != plainPartSize {
+			return nil, fmt.Errorf("decrypted file chunk size does not match declared size")
+		}
+		file = append(file, chunk...)
+		offset = to
+		remainingPlain -= plainPartSize
 	}
 	return file, nil
 }

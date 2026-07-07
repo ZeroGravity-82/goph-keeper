@@ -83,6 +83,7 @@ type ChangeMasterKeyOutput struct {
 	AuthTokens AuthTokens
 }
 
+// userRepository описывает операции с пользователем, которые нужны сценариям аутентификации.
 type userRepository interface {
 	Create(ctx context.Context, u model.User) error
 	GetByLogin(ctx context.Context, login string) (model.User, error)
@@ -97,10 +98,12 @@ type userRepository interface {
 	) (int64, error)
 }
 
+// masterKeyRecordRepository описывает операции с приватными записями, которые нужны при смене мастер-ключа.
 type masterKeyRecordRepository interface {
 	ReencryptDEKs(ctx context.Context, userID uuid.UUID, records []ReencryptedRecordDEK, updatedAt time.Time) error
 }
 
+// refreshTokenRepository описывает операции с refresh-токенами пользовательских сессий.
 type refreshTokenRepository interface {
 	Create(ctx context.Context, t model.RefreshToken) error
 	FindActiveByHash(ctx context.Context, tokenHash string, now time.Time) (model.RefreshToken, error)
@@ -108,10 +111,12 @@ type refreshTokenRepository interface {
 	RevokeActiveByUserID(ctx context.Context, userID uuid.UUID, revokedAt time.Time) error
 }
 
+// transactor выполняет несколько операций хранилища в одной транзакции.
 type transactor interface {
 	WithinTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// sessionTokenIssuer выпускает access- и refresh-токены для клиентской сессии.
 type sessionTokenIssuer interface {
 	IssueAccessToken(userID uuid.UUID, securityVersion int64) (string, error)
 	GenerateRefreshToken() (string, error)
@@ -269,6 +274,7 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, in RefreshInput) (RefreshOut
 	activeRefreshHash := auth.HashRefreshToken(in.RefreshToken)
 
 	var tokens AuthTokens
+	// Ротация refresh-токена атомарна: старый токен отзывается только вместе с сохранением нового.
 	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
 		activeRefreshToken, err := uc.refreshTokenRepo.FindActiveByHash(ctx, activeRefreshHash, now)
 		if err != nil {
@@ -285,6 +291,7 @@ func (uc *AuthUseCase) Refresh(ctx context.Context, in RefreshInput) (RefreshOut
 			}
 			return err
 		}
+		// security_version в refresh-токене защищает старые сессии после смены мастер-ключа.
 		if securityVersion != activeRefreshToken.SecurityVersion {
 			return ErrAuthenticationFailed
 		}
@@ -372,6 +379,8 @@ func (uc *AuthUseCase) ChangeMasterKey(ctx context.Context, in ChangeMasterKeyIn
 	now := time.Now().UTC()
 	var tokens AuthTokens
 	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		// DEK переупаковываются в той же транзакции, что и смена security_version.
+		// Иначе старые сессии могли бы остаться валидными при уже измененных данных ключей.
 		if err := uc.recordRepo.ReencryptDEKs(ctx, in.UserID, in.Records, now); err != nil {
 			return err
 		}

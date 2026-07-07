@@ -54,16 +54,6 @@ type RecordListItem struct {
 }
 
 const (
-	// UploadModeSinglePart обозначает загрузку файла одним объектом.
-	UploadModeSinglePart UploadMode = "single_part"
-	// UploadModeMultiPart обозначает загрузку файла несколькими частями.
-	UploadModeMultiPart UploadMode = "multipart"
-)
-
-// UploadMode представляет собой типизированный режим загрузки файла на сервер.
-type UploadMode string
-
-const (
 	// UploadStatusUploading обозначает, что загрузка файла на сервер находится в процессе.
 	UploadStatusUploading UploadStatus = "uploading"
 	// UploadStatusUploaded обозначает, что загрузка файла на сервер завершилась успешно.
@@ -81,7 +71,6 @@ type RecordFile struct {
 	RecordID      uuid.UUID
 	ObjectKey     string
 	EncryptedSize *int64
-	UploadMode    *UploadMode
 	UploadStatus  UploadStatus
 	CreatedAt     time.Time
 	UpdatedAt     time.Time

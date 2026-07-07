@@ -28,23 +28,42 @@ var (
 )
 
 const (
-	downloadChunkSize              = 64 * 1024
-	recordTitleMaxChars            = 128
-	recordDescriptionMaxChars      = 1024
-	recordEncryptedDEKMaxBytes     = 128
-	recordEncryptedPayloadMaxBytes = 1024 * 1024
-	encryptedFileMaxBytes          = 200 * 1024 * 1024
+	downloadChunkSizeBytes             = 64 * 1024
+	recordTitleMaxSizeChars            = 128
+	recordDescriptionMaxSizeChars      = 1024
+	recordEncryptedDEKMaxSizeBytes     = 128
+	recordEncryptedPayloadMaxSizeBytes = 1024 * 1024
+	encryptedFileMaxSizeBytes          = 1025 * 1024 * 1024
+	multipartPartMinSizeBytes          = 5 * 1024 * 1024
 )
 
 // recordsUseCase описывает сценарии работы с приватными записями: создание, чтение, обновление, удаление приватных
 // записей и работу с бинарными файлами.
 type recordsUseCase interface {
 	CreateRecord(ctx context.Context, in usecase.CreateRecordInput) (usecase.CreateRecordOutput, error)
-	CreateBinaryRecord(ctx context.Context, in usecase.CreateBinaryRecordInput) (usecase.CreateBinaryRecordOutput, error)
+	StartBinaryMultipartUpload(
+		ctx context.Context,
+		in usecase.StartBinaryMultipartUploadInput,
+	) (usecase.StartBinaryMultipartUploadOutput, error)
+	GetBinaryMultipartUploadStatus(
+		ctx context.Context,
+		in usecase.GetBinaryMultipartUploadStatusInput,
+	) (usecase.GetBinaryMultipartUploadStatusOutput, error)
+	UploadBinaryMultipartPart(
+		ctx context.Context,
+		in usecase.UploadBinaryMultipartPartInput,
+	) (usecase.UploadBinaryMultipartPartOutput, error)
+	CompleteBinaryMultipartUpload(
+		ctx context.Context,
+		in usecase.CompleteBinaryMultipartUploadInput,
+	) (usecase.CompleteBinaryMultipartUploadOutput, error)
+	AbortBinaryMultipartUpload(
+		ctx context.Context,
+		in usecase.AbortBinaryMultipartUploadInput,
+	) (usecase.AbortBinaryMultipartUploadOutput, error)
 	ListRecords(ctx context.Context, in usecase.ListRecordsInput) (usecase.ListRecordsOutput, error)
 	GetRecord(ctx context.Context, in usecase.GetRecordInput) (usecase.GetRecordOutput, error)
 	UpdateRecord(ctx context.Context, in usecase.UpdateRecordInput) (usecase.UpdateRecordOutput, error)
-	UpdateBinaryRecord(ctx context.Context, in usecase.UpdateBinaryRecordInput) (usecase.UpdateBinaryRecordOutput, error)
 	DeleteRecord(ctx context.Context, in usecase.DeleteRecordInput) (usecase.DeleteRecordOutput, error)
 	DownloadFile(ctx context.Context, in usecase.DownloadFileInput) (usecase.DownloadFileOutput, error)
 }
@@ -78,15 +97,14 @@ func (s *RecordsService) CreateRecord(ctx context.Context, req *pb.CreateRecordR
 	out, err := s.uc.CreateRecord(ctx, in)
 	if err != nil {
 		if errors.Is(err, usecase.ErrBinaryRecordNotSupported) {
-			return nil, status.Error(codes.InvalidArgument, "binary record requires CreateBinaryRecord")
+			return nil, status.Error(codes.InvalidArgument, "binary record requires StartBinaryMultipartUpload")
 		}
 		s.logger.Error("failed to create record", slog.Any("err", err))
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	recordID := out.RecordID.String()
 	return pb.CreateRecordResponse_builder{
-		RecordId: &recordID,
+		RecordId: new(out.RecordID.String()),
 		Version:  &out.Version,
 	}.Build(), nil
 }
@@ -135,16 +153,16 @@ func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordReque
 
 // validateRecordDataSize проверяет размер открытых метаданных и зашифрованных данных из gRPC-запроса.
 func validateRecordDataSize(title string, description string, encryptedDEK []byte, encryptedPayload []byte) error {
-	if utf8.RuneCountInString(title) > recordTitleMaxChars {
+	if utf8.RuneCountInString(title) > recordTitleMaxSizeChars {
 		return status.Error(codes.InvalidArgument, "title exceeds size limit")
 	}
-	if utf8.RuneCountInString(description) > recordDescriptionMaxChars {
+	if utf8.RuneCountInString(description) > recordDescriptionMaxSizeChars {
 		return status.Error(codes.InvalidArgument, "description exceeds size limit")
 	}
-	if len(encryptedDEK) > recordEncryptedDEKMaxBytes {
+	if len(encryptedDEK) > recordEncryptedDEKMaxSizeBytes {
 		return status.Error(codes.InvalidArgument, "encrypted dek exceeds size limit")
 	}
-	if len(encryptedPayload) > recordEncryptedPayloadMaxBytes {
+	if len(encryptedPayload) > recordEncryptedPayloadMaxSizeBytes {
 		return status.Error(codes.InvalidArgument, "encrypted payload exceeds size limit")
 	}
 	return nil
@@ -155,8 +173,22 @@ func validateBinaryEncryptedSize(encryptedSize int64) error {
 	if encryptedSize <= 0 {
 		return status.Error(codes.InvalidArgument, "encrypted size is invalid")
 	}
-	if encryptedSize > encryptedFileMaxBytes {
+	if encryptedSize > encryptedFileMaxSizeBytes {
 		return status.Error(codes.ResourceExhausted, "encrypted file exceeds size limit")
+	}
+	return nil
+}
+
+// validateMultipartPartSize проверяет размер части multipart-загрузки с учетом ограничений S3-совместимого API.
+func validateMultipartPartSize(encryptedSize int64, partSize int64) error {
+	if partSize <= 0 {
+		return status.Error(codes.InvalidArgument, "multipart part size is invalid")
+	}
+	if partSize > encryptedSize {
+		return status.Error(codes.InvalidArgument, "multipart part size exceeds encrypted file size")
+	}
+	if encryptedSize > multipartPartMinSizeBytes && partSize < multipartPartMinSizeBytes {
+		return status.Error(codes.InvalidArgument, "multipart part size is below minimum")
 	}
 	return nil
 }
@@ -177,360 +209,251 @@ func recordTypeFromProto(recordType pb.RecordType) (model.RecordType, bool) {
 	}
 }
 
-// CreateBinaryRecord создает бинарную приватную запись вместе с загрузкой зашифрованного файла в хранилище.
-func (s *RecordsService) CreateBinaryRecord(stream pb.Records_CreateBinaryRecordServer) error {
-	streamInput, err := createBinaryRecordInputFromStream(stream)
+// StartBinaryMultipartUpload создает бинарную приватную запись и начинает возобновляемую multipart-загрузку файла.
+func (s *RecordsService) StartBinaryMultipartUpload(
+	ctx context.Context,
+	req *pb.StartBinaryMultipartUploadRequest,
+) (*pb.StartBinaryMultipartUploadResponse, error) {
+	in, err := startBinaryMultipartUploadInputFromRequest(ctx, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	out, usecaseErr := s.uc.CreateBinaryRecord(stream.Context(), streamInput.in)
-	if usecaseErr != nil {
-		_ = streamInput.fileReader.CloseWithError(usecaseErr)
-	} else {
-		_ = streamInput.fileReader.Close()
+	out, err := s.uc.StartBinaryMultipartUpload(ctx, in)
+	if err != nil {
+		return nil, s.multipartUploadStatusError("failed to start binary multipart upload", err)
 	}
 
-	// Продюсер-горутина читает чанки из gRPC-стрима и пишет их в пайп, а usecase читает данные из пайпа.
-	// После завершения usecase нужно дождаться продюсера, чтобы не потерять ошибку чтения стрима, а также чтобы
-	// не оставить горутину после ответа клиенту.
-	producerErr := waitBinaryRecordChunksProducer(streamInput)
-	if producerErr != nil {
-		if errors.Is(producerErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
-			errors.Is(producerErr, errInvalidBinaryRecordStream) {
-			return status.Error(codes.InvalidArgument, producerErr.Error())
-		}
-		if usecaseErr == nil {
-			s.logger.Error("failed to receive binary record chunks", slog.Any("err", producerErr))
-			return status.Error(codes.Internal, "internal error")
-		}
-	}
-	if usecaseErr != nil {
-		if errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) {
-			return status.Error(codes.InvalidArgument, usecaseErr.Error())
-		}
-		s.logger.Error("failed to create binary record", slog.Any("err", usecaseErr))
-		return status.Error(codes.Internal, "internal error")
-	}
-
-	recordID := out.RecordID.String()
-	uploadStatus := uploadStatusToProto(out.UploadStatus)
-	return stream.SendAndClose(pb.CreateBinaryRecordResponse_builder{
-		RecordId:     &recordID,
-		Version:      &out.Version,
-		UploadStatus: &uploadStatus,
-	}.Build())
+	return pb.StartBinaryMultipartUploadResponse_builder{
+		UploadId:      new(out.UploadID.String()),
+		RecordId:      new(out.RecordID.String()),
+		Version:       &out.Version,
+		PartSize:      &out.PartSize,
+		UploadStatus:  new(uploadStatusToProto(out.UploadStatus)),
+		UploadedParts: multipartPartsToProto(out.UploadedParts),
+	}.Build(), nil
 }
 
-// createBinaryRecordStreamInput содержит входные данные сценария и служебные объекты для чтения файла из стрима.
-type createBinaryRecordStreamInput struct {
-	in            usecase.CreateBinaryRecordInput
-	fileReader    *io.PipeReader
-	producerErrCh <-chan error
-}
-
-// createBinaryRecordInputFromStream читает первое сообщение стрима, валидирует метаданные и готовит пайп для файла.
-//
-// Первое сообщение должно содержать метаданные, потому что серверу нужны параметры приватной записи и файла до чтения
-// чанков. Все последующие сообщения должны содержать чанк с частью зашифрованного файла. Сервер передает чанки в
-// файловое хранилище потоково, не дожидаясь загрузки всего файла.
-func createBinaryRecordInputFromStream(
-	stream pb.Records_CreateBinaryRecordServer,
-) (createBinaryRecordStreamInput, error) {
-	userID, ok := authcontext.UserIDFromContext(stream.Context())
+// startBinaryMultipartUploadInputFromRequest валидирует запрос начала multipart-загрузки и преобразует его в DTO.
+func startBinaryMultipartUploadInputFromRequest(
+	ctx context.Context,
+	req *pb.StartBinaryMultipartUploadRequest,
+) (usecase.StartBinaryMultipartUploadInput, error) {
+	if req == nil {
+		return usecase.StartBinaryMultipartUploadInput{}, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, ok := authcontext.UserIDFromContext(ctx)
 	if !ok {
-		return createBinaryRecordStreamInput{}, status.Error(codes.Unauthenticated, "authentication is required")
-	}
-
-	first, err := stream.Recv()
-	if errors.Is(err, io.EOF) {
-		return createBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "metadata is required")
-	}
-	if err != nil {
-		return createBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "failed to receive metadata")
-	}
-	if first.WhichPayload() != pb.CreateBinaryRecordRequest_Metadata_case {
-		return createBinaryRecordStreamInput{}, status.Error(
-			codes.InvalidArgument, "first message must contain metadata",
+		return usecase.StartBinaryMultipartUploadInput{}, status.Error(
+			codes.Unauthenticated,
+			"authentication is required",
 		)
 	}
-	metadata := first.GetMetadata()
-	in, err := createBinaryRecordInputFromMetadata(userID, metadata)
-	if err != nil {
-		return createBinaryRecordStreamInput{}, err
+	if strings.TrimSpace(req.GetTitle()) == "" {
+		return usecase.StartBinaryMultipartUploadInput{}, status.Error(codes.InvalidArgument, "title is required")
 	}
-
-	// Пайп связывает чтение чанков из gRPC-стрима с io.Reader, который потом usecase передает в файловое хранилище.
-	fileReader, fileWriter := io.Pipe()
-	producerErrCh := make(chan error, 1)
-	go func() {
-		producerErrCh <- receiveBinaryRecordChunks(stream, fileWriter, in.EncryptedSize)
-	}()
-	in.EncryptedFile = fileReader
-
-	return createBinaryRecordStreamInput{
-		in:            in,
-		fileReader:    fileReader,
-		producerErrCh: producerErrCh,
-	}, nil
-}
-
-// createBinaryRecordInputFromMetadata валидирует метаданные бинарной приватной записи и преобразует их во входной
-// DTO сценария создания бинарной приватной записи.
-func createBinaryRecordInputFromMetadata(
-	userID uuid.UUID,
-	metadata *pb.CreateBinaryRecordMetadata,
-) (usecase.CreateBinaryRecordInput, error) {
-	if metadata == nil {
-		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "metadata is required")
+	if len(req.GetEncryptedDek()) == 0 {
+		return usecase.StartBinaryMultipartUploadInput{}, status.Error(
+			codes.InvalidArgument,
+			"encrypted dek is required",
+		)
 	}
-	if strings.TrimSpace(metadata.GetTitle()) == "" {
-		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "title is required")
-	}
-	if len(metadata.GetEncryptedDek()) == 0 {
-		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted dek is required")
-	}
-	if len(metadata.GetEncryptedPayload()) == 0 {
-		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
+	if len(req.GetEncryptedPayload()) == 0 {
+		return usecase.StartBinaryMultipartUploadInput{}, status.Error(
+			codes.InvalidArgument,
+			"encrypted payload is required",
+		)
 	}
 	if err := validateRecordDataSize(
-		metadata.GetTitle(),
-		metadata.GetDescription(),
-		metadata.GetEncryptedDek(),
-		metadata.GetEncryptedPayload(),
+		req.GetTitle(),
+		req.GetDescription(),
+		req.GetEncryptedDek(),
+		req.GetEncryptedPayload(),
 	); err != nil {
-		return usecase.CreateBinaryRecordInput{}, err
+		return usecase.StartBinaryMultipartUploadInput{}, err
 	}
-	if err := validateBinaryEncryptedSize(metadata.GetEncryptedSize()); err != nil {
-		return usecase.CreateBinaryRecordInput{}, err
+	if err := validateBinaryEncryptedSize(req.GetEncryptedSize()); err != nil {
+		return usecase.StartBinaryMultipartUploadInput{}, err
 	}
-	uploadMode, ok := uploadModeFromProto(metadata.GetUploadMode())
-	if !ok {
-		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "upload mode is invalid")
+	if err := validateMultipartPartSize(req.GetEncryptedSize(), req.GetPartSize()); err != nil {
+		return usecase.StartBinaryMultipartUploadInput{}, err
 	}
-	return usecase.CreateBinaryRecordInput{
+	var recordID uuid.UUID
+	if req.GetRecordId() != "" {
+		var err error
+		recordID, err = uuid.Parse(req.GetRecordId())
+		if err != nil || recordID == uuid.Nil {
+			return usecase.StartBinaryMultipartUploadInput{}, status.Error(
+				codes.InvalidArgument,
+				"record id is invalid",
+			)
+		}
+		if req.GetExpectedVersion() <= 0 {
+			return usecase.StartBinaryMultipartUploadInput{}, status.Error(
+				codes.InvalidArgument,
+				"expected version is invalid",
+			)
+		}
+	}
+	return usecase.StartBinaryMultipartUploadInput{
 		UserID:           userID,
-		Title:            metadata.GetTitle(),
-		Description:      metadata.GetDescription(),
-		EncryptedDEK:     metadata.GetEncryptedDek(),
-		EncryptedPayload: metadata.GetEncryptedPayload(),
-		EncryptedSize:    metadata.GetEncryptedSize(),
-		UploadMode:       uploadMode,
-	}, nil
-}
-
-// uploadModeFromProto преобразует поддерживаемый protobuf-режим загрузки файла в доменный режим загрузки.
-func uploadModeFromProto(uploadMode pb.UploadMode) (model.UploadMode, bool) {
-	switch uploadMode {
-	case pb.UploadMode_UPLOAD_MODE_SINGLE_PART:
-		return model.UploadModeSinglePart, true
-	default:
-		return "", false
-	}
-}
-
-// receiveBinaryRecordChunks принимает чанки зашифрованного файла из стрима и записывает их в пайп, из которого
-// читает usecase.
-func receiveBinaryRecordChunks(
-	stream pb.Records_CreateBinaryRecordServer,
-	fileWriter *io.PipeWriter,
-	expectedSize int64,
-) error {
-	var receivedSize int64
-	for {
-		req, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			if receivedSize != expectedSize {
-				_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
-				return usecase.ErrBinaryEncryptedSizeMismatch
-			}
-			return fileWriter.Close()
-		}
-		if err != nil {
-			closeErr := fmt.Errorf("failed to receive file chunk: %w", errInvalidBinaryRecordStream)
-			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
-			return closeErr
-		}
-		if req.WhichPayload() != pb.CreateBinaryRecordRequest_Chunk_case {
-			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
-			return errInvalidBinaryRecordStream
-		}
-
-		chunk := req.GetChunk()
-		receivedSize += int64(len(chunk))
-		if receivedSize > expectedSize {
-			_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
-			return usecase.ErrBinaryEncryptedSizeMismatch
-		}
-		if _, err = fileWriter.Write(chunk); err != nil {
-			_ = fileWriter.CloseWithError(err)
-			return err
-		}
-	}
-}
-
-// waitBinaryRecordChunksProducer дожидается завершения горутины, принимающей чанки файла.
-func waitBinaryRecordChunksProducer(streamInput createBinaryRecordStreamInput) error {
-	if streamInput.producerErrCh == nil {
-		return nil
-	}
-	err := <-streamInput.producerErrCh
-	return err
-}
-
-// UpdateBinaryRecord обновляет бинарную приватную запись вместе с заменой зашифрованного файла в хранилище.
-func (s *RecordsService) UpdateBinaryRecord(stream pb.Records_UpdateBinaryRecordServer) error {
-	streamInput, err := updateBinaryRecordInputFromStream(stream)
-	if err != nil {
-		return err
-	}
-
-	out, usecaseErr := s.uc.UpdateBinaryRecord(stream.Context(), streamInput.in)
-	if usecaseErr != nil {
-		_ = streamInput.fileReader.CloseWithError(usecaseErr)
-	} else {
-		_ = streamInput.fileReader.Close()
-	}
-
-	producerErr := waitUpdateBinaryRecordChunksProducer(streamInput)
-	if producerErr != nil {
-		if errors.Is(producerErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
-			errors.Is(producerErr, errInvalidBinaryRecordStream) {
-			return status.Error(codes.InvalidArgument, producerErr.Error())
-		}
-		if usecaseErr == nil {
-			s.logger.Error("failed to receive binary record chunks", slog.Any("err", producerErr))
-			return status.Error(codes.Internal, "internal error")
-		}
-	}
-	if usecaseErr != nil {
-		if errors.Is(usecaseErr, usecase.ErrRecordNotFound) {
-			return status.Error(codes.NotFound, "record not found")
-		}
-		if errors.Is(usecaseErr, usecase.ErrRecordVersionConflict) {
-			return status.Error(codes.Aborted, "record version conflict")
-		}
-		if errors.Is(usecaseErr, usecase.ErrRecordIsNotBinary) ||
-			errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) {
-			return status.Error(codes.InvalidArgument, usecaseErr.Error())
-		}
-		s.logger.Error("failed to update binary record", slog.Any("err", usecaseErr))
-		return status.Error(codes.Internal, "internal error")
-	}
-
-	recordID := out.RecordID.String()
-	uploadStatus := uploadStatusToProto(out.UploadStatus)
-	return stream.SendAndClose(pb.UpdateBinaryRecordResponse_builder{
-		RecordId:     &recordID,
-		Version:      &out.Version,
-		UploadStatus: &uploadStatus,
-	}.Build())
-}
-
-// updateBinaryRecordStreamInput содержит входные данные сценария и служебные объекты для чтения файла из стрима.
-type updateBinaryRecordStreamInput struct {
-	in            usecase.UpdateBinaryRecordInput
-	fileReader    *io.PipeReader
-	producerErrCh <-chan error
-}
-
-// updateBinaryRecordInputFromStream читает первое сообщение стрима, валидирует метаданные и готовит пайп для файла.
-func updateBinaryRecordInputFromStream(
-	stream pb.Records_UpdateBinaryRecordServer,
-) (updateBinaryRecordStreamInput, error) {
-	userID, ok := authcontext.UserIDFromContext(stream.Context())
-	if !ok {
-		return updateBinaryRecordStreamInput{}, status.Error(codes.Unauthenticated, "authentication is required")
-	}
-
-	first, err := stream.Recv()
-	if errors.Is(err, io.EOF) {
-		return updateBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "metadata is required")
-	}
-	if err != nil {
-		return updateBinaryRecordStreamInput{}, status.Error(codes.InvalidArgument, "failed to receive metadata")
-	}
-	if first.WhichPayload() != pb.UpdateBinaryRecordRequest_Metadata_case {
-		return updateBinaryRecordStreamInput{}, status.Error(
-			codes.InvalidArgument, "first message must contain metadata",
-		)
-	}
-	metadata := first.GetMetadata()
-	in, err := updateBinaryRecordInputFromMetadata(userID, metadata)
-	if err != nil {
-		return updateBinaryRecordStreamInput{}, err
-	}
-
-	fileReader, fileWriter := io.Pipe()
-	producerErrCh := make(chan error, 1)
-	go func() {
-		producerErrCh <- receiveUpdatedBinaryRecordChunks(stream, fileWriter, in.EncryptedSize)
-	}()
-	in.EncryptedFile = fileReader
-
-	return updateBinaryRecordStreamInput{
-		in:            in,
-		fileReader:    fileReader,
-		producerErrCh: producerErrCh,
-	}, nil
-}
-
-// updateBinaryRecordInputFromMetadata валидирует метаданные и преобразует их во входной DTO сценария.
-func updateBinaryRecordInputFromMetadata(
-	userID uuid.UUID,
-	metadata *pb.UpdateBinaryRecordMetadata,
-) (usecase.UpdateBinaryRecordInput, error) {
-	if metadata == nil {
-		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "metadata is required")
-	}
-	recordID, err := uuid.Parse(metadata.GetRecordId())
-	if err != nil || recordID == uuid.Nil {
-		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "record id is invalid")
-	}
-	if strings.TrimSpace(metadata.GetTitle()) == "" {
-		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "title is required")
-	}
-	if len(metadata.GetEncryptedDek()) == 0 {
-		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted dek is required")
-	}
-	if len(metadata.GetEncryptedPayload()) == 0 {
-		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
-	}
-	if err := validateRecordDataSize(
-		metadata.GetTitle(),
-		metadata.GetDescription(),
-		metadata.GetEncryptedDek(),
-		metadata.GetEncryptedPayload(),
-	); err != nil {
-		return usecase.UpdateBinaryRecordInput{}, err
-	}
-	if err := validateBinaryEncryptedSize(metadata.GetEncryptedSize()); err != nil {
-		return usecase.UpdateBinaryRecordInput{}, err
-	}
-	uploadMode, ok := uploadModeFromProto(metadata.GetUploadMode())
-	if !ok {
-		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "upload mode is invalid")
-	}
-	if metadata.GetExpectedVersion() <= 0 {
-		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "expected version is invalid")
-	}
-	return usecase.UpdateBinaryRecordInput{
 		RecordID:         recordID,
-		UserID:           userID,
-		Title:            metadata.GetTitle(),
-		Description:      metadata.GetDescription(),
-		EncryptedDEK:     metadata.GetEncryptedDek(),
-		EncryptedPayload: metadata.GetEncryptedPayload(),
-		EncryptedSize:    metadata.GetEncryptedSize(),
-		UploadMode:       uploadMode,
-		ExpectedVersion:  metadata.GetExpectedVersion(),
+		ExpectedVersion:  req.GetExpectedVersion(),
+		Title:            req.GetTitle(),
+		Description:      req.GetDescription(),
+		EncryptedDEK:     req.GetEncryptedDek(),
+		EncryptedPayload: req.GetEncryptedPayload(),
+		EncryptedSize:    req.GetEncryptedSize(),
+		PartSize:         req.GetPartSize(),
 	}, nil
 }
 
-// receiveUpdatedBinaryRecordChunks принимает чанки нового зашифрованного файла из стрима и записывает их в пайп.
-func receiveUpdatedBinaryRecordChunks(
-	stream pb.Records_UpdateBinaryRecordServer,
-	fileWriter *io.PipeWriter,
+// GetBinaryMultipartUploadStatus возвращает состояние multipart-загрузки и список уже загруженных частей.
+func (s *RecordsService) GetBinaryMultipartUploadStatus(
+	ctx context.Context,
+	req *pb.GetBinaryMultipartUploadStatusRequest,
+) (*pb.GetBinaryMultipartUploadStatusResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, uploadID, err := multipartUploadIDFromRequest(ctx, req.GetUploadId())
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.GetBinaryMultipartUploadStatus(ctx, usecase.GetBinaryMultipartUploadStatusInput{
+		UserID:   userID,
+		UploadID: uploadID,
+	})
+	if err != nil {
+		return nil, s.multipartUploadStatusError("failed to get binary multipart upload status", err)
+	}
+
+	return pb.GetBinaryMultipartUploadStatusResponse_builder{
+		UploadId:      new(out.UploadID.String()),
+		RecordId:      new(out.RecordID.String()),
+		Version:       &out.Version,
+		EncryptedSize: &out.EncryptedSize,
+		PartSize:      &out.PartSize,
+		UploadStatus:  new(uploadStatusToProto(out.UploadStatus)),
+		UploadedParts: multipartPartsToProto(out.UploadedParts),
+	}.Build(), nil
+}
+
+// UploadBinaryMultipartPart загружает одну часть файла в активную сессию multipart-загрузки.
+func (s *RecordsService) UploadBinaryMultipartPart(stream pb.Records_UploadBinaryMultipartPartServer) error {
+	streamInput, err := uploadBinaryMultipartPartInputFromStream(stream)
+	if err != nil {
+		return err
+	}
+
+	out, usecaseErr := s.uc.UploadBinaryMultipartPart(stream.Context(), streamInput.in)
+	if usecaseErr != nil {
+		_ = streamInput.partReader.CloseWithError(usecaseErr)
+	} else {
+		_ = streamInput.partReader.Close()
+	}
+
+	producerErr := waitBinaryMultipartPartChunksProducer(streamInput)
+	if producerErr != nil {
+		if errors.Is(producerErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
+			errors.Is(producerErr, errInvalidBinaryRecordStream) {
+			return status.Error(codes.InvalidArgument, producerErr.Error())
+		}
+		if usecaseErr == nil {
+			s.logger.Error("failed to receive binary multipart part chunks", slog.Any("err", producerErr))
+			return status.Error(codes.Internal, "internal error")
+		}
+	}
+	if usecaseErr != nil {
+		return s.multipartUploadStatusError("failed to upload binary multipart part", usecaseErr)
+	}
+
+	return stream.SendAndClose(pb.UploadBinaryMultipartPartResponse_builder{
+		UploadId: new(out.UploadID.String()),
+		Part:     multipartPartToProto(out.Part),
+	}.Build())
+}
+
+// uploadBinaryMultipartPartStreamInput содержит входные данные сценария и служебные объекты для чтения части файла.
+type uploadBinaryMultipartPartStreamInput struct {
+	in            usecase.UploadBinaryMultipartPartInput
+	partReader    *io.PipeReader
+	producerErrCh <-chan error
+}
+
+// uploadBinaryMultipartPartInputFromStream читает метаданные части и готовит потоковое чтение ее содержимого.
+func uploadBinaryMultipartPartInputFromStream(
+	stream pb.Records_UploadBinaryMultipartPartServer,
+) (uploadBinaryMultipartPartStreamInput, error) {
+	userID, ok := authcontext.UserIDFromContext(stream.Context())
+	if !ok {
+		return uploadBinaryMultipartPartStreamInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+
+	first, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return uploadBinaryMultipartPartStreamInput{}, status.Error(codes.InvalidArgument, "metadata is required")
+	}
+	if err != nil {
+		return uploadBinaryMultipartPartStreamInput{}, status.Error(codes.InvalidArgument, "failed to receive metadata")
+	}
+	if first.WhichPayload() != pb.UploadBinaryMultipartPartRequest_Metadata_case {
+		return uploadBinaryMultipartPartStreamInput{}, status.Error(
+			codes.InvalidArgument, "first message must contain metadata",
+		)
+	}
+
+	metadata := first.GetMetadata()
+	in, err := uploadBinaryMultipartPartInputFromMetadata(userID, metadata)
+	if err != nil {
+		return uploadBinaryMultipartPartStreamInput{}, err
+	}
+
+	partReader, partWriter := io.Pipe()
+	producerErrCh := make(chan error, 1)
+	go func() {
+		producerErrCh <- receiveBinaryMultipartPartChunks(stream, partWriter, in.PartSize)
+	}()
+	in.Data = partReader
+
+	return uploadBinaryMultipartPartStreamInput{
+		in:            in,
+		partReader:    partReader,
+		producerErrCh: producerErrCh,
+	}, nil
+}
+
+// uploadBinaryMultipartPartInputFromMetadata валидирует метаданные части multipart-загрузки.
+func uploadBinaryMultipartPartInputFromMetadata(
+	userID uuid.UUID,
+	metadata *pb.UploadBinaryMultipartPartMetadata,
+) (usecase.UploadBinaryMultipartPartInput, error) {
+	if metadata == nil {
+		return usecase.UploadBinaryMultipartPartInput{}, status.Error(codes.InvalidArgument, "metadata is required")
+	}
+	uploadID, err := uuid.Parse(metadata.GetUploadId())
+	if err != nil || uploadID == uuid.Nil {
+		return usecase.UploadBinaryMultipartPartInput{}, status.Error(codes.InvalidArgument, "upload id is invalid")
+	}
+	if metadata.GetPartNumber() <= 0 {
+		return usecase.UploadBinaryMultipartPartInput{}, status.Error(codes.InvalidArgument, "part number is invalid")
+	}
+	if metadata.GetPartSize() <= 0 {
+		return usecase.UploadBinaryMultipartPartInput{}, status.Error(codes.InvalidArgument, "part size is invalid")
+	}
+	return usecase.UploadBinaryMultipartPartInput{
+		UserID:     userID,
+		UploadID:   uploadID,
+		PartNumber: metadata.GetPartNumber(),
+		PartSize:   metadata.GetPartSize(),
+	}, nil
+}
+
+// receiveBinaryMultipartPartChunks принимает чанки части файла из стрима и записывает их в пайп.
+func receiveBinaryMultipartPartChunks(
+	stream pb.Records_UploadBinaryMultipartPartServer,
+	partWriter *io.PipeWriter,
 	expectedSize int64,
 ) error {
 	var receivedSize int64
@@ -538,41 +461,153 @@ func receiveUpdatedBinaryRecordChunks(
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			if receivedSize != expectedSize {
-				_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
+				_ = partWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
 				return usecase.ErrBinaryEncryptedSizeMismatch
 			}
-			return fileWriter.Close()
+			return partWriter.Close()
 		}
 		if err != nil {
-			closeErr := fmt.Errorf("failed to receive file chunk: %w", errInvalidBinaryRecordStream)
-			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
+			closeErr := fmt.Errorf("failed to receive file part chunk: %w", errInvalidBinaryRecordStream)
+			_ = partWriter.CloseWithError(errReadBinaryRecordStream)
 			return closeErr
 		}
-		if req.WhichPayload() != pb.UpdateBinaryRecordRequest_Chunk_case {
-			_ = fileWriter.CloseWithError(errReadBinaryRecordStream)
+		if req.WhichPayload() != pb.UploadBinaryMultipartPartRequest_Chunk_case {
+			_ = partWriter.CloseWithError(errReadBinaryRecordStream)
 			return errInvalidBinaryRecordStream
 		}
 
 		chunk := req.GetChunk()
 		receivedSize += int64(len(chunk))
 		if receivedSize > expectedSize {
-			_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
+			_ = partWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
 			return usecase.ErrBinaryEncryptedSizeMismatch
 		}
-		if _, err = fileWriter.Write(chunk); err != nil {
-			_ = fileWriter.CloseWithError(err)
+		if _, err = partWriter.Write(chunk); err != nil {
+			_ = partWriter.CloseWithError(err)
 			return err
 		}
 	}
 }
 
-// waitUpdateBinaryRecordChunksProducer дожидается завершения горутины, принимающей чанки нового файла.
-func waitUpdateBinaryRecordChunksProducer(streamInput updateBinaryRecordStreamInput) error {
+// waitBinaryMultipartPartChunksProducer дожидается завершения горутины, принимающей чанки части файла.
+func waitBinaryMultipartPartChunksProducer(streamInput uploadBinaryMultipartPartStreamInput) error {
 	if streamInput.producerErrCh == nil {
 		return nil
 	}
 	err := <-streamInput.producerErrCh
 	return err
+}
+
+// CompleteBinaryMultipartUpload завершает multipart-загрузку и переводит файл приватной записи в uploaded.
+func (s *RecordsService) CompleteBinaryMultipartUpload(
+	ctx context.Context,
+	req *pb.CompleteBinaryMultipartUploadRequest,
+) (*pb.CompleteBinaryMultipartUploadResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, uploadID, err := multipartUploadIDFromRequest(ctx, req.GetUploadId())
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.CompleteBinaryMultipartUpload(ctx, usecase.CompleteBinaryMultipartUploadInput{
+		UserID:   userID,
+		UploadID: uploadID,
+	})
+	if err != nil {
+		return nil, s.multipartUploadStatusError("failed to complete binary multipart upload", err)
+	}
+
+	return pb.CompleteBinaryMultipartUploadResponse_builder{
+		RecordId:     new(out.RecordID.String()),
+		Version:      &out.Version,
+		UploadStatus: new(uploadStatusToProto(out.UploadStatus)),
+	}.Build(), nil
+}
+
+// AbortBinaryMultipartUpload отменяет multipart-загрузку файла.
+func (s *RecordsService) AbortBinaryMultipartUpload(
+	ctx context.Context,
+	req *pb.AbortBinaryMultipartUploadRequest,
+) (*pb.AbortBinaryMultipartUploadResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
+	userID, uploadID, err := multipartUploadIDFromRequest(ctx, req.GetUploadId())
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := s.uc.AbortBinaryMultipartUpload(ctx, usecase.AbortBinaryMultipartUploadInput{
+		UserID:   userID,
+		UploadID: uploadID,
+	})
+	if err != nil {
+		return nil, s.multipartUploadStatusError("failed to abort binary multipart upload", err)
+	}
+
+	return pb.AbortBinaryMultipartUploadResponse_builder{
+		UploadId:     new(out.UploadID.String()),
+		UploadStatus: new(uploadStatusToProto(out.UploadStatus)),
+	}.Build(), nil
+}
+
+// multipartUploadIDFromRequest извлекает пользователя из контекста и валидирует ID multipart-загрузки.
+func multipartUploadIDFromRequest(ctx context.Context, uploadIDValue string) (uuid.UUID, uuid.UUID, error) {
+	userID, ok := authcontext.UserIDFromContext(ctx)
+	if !ok {
+		return uuid.Nil, uuid.Nil, status.Error(codes.Unauthenticated, "authentication is required")
+	}
+	uploadID, err := uuid.Parse(uploadIDValue)
+	if err != nil || uploadID == uuid.Nil {
+		return uuid.Nil, uuid.Nil, status.Error(codes.InvalidArgument, "upload id is invalid")
+	}
+	return userID, uploadID, nil
+}
+
+func (s *RecordsService) multipartUploadStatusError(logMessage string, err error) error {
+	if errors.Is(err, usecase.ErrMultipartUploadNotFound) {
+		return status.Error(codes.NotFound, "multipart upload not found")
+	}
+	if errors.Is(err, usecase.ErrMultipartUploadNotActive) {
+		return status.Error(codes.FailedPrecondition, "multipart upload is not active")
+	}
+	if errors.Is(err, usecase.ErrMultipartUploadIncomplete) {
+		return status.Error(codes.FailedPrecondition, "multipart upload is incomplete")
+	}
+	if errors.Is(err, usecase.ErrMultipartUploadPartInvalid) ||
+		errors.Is(err, usecase.ErrBinaryEncryptedSizeMismatch) {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	if errors.Is(err, usecase.ErrRecordNotFound) {
+		return status.Error(codes.NotFound, "record not found")
+	}
+	if errors.Is(err, usecase.ErrRecordVersionConflict) {
+		return status.Error(codes.Aborted, "record version conflict")
+	}
+	if errors.Is(err, usecase.ErrRecordIsNotBinary) ||
+		errors.Is(err, usecase.ErrRecordFileIsNotUploaded) {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	s.logger.Error(logMessage, slog.Any("err", err))
+	return status.Error(codes.Internal, "internal error")
+}
+
+func multipartPartsToProto(parts []usecase.MultipartUploadPartOutput) []*pb.MultipartUploadPart {
+	out := make([]*pb.MultipartUploadPart, 0, len(parts))
+	for _, part := range parts {
+		out = append(out, multipartPartToProto(part))
+	}
+	return out
+}
+
+func multipartPartToProto(part usecase.MultipartUploadPartOutput) *pb.MultipartUploadPart {
+	return pb.MultipartUploadPart_builder{
+		PartNumber: &part.PartNumber,
+		Size:       &part.Size,
+		Etag:       &part.ETag,
+	}.Build()
 }
 
 // ListRecords возвращает список приватных записей.
@@ -610,14 +645,12 @@ func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest
 
 // recordListItemToProto преобразует краткое представление приватной записи в protobuf-модель.
 func recordListItemToProto(item model.RecordListItem) *pb.RecordListItem {
-	recordID := item.ID.String()
-	recordType := recordTypeToProto(item.Type)
 	createdAt := timestamppb.New(item.CreatedAt)
 	updatedAt := timestamppb.New(item.UpdatedAt)
 
 	return pb.RecordListItem_builder{
-		RecordId:    &recordID,
-		Type:        &recordType,
+		RecordId:    new(item.ID.String()),
+		Type:        new(recordTypeToProto(item.Type)),
 		Title:       &item.Title,
 		Description: &item.Description,
 		CreatedAt:   createdAt,
@@ -647,8 +680,7 @@ func recordListItemFileToProto(file *model.RecordListItemFile) *pb.RecordFile {
 	if file == nil {
 		return nil
 	}
-	uploadStatus := uploadStatusToProto(file.UploadStatus)
-	return pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build()
+	return pb.RecordFile_builder{UploadStatus: new(uploadStatusToProto(file.UploadStatus))}.Build()
 }
 
 // uploadStatusToProto преобразует доменный статус загрузки файла в protobuf-статус.
@@ -703,14 +735,12 @@ func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (u
 
 // recordToProto преобразует доменную модель приватной записи в protobuf-модель.
 func recordToProto(record model.Record) *pb.Record {
-	recordID := record.ID.String()
-	recordType := recordTypeToProto(record.Type)
 	createdAt := timestamppb.New(record.CreatedAt)
 	updatedAt := timestamppb.New(record.UpdatedAt)
 
 	return pb.Record_builder{
-		RecordId:         &recordID,
-		Type:             &recordType,
+		RecordId:         new(record.ID.String()),
+		Type:             new(recordTypeToProto(record.Type)),
 		Title:            &record.Title,
 		Description:      &record.Description,
 		EncryptedDek:     record.EncryptedDEK.Data,
@@ -736,8 +766,7 @@ func recordFileToProto(file *model.RecordFile) *pb.RecordFile {
 	if file == nil {
 		return nil
 	}
-	uploadStatus := uploadStatusToProto(file.UploadStatus)
-	return pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build()
+	return pb.RecordFile_builder{UploadStatus: new(uploadStatusToProto(file.UploadStatus))}.Build()
 }
 
 // UpdateRecord обновляет приватную запись.
@@ -762,9 +791,8 @@ func (s *RecordsService) UpdateRecord(
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	recordID := out.RecordID.String()
 	return pb.UpdateRecordResponse_builder{
-		RecordId: &recordID,
+		RecordId: new(out.RecordID.String()),
 		Version:  &out.Version,
 	}.Build(), nil
 }
@@ -834,8 +862,7 @@ func (s *RecordsService) DeleteRecord(
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	recordID := out.RecordID.String()
-	return pb.DeleteRecordResponse_builder{RecordId: &recordID}.Build(), nil
+	return pb.DeleteRecordResponse_builder{RecordId: new(out.RecordID.String())}.Build(), nil
 }
 
 // deleteRecordInputFromRequest валидирует gRPC-запрос и преобразует его во входной DTO сценария удаления приватной
@@ -886,7 +913,7 @@ func (s *RecordsService) DownloadFile(req *pb.DownloadFileRequest, stream pb.Rec
 		}
 	}()
 
-	buffer := make([]byte, downloadChunkSize)
+	buffer := make([]byte, downloadChunkSizeBytes)
 	for {
 		n, readErr := out.EncryptedFile.Read(buffer)
 		if n > 0 {

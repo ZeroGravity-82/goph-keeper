@@ -31,14 +31,14 @@ func TestApp_Register_FailsWithLongCredentials(t *testing.T) {
 	}{
 		{
 			name:     "long login",
-			login:    strings.Repeat("a", userLoginMaxChars+1),
+			login:    strings.Repeat("a", userLoginMaxSizeChars+1),
 			password: "password",
 			want:     "логин не должен превышать 128 символов",
 		},
 		{
 			name:     "long password",
 			login:    "user",
-			password: strings.Repeat("a", userPasswordMaxChars+1),
+			password: strings.Repeat("a", userPasswordMaxSizeChars+1),
 			want:     "пароль не должен превышать 256 символов",
 		},
 	}
@@ -68,14 +68,14 @@ func TestApp_Login_FailsWithLongCredentials(t *testing.T) {
 	}{
 		{
 			name:     "long login",
-			login:    strings.Repeat("a", userLoginMaxChars+1),
+			login:    strings.Repeat("a", userLoginMaxSizeChars+1),
 			password: "password",
 			want:     "логин не должен превышать 128 символов",
 		},
 		{
 			name:     "long password",
 			login:    "user",
-			password: strings.Repeat("a", userPasswordMaxChars+1),
+			password: strings.Repeat("a", userPasswordMaxSizeChars+1),
 			want:     "пароль не должен превышать 256 символов",
 		},
 	}
@@ -102,7 +102,7 @@ func TestApp_Register_FailsWithLongMasterKey(t *testing.T) {
 	app := &App{auth: authClient}
 
 	// Act
-	_, err := app.Register(context.Background(), "user", "password", strings.Repeat("a", masterKeyMaxChars+1))
+	_, err := app.Register(context.Background(), "user", "password", strings.Repeat("a", masterKeyMaxSizeChars+1))
 
 	// Assert
 	require.Error(t, err)
@@ -115,7 +115,7 @@ func TestApp_StartSession_FailsWithLongMasterKey(t *testing.T) {
 	app := newStartedTestApp(t)
 
 	// Act
-	err := app.StartSession(app.session, strings.Repeat("a", masterKeyMaxChars+1))
+	err := app.StartSession(app.session, strings.Repeat("a", masterKeyMaxSizeChars+1))
 
 	// Assert
 	require.Error(t, err)
@@ -132,14 +132,14 @@ func TestApp_ChangeMasterKey_FailsWithLongMasterKeys(t *testing.T) {
 	}{
 		{
 			name:    "long current master key",
-			current: strings.Repeat("a", masterKeyMaxChars+1),
+			current: strings.Repeat("a", masterKeyMaxSizeChars+1),
 			new:     "new-master-key",
 			want:    "текущий мастер-ключ не должен превышать 256 символов",
 		},
 		{
 			name:    "long new master key",
 			current: "master-key",
-			new:     strings.Repeat("a", masterKeyMaxChars+1),
+			new:     strings.Repeat("a", masterKeyMaxSizeChars+1),
 			want:    "новый мастер-ключ не должен превышать 256 символов",
 		},
 	}

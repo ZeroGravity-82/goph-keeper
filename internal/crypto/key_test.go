@@ -21,7 +21,7 @@ func Test_deriveKEK(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert
-	assert.Len(t, firstKey, kekLength)
+	assert.Len(t, firstKey, kekSizeBytes)
 	assert.Equal(t, firstKey, secondKey)
 }
 
@@ -78,8 +78,8 @@ func Test_generateDEK(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	assert.Len(t, dek, dekLength)
-	assert.NotEqual(t, make([]byte, dekLength), dek)
+	assert.Len(t, dek, dekSizeBytes)
+	assert.NotEqual(t, make([]byte, dekSizeBytes), dek)
 }
 
 // Test_generateDEK_Unique проверяет, что два вызова генерируют разные DEK.

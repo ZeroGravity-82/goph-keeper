@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	userLoginMaxChars    = 128
-	userPasswordMaxChars = 256
-	masterKeyMaxChars    = 256
+	userLoginMaxSizeChars    = 128
+	userPasswordMaxSizeChars = 256
+	masterKeyMaxSizeChars    = 256
 )
 
 // AuthSession содержит токены, пользовательскую соль и верификатор мастер-ключа, полученные после аутентификации.
@@ -221,18 +221,18 @@ func (a *App) ChangeMasterKey(ctx context.Context, currentMasterKey string, newM
 }
 
 func validateMasterKeySize(masterKey string, label string) error {
-	if utf8.RuneCountInString(masterKey) > masterKeyMaxChars {
-		return fmt.Errorf("%s не должен превышать %d символов", label, masterKeyMaxChars)
+	if utf8.RuneCountInString(masterKey) > masterKeyMaxSizeChars {
+		return fmt.Errorf("%s не должен превышать %d символов", label, masterKeyMaxSizeChars)
 	}
 	return nil
 }
 
 func validateUserCredentialsSize(login string, password string) error {
-	if utf8.RuneCountInString(login) > userLoginMaxChars {
-		return fmt.Errorf("логин не должен превышать %d символов", userLoginMaxChars)
+	if utf8.RuneCountInString(login) > userLoginMaxSizeChars {
+		return fmt.Errorf("логин не должен превышать %d символов", userLoginMaxSizeChars)
 	}
-	if utf8.RuneCountInString(password) > userPasswordMaxChars {
-		return fmt.Errorf("пароль не должен превышать %d символов", userPasswordMaxChars)
+	if utf8.RuneCountInString(password) > userPasswordMaxSizeChars {
+		return fmt.Errorf("пароль не должен превышать %d символов", userPasswordMaxSizeChars)
 	}
 	return nil
 }

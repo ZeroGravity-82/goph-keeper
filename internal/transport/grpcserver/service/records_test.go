@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
@@ -23,113 +22,6 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-type recordsUseCaseStub struct {
-	createRecordInput        usecase.CreateRecordInput
-	createRecordOutput       usecase.CreateRecordOutput
-	createRecordErr          error
-	createBinaryRecordInput  usecase.CreateBinaryRecordInput
-	createBinaryRecordFile   []byte
-	createBinaryRecordOutput usecase.CreateBinaryRecordOutput
-	createBinaryRecordErr    error
-	listRecordsInput         usecase.ListRecordsInput
-	listRecordsOutput        usecase.ListRecordsOutput
-	listRecordsErr           error
-	getRecordInput           usecase.GetRecordInput
-	getRecordOutput          usecase.GetRecordOutput
-	getRecordErr             error
-	updateRecordInput        usecase.UpdateRecordInput
-	updateRecordOutput       usecase.UpdateRecordOutput
-	updateRecordErr          error
-	updateBinaryRecordInput  usecase.UpdateBinaryRecordInput
-	updateBinaryRecordFile   []byte
-	updateBinaryRecordOutput usecase.UpdateBinaryRecordOutput
-	updateBinaryRecordErr    error
-	deleteRecordInput        usecase.DeleteRecordInput
-	deleteRecordOutput       usecase.DeleteRecordOutput
-	deleteRecordErr          error
-	downloadFileInput        usecase.DownloadFileInput
-	downloadFileOutput       usecase.DownloadFileOutput
-	downloadFileErr          error
-}
-
-func (s *recordsUseCaseStub) CreateRecord(
-	_ context.Context,
-	in usecase.CreateRecordInput,
-) (usecase.CreateRecordOutput, error) {
-	s.createRecordInput = in
-	return s.createRecordOutput, s.createRecordErr
-}
-
-func (s *recordsUseCaseStub) CreateBinaryRecord(
-	_ context.Context,
-	in usecase.CreateBinaryRecordInput,
-) (usecase.CreateBinaryRecordOutput, error) {
-	s.createBinaryRecordInput = in
-	if in.EncryptedFile != nil {
-		data, err := io.ReadAll(in.EncryptedFile)
-		if err != nil {
-			return usecase.CreateBinaryRecordOutput{}, err
-		}
-		s.createBinaryRecordFile = data
-	}
-	return s.createBinaryRecordOutput, s.createBinaryRecordErr
-}
-
-func (s *recordsUseCaseStub) ListRecords(
-	_ context.Context,
-	in usecase.ListRecordsInput,
-) (usecase.ListRecordsOutput, error) {
-	s.listRecordsInput = in
-	return s.listRecordsOutput, s.listRecordsErr
-}
-
-func (s *recordsUseCaseStub) GetRecord(
-	_ context.Context,
-	in usecase.GetRecordInput,
-) (usecase.GetRecordOutput, error) {
-	s.getRecordInput = in
-	return s.getRecordOutput, s.getRecordErr
-}
-
-func (s *recordsUseCaseStub) UpdateRecord(
-	_ context.Context,
-	in usecase.UpdateRecordInput,
-) (usecase.UpdateRecordOutput, error) {
-	s.updateRecordInput = in
-	return s.updateRecordOutput, s.updateRecordErr
-}
-
-func (s *recordsUseCaseStub) UpdateBinaryRecord(
-	_ context.Context,
-	in usecase.UpdateBinaryRecordInput,
-) (usecase.UpdateBinaryRecordOutput, error) {
-	s.updateBinaryRecordInput = in
-	if in.EncryptedFile != nil {
-		data, err := io.ReadAll(in.EncryptedFile)
-		if err != nil {
-			return usecase.UpdateBinaryRecordOutput{}, err
-		}
-		s.updateBinaryRecordFile = data
-	}
-	return s.updateBinaryRecordOutput, s.updateBinaryRecordErr
-}
-
-func (s *recordsUseCaseStub) DeleteRecord(
-	_ context.Context,
-	in usecase.DeleteRecordInput,
-) (usecase.DeleteRecordOutput, error) {
-	s.deleteRecordInput = in
-	return s.deleteRecordOutput, s.deleteRecordErr
-}
-
-func (s *recordsUseCaseStub) DownloadFile(
-	_ context.Context,
-	in usecase.DownloadFileInput,
-) (usecase.DownloadFileOutput, error) {
-	s.downloadFileInput = in
-	return s.downloadFileOutput, s.downloadFileErr
-}
-
 // TestRecordsService_CreateRecord_OK проверяет успешное создание приватной записи через gRPC-обработчик.
 func TestRecordsService_CreateRecord_OK(t *testing.T) {
 	// Arrange
@@ -138,9 +30,8 @@ func TestRecordsService_CreateRecord_OK(t *testing.T) {
 	uc := &recordsUseCaseStub{createRecordOutput: usecase.CreateRecordOutput{RecordID: recordID, Version: 1}}
 	recordsService, err := NewRecordsService(uc, logging.NopLogger())
 	require.NoError(t, err)
-	recordType := pb.RecordType_RECORD_TYPE_TEXT
 	req := pb.CreateRecordRequest_builder{
-		Type:             &recordType,
+		Type:             new(pb.RecordType_RECORD_TYPE_TEXT),
 		Title:            new("title"),
 		Description:      new("description"),
 		EncryptedDek:     []byte("encrypted-dek"),
@@ -172,15 +63,14 @@ func TestRecordsService_CreateRecord_OKWithMaxSizeData(t *testing.T) {
 	uc := &recordsUseCaseStub{createRecordOutput: usecase.CreateRecordOutput{RecordID: recordID, Version: 1}}
 	recordsService, err := NewRecordsService(uc, logging.NopLogger())
 	require.NoError(t, err)
-	recordType := pb.RecordType_RECORD_TYPE_TEXT
-	title := strings.Repeat("я", recordTitleMaxChars)
-	description := strings.Repeat("ю", recordDescriptionMaxChars)
+	title := strings.Repeat("я", recordTitleMaxSizeChars)
+	description := strings.Repeat("ю", recordDescriptionMaxSizeChars)
 	req := pb.CreateRecordRequest_builder{
-		Type:             &recordType,
+		Type:             new(pb.RecordType_RECORD_TYPE_TEXT),
 		Title:            &title,
 		Description:      &description,
-		EncryptedDek:     make([]byte, recordEncryptedDEKMaxBytes),
-		EncryptedPayload: make([]byte, recordEncryptedPayloadMaxBytes),
+		EncryptedDek:     make([]byte, recordEncryptedDEKMaxSizeBytes),
+		EncryptedPayload: make([]byte, recordEncryptedPayloadMaxSizeBytes),
 	}.Build()
 	ctx := authcontext.WithUserID(context.Background(), userID)
 
@@ -191,8 +81,8 @@ func TestRecordsService_CreateRecord_OKWithMaxSizeData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, title, uc.createRecordInput.Title)
 	assert.Equal(t, description, uc.createRecordInput.Description)
-	assert.Len(t, uc.createRecordInput.EncryptedDEK, recordEncryptedDEKMaxBytes)
-	assert.Len(t, uc.createRecordInput.EncryptedPayload, recordEncryptedPayloadMaxBytes)
+	assert.Len(t, uc.createRecordInput.EncryptedDEK, recordEncryptedDEKMaxSizeBytes)
+	assert.Len(t, uc.createRecordInput.EncryptedPayload, recordEncryptedPayloadMaxSizeBytes)
 }
 
 // TestRecordsService_CreateRecord_FailWithUnauthenticated проверяет ошибку при отсутствии идентификатора пользователя
@@ -201,9 +91,8 @@ func TestRecordsService_CreateRecord_FailWithUnauthenticated(t *testing.T) {
 	// Arrange
 	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
 	require.NoError(t, err)
-	recordType := pb.RecordType_RECORD_TYPE_TEXT
 	req := pb.CreateRecordRequest_builder{
-		Type:             &recordType,
+		Type:             new(pb.RecordType_RECORD_TYPE_TEXT),
 		Title:            new("title"),
 		EncryptedDek:     []byte("encrypted-dek"),
 		EncryptedPayload: []byte("encrypted-payload"),
@@ -258,7 +147,7 @@ func TestRecordsService_CreateRecord_FailWithInvalidArgument(t *testing.T) {
 			name: "long title",
 			req: newCreateRecordRequest(
 				textType,
-				strings.Repeat("a", recordTitleMaxChars+1),
+				strings.Repeat("a", recordTitleMaxSizeChars+1),
 				[]byte("dek"),
 				[]byte("payload"),
 			),
@@ -269,7 +158,7 @@ func TestRecordsService_CreateRecord_FailWithInvalidArgument(t *testing.T) {
 			req: newCreateRecordRequestWithDescription(
 				textType,
 				"title",
-				strings.Repeat("a", recordDescriptionMaxChars+1),
+				strings.Repeat("a", recordDescriptionMaxSizeChars+1),
 				[]byte("dek"),
 				[]byte("payload"),
 			),
@@ -280,7 +169,7 @@ func TestRecordsService_CreateRecord_FailWithInvalidArgument(t *testing.T) {
 			req: newCreateRecordRequest(
 				textType,
 				"title",
-				make([]byte, recordEncryptedDEKMaxBytes+1),
+				make([]byte, recordEncryptedDEKMaxSizeBytes+1),
 				[]byte("payload"),
 			),
 			wantMessage: "encrypted dek exceeds size limit",
@@ -291,7 +180,7 @@ func TestRecordsService_CreateRecord_FailWithInvalidArgument(t *testing.T) {
 				textType,
 				"title",
 				[]byte("dek"),
-				make([]byte, recordEncryptedPayloadMaxBytes+1),
+				make([]byte, recordEncryptedPayloadMaxSizeBytes+1),
 			),
 			wantMessage: "encrypted payload exceeds size limit",
 		},
@@ -375,360 +264,6 @@ func TestRecordsService_CreateRecord_FailWithBinaryRecord(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
-}
-
-// TestRecordsService_CreateBinaryRecord_OK проверяет успешное создание бинарной приватной записи через client-stream
-// обработчик.
-func TestRecordsService_CreateBinaryRecord_OK(t *testing.T) {
-	// Arrange
-	userID := uuid.Must(uuid.NewV7())
-	recordID := uuid.Must(uuid.NewV7())
-	uc := &recordsUseCaseStub{createBinaryRecordOutput: usecase.CreateBinaryRecordOutput{
-		RecordID:     recordID,
-		Version:      1,
-		UploadStatus: model.UploadStatusUploaded,
-	}}
-	recordsService, err := NewRecordsService(uc, logging.NopLogger())
-	require.NoError(t, err)
-	stream := newCreateBinaryRecordTestStream(
-		authcontext.WithUserID(context.Background(), userID),
-		newCreateBinaryRecordMetadata("binary title", int64(len("encrypted-file"))),
-		[]byte("encrypted-"),
-		[]byte("file"),
-	)
-
-	// Act
-	err = recordsService.CreateBinaryRecord(stream)
-
-	// Assert
-	require.NoError(t, err)
-	require.NotNil(t, stream.response)
-	assert.Equal(t, recordID.String(), stream.response.GetRecordId())
-	assert.Equal(t, int64(1), stream.response.GetVersion())
-	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADED, stream.response.GetUploadStatus())
-	assert.Equal(t, userID, uc.createBinaryRecordInput.UserID)
-	assert.Equal(t, "binary title", uc.createBinaryRecordInput.Title)
-	assert.Equal(t, "description", uc.createBinaryRecordInput.Description)
-	assert.Equal(t, []byte("encrypted-dek"), uc.createBinaryRecordInput.EncryptedDEK)
-	assert.Equal(t, []byte("encrypted-payload"), uc.createBinaryRecordInput.EncryptedPayload)
-	assert.Equal(t, []byte("encrypted-file"), uc.createBinaryRecordFile)
-	assert.Equal(t, int64(len("encrypted-file")), uc.createBinaryRecordInput.EncryptedSize)
-	assert.Equal(t, model.UploadModeSinglePart, uc.createBinaryRecordInput.UploadMode)
-}
-
-// TestRecordsService_CreateBinaryRecord_FailWithInvalidArgument проверяет ошибки валидации stream-запроса.
-func TestRecordsService_CreateBinaryRecord_FailWithInvalidArgument(t *testing.T) {
-	// Arrange
-	userID := uuid.Must(uuid.NewV7())
-	tests := []struct {
-		name     string
-		stream   *createBinaryRecordTestStream
-		wantCode codes.Code
-	}{
-		{
-			name:     "empty stream",
-			stream:   newCreateBinaryRecordTestStream(authcontext.WithUserID(context.Background(), userID), nil),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "first message is chunk",
-			stream: newCreateBinaryRecordTestStreamWithRequests(
-				authcontext.WithUserID(context.Background(), userID),
-				pb.CreateBinaryRecordRequest_builder{Chunk: []byte("chunk")}.Build(),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "blank title",
-			stream: newCreateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newCreateBinaryRecordMetadata("   ", 1),
-				[]byte("a"),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "zero encrypted size",
-			stream: newCreateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newCreateBinaryRecordMetadata("binary title", 0),
-				[]byte("a"),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "too large encrypted size",
-			stream: newCreateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newCreateBinaryRecordMetadata("binary title", encryptedFileMaxBytes+1),
-				[]byte("a"),
-			),
-			wantCode: codes.ResourceExhausted,
-		},
-		{
-			name: "unsupported upload mode",
-			stream: newCreateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newCreateBinaryRecordMetadataWithUploadMode(
-					"binary title",
-					1,
-					pb.UploadMode_UPLOAD_MODE_MULTIPART,
-				),
-				[]byte("a"),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "unexpected metadata after first message",
-			stream: newCreateBinaryRecordTestStreamWithRequests(
-				authcontext.WithUserID(context.Background(), userID),
-				pb.CreateBinaryRecordRequest_builder{
-					Metadata: newCreateBinaryRecordMetadata("binary title", 1),
-				}.Build(),
-				pb.CreateBinaryRecordRequest_builder{
-					Metadata: newCreateBinaryRecordMetadata("binary title", 1),
-				}.Build(),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
-			require.NoError(t, err)
-
-			// Act
-			err = recordsService.CreateBinaryRecord(tt.stream)
-
-			// Assert
-			require.Error(t, err)
-			assert.Equal(t, tt.wantCode, status.Code(err))
-		})
-	}
-}
-
-// TestRecordsService_CreateBinaryRecord_FailWithUnauthenticated проверяет ошибку при отсутствии user_id в контексте.
-func TestRecordsService_CreateBinaryRecord_FailWithUnauthenticated(t *testing.T) {
-	// Arrange
-	recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
-	require.NoError(t, err)
-	stream := newCreateBinaryRecordTestStream(
-		context.Background(),
-		newCreateBinaryRecordMetadata("binary title", 1),
-		[]byte("a"),
-	)
-
-	// Act
-	err = recordsService.CreateBinaryRecord(stream)
-
-	// Assert
-	require.Error(t, err)
-	assert.Equal(t, codes.Unauthenticated, status.Code(err))
-}
-
-// TestRecordsService_CreateBinaryRecord_FailWithUseCaseInvalidArgument проверяет маппинг прикладных ошибок валидации.
-func TestRecordsService_CreateBinaryRecord_FailWithUseCaseInvalidArgument(t *testing.T) {
-	// Arrange
-	uc := &recordsUseCaseStub{createBinaryRecordErr: usecase.ErrBinaryEncryptedSizeMismatch}
-	recordsService, err := NewRecordsService(uc, logging.NopLogger())
-	require.NoError(t, err)
-	stream := newCreateBinaryRecordTestStream(
-		authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7())),
-		newCreateBinaryRecordMetadata("binary title", 1),
-		[]byte("a"),
-	)
-
-	// Act
-	err = recordsService.CreateBinaryRecord(stream)
-
-	// Assert
-	require.Error(t, err)
-	assert.Equal(t, codes.InvalidArgument, status.Code(err))
-}
-
-// TestRecordsService_UpdateBinaryRecord_OK проверяет успешное обновление бинарной приватной записи через обработчик
-// клиентского стрима.
-func TestRecordsService_UpdateBinaryRecord_OK(t *testing.T) {
-	// Arrange
-	userID := uuid.Must(uuid.NewV7())
-	recordID := uuid.Must(uuid.NewV7())
-	uc := &recordsUseCaseStub{updateBinaryRecordOutput: usecase.UpdateBinaryRecordOutput{
-		RecordID:     recordID,
-		Version:      3,
-		UploadStatus: model.UploadStatusUploaded,
-	}}
-	recordsService, err := NewRecordsService(uc, logging.NopLogger())
-	require.NoError(t, err)
-	stream := newUpdateBinaryRecordTestStream(
-		authcontext.WithUserID(context.Background(), userID),
-		newUpdateBinaryRecordMetadata(recordID.String(), "updated binary", int64(len("encrypted-file")), 2),
-		[]byte("encrypted-"),
-		[]byte("file"),
-	)
-
-	// Act
-	err = recordsService.UpdateBinaryRecord(stream)
-
-	// Assert
-	require.NoError(t, err)
-	require.NotNil(t, stream.response)
-	assert.Equal(t, recordID.String(), stream.response.GetRecordId())
-	assert.Equal(t, int64(3), stream.response.GetVersion())
-	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADED, stream.response.GetUploadStatus())
-	assert.Equal(t, recordID, uc.updateBinaryRecordInput.RecordID)
-	assert.Equal(t, userID, uc.updateBinaryRecordInput.UserID)
-	assert.Equal(t, "updated binary", uc.updateBinaryRecordInput.Title)
-	assert.Equal(t, "description", uc.updateBinaryRecordInput.Description)
-	assert.Equal(t, []byte("encrypted-dek"), uc.updateBinaryRecordInput.EncryptedDEK)
-	assert.Equal(t, []byte("encrypted-payload"), uc.updateBinaryRecordInput.EncryptedPayload)
-	assert.Equal(t, []byte("encrypted-file"), uc.updateBinaryRecordFile)
-	assert.Equal(t, int64(len("encrypted-file")), uc.updateBinaryRecordInput.EncryptedSize)
-	assert.Equal(t, model.UploadModeSinglePart, uc.updateBinaryRecordInput.UploadMode)
-	assert.Equal(t, int64(2), uc.updateBinaryRecordInput.ExpectedVersion)
-}
-
-// TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument проверяет ошибки валидации потокового запроса
-// обновления бинарной приватной записи.
-func TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument(t *testing.T) {
-	// Arrange
-	userID := uuid.Must(uuid.NewV7())
-	recordID := uuid.Must(uuid.NewV7())
-	tests := []struct {
-		name     string
-		stream   *updateBinaryRecordTestStream
-		wantCode codes.Code
-	}{
-		{
-			name:     "empty stream",
-			stream:   newUpdateBinaryRecordTestStream(authcontext.WithUserID(context.Background(), userID), nil),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "first message is chunk",
-			stream: newUpdateBinaryRecordTestStreamWithRequests(
-				authcontext.WithUserID(context.Background(), userID),
-				pb.UpdateBinaryRecordRequest_builder{Chunk: []byte("chunk")}.Build(),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "invalid record id",
-			stream: newUpdateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newUpdateBinaryRecordMetadata("not-uuid", "title", 1, 1),
-				[]byte("a"),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "invalid expected version",
-			stream: newUpdateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newUpdateBinaryRecordMetadata(recordID.String(), "title", 1, 0),
-				[]byte("a"),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "zero encrypted size",
-			stream: newUpdateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newUpdateBinaryRecordMetadata(recordID.String(), "title", 0, 1),
-				[]byte("a"),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "too large encrypted size",
-			stream: newUpdateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newUpdateBinaryRecordMetadata(recordID.String(), "title", encryptedFileMaxBytes+1, 1),
-				[]byte("a"),
-			),
-			wantCode: codes.ResourceExhausted,
-		},
-		{
-			name: "unsupported upload mode",
-			stream: newUpdateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), userID),
-				newUpdateBinaryRecordMetadataWithUploadMode(
-					recordID.String(),
-					"title",
-					1,
-					1,
-					pb.UploadMode_UPLOAD_MODE_MULTIPART,
-				),
-				[]byte("a"),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-		{
-			name: "unexpected metadata after first message",
-			stream: newUpdateBinaryRecordTestStreamWithRequests(
-				authcontext.WithUserID(context.Background(), userID),
-				pb.UpdateBinaryRecordRequest_builder{
-					Metadata: newUpdateBinaryRecordMetadata(recordID.String(), "title", 1, 1),
-				}.Build(),
-				pb.UpdateBinaryRecordRequest_builder{
-					Metadata: newUpdateBinaryRecordMetadata(recordID.String(), "title", 1, 1),
-				}.Build(),
-			),
-			wantCode: codes.InvalidArgument,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
-			require.NoError(t, err)
-
-			// Act
-			err = recordsService.UpdateBinaryRecord(tt.stream)
-
-			// Assert
-			require.Error(t, err)
-			assert.Equal(t, tt.wantCode, status.Code(err))
-		})
-	}
-}
-
-// TestRecordsService_UpdateBinaryRecord_FailWithUseCaseErrors проверяет маппинг прикладных ошибок обновления
-// бинарной приватной записи.
-func TestRecordsService_UpdateBinaryRecord_FailWithUseCaseErrors(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		code codes.Code
-	}{
-		{name: "not found", err: usecase.ErrRecordNotFound, code: codes.NotFound},
-		{name: "version conflict", err: usecase.ErrRecordVersionConflict, code: codes.Aborted},
-		{name: "not binary", err: usecase.ErrRecordIsNotBinary, code: codes.InvalidArgument},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			uc := &recordsUseCaseStub{updateBinaryRecordErr: tt.err}
-			recordsService, err := NewRecordsService(uc, logging.NopLogger())
-			require.NoError(t, err)
-			recordID := uuid.Must(uuid.NewV7())
-			stream := newUpdateBinaryRecordTestStream(
-				authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7())),
-				newUpdateBinaryRecordMetadata(recordID.String(), "title", 1, 1),
-				[]byte("a"),
-			)
-
-			// Act
-			err = recordsService.UpdateBinaryRecord(stream)
-
-			// Assert
-			require.Error(t, err)
-			assert.Equal(t, tt.code, status.Code(err))
-		})
-	}
 }
 
 // TestRecordsService_ListRecords_OK проверяет успешное получение списка приватных записей через gRPC-обработчик.
@@ -1203,7 +738,7 @@ func TestRecordsService_DownloadFile_OK(t *testing.T) {
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
 	recordID := uuid.Must(uuid.NewV7())
-	encryptedFile := bytes.Repeat([]byte("a"), downloadChunkSize+10)
+	encryptedFile := bytes.Repeat([]byte("a"), downloadChunkSizeBytes+10)
 	uc := &recordsUseCaseStub{downloadFileOutput: usecase.DownloadFileOutput{
 		EncryptedFile: io.NopCloser(bytes.NewReader(encryptedFile)),
 	}}
@@ -1220,7 +755,7 @@ func TestRecordsService_DownloadFile_OK(t *testing.T) {
 	assert.Equal(t, userID, uc.downloadFileInput.UserID)
 	assert.Equal(t, recordID, uc.downloadFileInput.RecordID)
 	require.Len(t, stream.chunks, 2)
-	assert.Equal(t, downloadChunkSize, len(stream.chunks[0]))
+	assert.Equal(t, downloadChunkSizeBytes, len(stream.chunks[0]))
 	assert.Equal(t, encryptedFile, bytes.Join(stream.chunks, nil))
 }
 
@@ -1334,221 +869,4 @@ func TestRecordsService_DownloadFile_FailWithInternalError(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
-}
-
-type createBinaryRecordTestStream struct {
-	ctx      context.Context
-	requests []*pb.CreateBinaryRecordRequest
-	response *pb.CreateBinaryRecordResponse
-}
-
-func newCreateBinaryRecordTestStream(
-	ctx context.Context,
-	metadata *pb.CreateBinaryRecordMetadata,
-	chunks ...[]byte,
-) *createBinaryRecordTestStream {
-	requests := make([]*pb.CreateBinaryRecordRequest, 0, len(chunks)+1)
-	if metadata != nil {
-		requests = append(requests, pb.CreateBinaryRecordRequest_builder{Metadata: metadata}.Build())
-	}
-	for _, chunk := range chunks {
-		requests = append(requests, pb.CreateBinaryRecordRequest_builder{Chunk: chunk}.Build())
-	}
-	return newCreateBinaryRecordTestStreamWithRequests(ctx, requests...)
-}
-
-func newCreateBinaryRecordTestStreamWithRequests(
-	ctx context.Context,
-	requests ...*pb.CreateBinaryRecordRequest,
-) *createBinaryRecordTestStream {
-	return &createBinaryRecordTestStream{ctx: ctx, requests: requests}
-}
-
-func newCreateBinaryRecordMetadata(title string, encryptedSize int64) *pb.CreateBinaryRecordMetadata {
-	return newCreateBinaryRecordMetadataWithUploadMode(title, encryptedSize, pb.UploadMode_UPLOAD_MODE_SINGLE_PART)
-}
-
-func newCreateBinaryRecordMetadataWithUploadMode(
-	title string,
-	encryptedSize int64,
-	uploadMode pb.UploadMode,
-) *pb.CreateBinaryRecordMetadata {
-	return pb.CreateBinaryRecordMetadata_builder{
-		Title:            &title,
-		Description:      new("description"),
-		EncryptedDek:     []byte("encrypted-dek"),
-		EncryptedPayload: []byte("encrypted-payload"),
-		EncryptedSize:    &encryptedSize,
-		UploadMode:       &uploadMode,
-	}.Build()
-}
-
-func (s *createBinaryRecordTestStream) Recv() (*pb.CreateBinaryRecordRequest, error) {
-	if len(s.requests) == 0 {
-		return nil, io.EOF
-	}
-	req := s.requests[0]
-	s.requests = s.requests[1:]
-	return req, nil
-}
-
-func (s *createBinaryRecordTestStream) SendAndClose(resp *pb.CreateBinaryRecordResponse) error {
-	s.response = resp
-	return nil
-}
-
-func (s *createBinaryRecordTestStream) SetHeader(metadata.MD) error {
-	return nil
-}
-
-func (s *createBinaryRecordTestStream) SendHeader(metadata.MD) error {
-	return nil
-}
-
-func (s *createBinaryRecordTestStream) SetTrailer(metadata.MD) {}
-
-func (s *createBinaryRecordTestStream) Context() context.Context {
-	return s.ctx
-}
-
-func (s *createBinaryRecordTestStream) SendMsg(any) error {
-	return nil
-}
-
-func (s *createBinaryRecordTestStream) RecvMsg(any) error {
-	return nil
-}
-
-type updateBinaryRecordTestStream struct {
-	ctx      context.Context
-	requests []*pb.UpdateBinaryRecordRequest
-	response *pb.UpdateBinaryRecordResponse
-}
-
-func newUpdateBinaryRecordTestStream(
-	ctx context.Context,
-	metadata *pb.UpdateBinaryRecordMetadata,
-	chunks ...[]byte,
-) *updateBinaryRecordTestStream {
-	requests := make([]*pb.UpdateBinaryRecordRequest, 0, len(chunks)+1)
-	if metadata != nil {
-		requests = append(requests, pb.UpdateBinaryRecordRequest_builder{Metadata: metadata}.Build())
-	}
-	for _, chunk := range chunks {
-		requests = append(requests, pb.UpdateBinaryRecordRequest_builder{Chunk: chunk}.Build())
-	}
-	return newUpdateBinaryRecordTestStreamWithRequests(ctx, requests...)
-}
-
-func newUpdateBinaryRecordTestStreamWithRequests(
-	ctx context.Context,
-	requests ...*pb.UpdateBinaryRecordRequest,
-) *updateBinaryRecordTestStream {
-	return &updateBinaryRecordTestStream{ctx: ctx, requests: requests}
-}
-
-func newUpdateBinaryRecordMetadata(
-	recordID string,
-	title string,
-	encryptedSize int64,
-	expectedVersion int64,
-) *pb.UpdateBinaryRecordMetadata {
-	return newUpdateBinaryRecordMetadataWithUploadMode(
-		recordID,
-		title,
-		encryptedSize,
-		expectedVersion,
-		pb.UploadMode_UPLOAD_MODE_SINGLE_PART,
-	)
-}
-
-func newUpdateBinaryRecordMetadataWithUploadMode(
-	recordID string,
-	title string,
-	encryptedSize int64,
-	expectedVersion int64,
-	uploadMode pb.UploadMode,
-) *pb.UpdateBinaryRecordMetadata {
-	return pb.UpdateBinaryRecordMetadata_builder{
-		RecordId:         &recordID,
-		Title:            &title,
-		Description:      new("description"),
-		EncryptedDek:     []byte("encrypted-dek"),
-		EncryptedPayload: []byte("encrypted-payload"),
-		EncryptedSize:    &encryptedSize,
-		UploadMode:       &uploadMode,
-		ExpectedVersion:  &expectedVersion,
-	}.Build()
-}
-
-func (s *updateBinaryRecordTestStream) Recv() (*pb.UpdateBinaryRecordRequest, error) {
-	if len(s.requests) == 0 {
-		return nil, io.EOF
-	}
-	req := s.requests[0]
-	s.requests = s.requests[1:]
-	return req, nil
-}
-
-func (s *updateBinaryRecordTestStream) SendAndClose(resp *pb.UpdateBinaryRecordResponse) error {
-	s.response = resp
-	return nil
-}
-
-func (s *updateBinaryRecordTestStream) SetHeader(metadata.MD) error {
-	return nil
-}
-
-func (s *updateBinaryRecordTestStream) SendHeader(metadata.MD) error {
-	return nil
-}
-
-func (s *updateBinaryRecordTestStream) SetTrailer(metadata.MD) {}
-
-func (s *updateBinaryRecordTestStream) Context() context.Context {
-	return s.ctx
-}
-
-func (s *updateBinaryRecordTestStream) SendMsg(any) error {
-	return nil
-}
-
-func (s *updateBinaryRecordTestStream) RecvMsg(any) error {
-	return nil
-}
-
-type downloadFileTestStream struct {
-	ctx    context.Context
-	chunks [][]byte
-}
-
-func newDownloadFileTestStream(ctx context.Context) *downloadFileTestStream {
-	return &downloadFileTestStream{ctx: ctx}
-}
-
-func (s *downloadFileTestStream) Send(resp *pb.DownloadFileResponse) error {
-	s.chunks = append(s.chunks, append([]byte(nil), resp.GetChunk()...))
-	return nil
-}
-
-func (s *downloadFileTestStream) SetHeader(metadata.MD) error {
-	return nil
-}
-
-func (s *downloadFileTestStream) SendHeader(metadata.MD) error {
-	return nil
-}
-
-func (s *downloadFileTestStream) SetTrailer(metadata.MD) {}
-
-func (s *downloadFileTestStream) Context() context.Context {
-	return s.ctx
-}
-
-func (s *downloadFileTestStream) SendMsg(any) error {
-	return nil
-}
-
-func (s *downloadFileTestStream) RecvMsg(any) error {
-	return nil
 }

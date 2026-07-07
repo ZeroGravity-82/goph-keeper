@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,43 +31,129 @@ type CreateRecordOutput struct {
 	Version  int64
 }
 
-// CreateBinaryRecordInput описывает входные данные сценария создания бинарной приватной записи.
-type CreateBinaryRecordInput struct {
+const (
+	// MultipartUploadStatusUploading обозначает активную multipart-загрузку.
+	MultipartUploadStatusUploading MultipartUploadStatus = "uploading"
+	// MultipartUploadStatusCompleted обозначает успешно завершенную multipart-загрузку.
+	MultipartUploadStatusCompleted MultipartUploadStatus = "completed"
+	// MultipartUploadStatusAborted обозначает отмененную multipart-загрузку.
+	MultipartUploadStatusAborted MultipartUploadStatus = "aborted"
+)
+
+// MultipartUploadStatus представляет статус возобновляемой multipart-загрузки файла.
+type MultipartUploadStatus string
+
+// MultipartUpload описывает серверную сессию возобновляемой multipart-загрузки файла.
+type MultipartUpload struct {
+	ID              uuid.UUID
+	UserID          uuid.UUID
+	RecordID        uuid.UUID
+	RecordVersion   int64
+	FileID          uuid.UUID
+	ObjectKey       string
+	StorageUploadID string
+	EncryptedSize   int64
+	PartSize        int64
+	Status          MultipartUploadStatus
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	CompletedAt     *time.Time
+}
+
+// MultipartUploadPart описывает загруженную часть multipart-загрузки.
+type MultipartUploadPart struct {
+	UploadID   uuid.UUID
+	PartNumber int32
+	Size       int64
+	ETag       string
+	CreatedAt  time.Time
+}
+
+// MultipartUploadPartOutput описывает загруженную часть multipart-загрузки.
+type MultipartUploadPartOutput struct {
+	PartNumber int32
+	Size       int64
+	ETag       string
+}
+
+// StartBinaryMultipartUploadInput описывает входные данные сценария начала multipart-загрузки бинарной приватной
+// записи.
+type StartBinaryMultipartUploadInput struct {
 	UserID           uuid.UUID
+	RecordID         uuid.UUID
+	ExpectedVersion  int64
 	Title            string
 	Description      string
 	EncryptedDEK     []byte
 	EncryptedPayload []byte
-	EncryptedFile    io.Reader
 	EncryptedSize    int64
-	UploadMode       model.UploadMode
+	PartSize         int64
 }
 
-// CreateBinaryRecordOutput описывает результат создания бинарной приватной записи.
-type CreateBinaryRecordOutput struct {
+// StartBinaryMultipartUploadOutput описывает результат начала multipart-загрузки бинарной приватной записи.
+type StartBinaryMultipartUploadOutput struct {
+	UploadID      uuid.UUID
+	RecordID      uuid.UUID
+	Version       int64
+	PartSize      int64
+	UploadStatus  model.UploadStatus
+	UploadedParts []MultipartUploadPartOutput
+}
+
+// GetBinaryMultipartUploadStatusInput описывает входные данные сценария получения статуса multipart-загрузки.
+type GetBinaryMultipartUploadStatusInput struct {
+	UserID   uuid.UUID
+	UploadID uuid.UUID
+}
+
+// GetBinaryMultipartUploadStatusOutput описывает состояние multipart-загрузки бинарной приватной записи.
+type GetBinaryMultipartUploadStatusOutput struct {
+	UploadID      uuid.UUID
+	RecordID      uuid.UUID
+	Version       int64
+	EncryptedSize int64
+	PartSize      int64
+	UploadStatus  model.UploadStatus
+	UploadedParts []MultipartUploadPartOutput
+}
+
+// UploadBinaryMultipartPartInput описывает входные данные сценария загрузки одной части файла.
+type UploadBinaryMultipartPartInput struct {
+	UserID     uuid.UUID
+	UploadID   uuid.UUID
+	PartNumber int32
+	PartSize   int64
+	Data       io.Reader
+}
+
+// UploadBinaryMultipartPartOutput описывает результат загрузки одной части файла.
+type UploadBinaryMultipartPartOutput struct {
+	UploadID uuid.UUID
+	Part     MultipartUploadPartOutput
+}
+
+// CompleteBinaryMultipartUploadInput описывает входные данные сценария завершения multipart-загрузки.
+type CompleteBinaryMultipartUploadInput struct {
+	UserID   uuid.UUID
+	UploadID uuid.UUID
+}
+
+// CompleteBinaryMultipartUploadOutput описывает результат завершения multipart-загрузки.
+type CompleteBinaryMultipartUploadOutput struct {
 	RecordID     uuid.UUID
 	Version      int64
 	UploadStatus model.UploadStatus
 }
 
-// UpdateBinaryRecordInput описывает входные данные сценария обновления бинарной приватной записи.
-type UpdateBinaryRecordInput struct {
-	RecordID         uuid.UUID
-	UserID           uuid.UUID
-	Title            string
-	Description      string
-	EncryptedDEK     []byte
-	EncryptedPayload []byte
-	EncryptedFile    io.Reader
-	EncryptedSize    int64
-	UploadMode       model.UploadMode
-	ExpectedVersion  int64
+// AbortBinaryMultipartUploadInput описывает входные данные сценария отмены multipart-загрузки.
+type AbortBinaryMultipartUploadInput struct {
+	UserID   uuid.UUID
+	UploadID uuid.UUID
 }
 
-// UpdateBinaryRecordOutput описывает результат обновления бинарной приватной записи.
-type UpdateBinaryRecordOutput struct {
-	RecordID     uuid.UUID
-	Version      int64
+// AbortBinaryMultipartUploadOutput описывает результат отмены multipart-загрузки.
+type AbortBinaryMultipartUploadOutput struct {
+	UploadID     uuid.UUID
 	UploadStatus model.UploadStatus
 }
 
@@ -130,6 +217,7 @@ type DownloadFileOutput struct {
 	EncryptedFile io.ReadCloser
 }
 
+// recordRepository описывает операции с приватными записями, которые нужны сценариям записей.
 type recordRepository interface {
 	Create(ctx context.Context, record model.Record) error
 	GetByIDAndUserID(ctx context.Context, recordID uuid.UUID, userID uuid.UUID) (model.Record, error)
@@ -138,22 +226,50 @@ type recordRepository interface {
 	Delete(ctx context.Context, recordID uuid.UUID, userID uuid.UUID, deletedAt time.Time) error
 }
 
+// recordFileRepository описывает операции с метаданными файла бинарной приватной записи.
 type recordFileRepository interface {
 	Create(ctx context.Context, file model.RecordFile) error
 	Replace(ctx context.Context, file model.RecordFile) error
 	UpdateUploadStatus(ctx context.Context, fileID uuid.UUID, status model.UploadStatus, updatedAt time.Time) error
 }
 
+// multipartUploadRepository описывает операции с состоянием возобновляемой multipart-загрузки файла.
+type multipartUploadRepository interface {
+	Create(ctx context.Context, upload MultipartUpload) error
+	GetByIDAndUserID(ctx context.Context, uploadID uuid.UUID, userID uuid.UUID) (MultipartUpload, error)
+	UpsertPart(ctx context.Context, part MultipartUploadPart) error
+	ListParts(ctx context.Context, uploadID uuid.UUID) ([]MultipartUploadPart, error)
+	UpdateStatus(
+		ctx context.Context,
+		uploadID uuid.UUID,
+		status MultipartUploadStatus,
+		updatedAt time.Time,
+		completedAt *time.Time,
+	) error
+}
+
+// fileStorage описывает операции с объектным хранилищем зашифрованных файлов.
 type fileStorage interface {
 	ObjectKey(userID, recordID, fileID uuid.UUID) string
-	Put(ctx context.Context, objectKey string, data io.Reader, size int64) (int64, error)
 	Get(ctx context.Context, objectKey string) (io.ReadCloser, error)
+	CreateMultipartUpload(ctx context.Context, objectKey string) (string, error)
+	PutMultipartPart(
+		ctx context.Context,
+		objectKey string,
+		uploadID string,
+		partNumber int32,
+		data io.Reader,
+		size int64,
+	) (MultipartUploadPart, error)
+	CompleteMultipartUpload(ctx context.Context, objectKey string, uploadID string, parts []MultipartUploadPart) error
+	AbortMultipartUpload(ctx context.Context, objectKey string, uploadID string) error
 }
 
 // RecordUseCase реализует сценарии работы с приватными записями.
 type RecordUseCase struct {
 	recordRepo     recordRepository
 	recordFileRepo recordFileRepository
+	multipartRepo  multipartUploadRepository
 	fileStorage    fileStorage
 	transactor     transactor
 }
@@ -162,6 +278,7 @@ type RecordUseCase struct {
 func NewRecordUseCase(
 	recordRepo recordRepository,
 	recordFileRepo recordFileRepository,
+	multipartRepo multipartUploadRepository,
 	fileStorage fileStorage,
 	transactor transactor,
 ) (*RecordUseCase, error) {
@@ -170,6 +287,9 @@ func NewRecordUseCase(
 	}
 	if recordFileRepo == nil {
 		return nil, errors.New("record file repository is not provided")
+	}
+	if multipartRepo == nil {
+		return nil, errors.New("multipart upload repository is not provided")
 	}
 	if fileStorage == nil {
 		return nil, errors.New("file storage is not provided")
@@ -181,6 +301,7 @@ func NewRecordUseCase(
 	return &RecordUseCase{
 		recordRepo:     recordRepo,
 		recordFileRepo: recordFileRepo,
+		multipartRepo:  multipartRepo,
 		fileStorage:    fileStorage,
 		transactor:     transactor,
 	}, nil
@@ -218,23 +339,55 @@ func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput)
 	return CreateRecordOutput{RecordID: record.ID, Version: record.Version}, nil
 }
 
-// CreateBinaryRecord создает бинарную приватную запись вместе с загрузкой зашифрованного файла.
-func (uc *RecordUseCase) CreateBinaryRecord(
+// StartBinaryMultipartUpload создает или обновляет бинарную приватную запись и открывает сессию multipart-загрузки
+// файла.
+func (uc *RecordUseCase) StartBinaryMultipartUpload(
 	ctx context.Context,
-	in CreateBinaryRecordInput,
-) (CreateBinaryRecordOutput, error) {
-	recordID, err := uuid.NewV7()
-	if err != nil {
-		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to generate ID for record: %w", err)
-	}
+	in StartBinaryMultipartUploadInput,
+) (StartBinaryMultipartUploadOutput, error) {
 	fileID, err := uuid.NewV7()
 	if err != nil {
-		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to generate ID for record file: %w", err)
+		return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to generate ID for record file: %w", err)
+	}
+	uploadID, err := uuid.NewV7()
+	if err != nil {
+		return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to generate ID for multipart upload: %w", err)
+	}
+
+	recordID := in.RecordID
+	recordVersion := initialRecordVersion
+	// Пустой RecordID означает создание новой бинарной записи; непустой RecordID открывает загрузку замены файла.
+	if recordID == uuid.Nil {
+		recordID, err = uuid.NewV7()
+		if err != nil {
+			return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to generate ID for record: %w", err)
+		}
+	} else {
+		currentRecord, getErr := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
+		if getErr != nil {
+			if errors.Is(getErr, ErrRecordNotFound) {
+				return StartBinaryMultipartUploadOutput{}, ErrRecordNotFound
+			}
+			return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to get record for binary update: %w", getErr)
+		}
+		if currentRecord.Type != model.RecordTypeBinary {
+			return StartBinaryMultipartUploadOutput{}, ErrRecordIsNotBinary
+		}
+		if currentRecord.File == nil {
+			return StartBinaryMultipartUploadOutput{}, ErrRecordFileIsNotUploaded
+		}
+	}
+
+	objectKey := uc.fileStorage.ObjectKey(in.UserID, recordID, fileID)
+	storageUploadID, err := uc.fileStorage.CreateMultipartUpload(ctx, objectKey)
+	if err != nil {
+		return StartBinaryMultipartUploadOutput{}, fmt.Errorf(
+			"failed to create multipart upload in file storage: %w",
+			err,
+		)
 	}
 
 	now := time.Now().UTC()
-	encryptedSize := in.EncryptedSize
-	uploadMode := in.UploadMode
 	record := model.Record{
 		ID:               recordID,
 		UserID:           in.UserID,
@@ -246,177 +399,239 @@ func (uc *RecordUseCase) CreateBinaryRecord(
 		Version:          initialRecordVersion,
 		CreatedAt:        now,
 		UpdatedAt:        now,
-		DeletedAt:        nil,
 	}
-
-	objectKey := uc.fileStorage.ObjectKey(in.UserID, recordID, fileID)
 	file := model.RecordFile{
 		ID:            fileID,
 		RecordID:      recordID,
 		ObjectKey:     objectKey,
-		EncryptedSize: &encryptedSize,
-		UploadMode:    &uploadMode,
+		EncryptedSize: new(in.EncryptedSize),
 		UploadStatus:  model.UploadStatusUploading,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
+	upload := MultipartUpload{
+		ID:              uploadID,
+		UserID:          in.UserID,
+		RecordID:        recordID,
+		RecordVersion:   recordVersion,
+		FileID:          fileID,
+		ObjectKey:       objectKey,
+		StorageUploadID: storageUploadID,
+		EncryptedSize:   in.EncryptedSize,
+		PartSize:        in.PartSize,
+		Status:          MultipartUploadStatusUploading,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
 
 	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		if err = uc.recordRepo.Create(ctx, record); err != nil {
-			return fmt.Errorf("failed to persist record: %w", err)
+		if in.RecordID == uuid.Nil {
+			if err = uc.recordRepo.Create(ctx, record); err != nil {
+				return fmt.Errorf("failed to persist record: %w", err)
+			}
+			if err = uc.recordFileRepo.Create(ctx, file); err != nil {
+				return fmt.Errorf("failed to persist record file: %w", err)
+			}
+		} else {
+			recordVersion, err = uc.recordRepo.Update(ctx, record, in.ExpectedVersion)
+			if err != nil {
+				return err
+			}
+			upload.RecordVersion = recordVersion
+			if err = uc.recordFileRepo.Replace(ctx, file); err != nil {
+				return err
+			}
 		}
-		if err = uc.recordFileRepo.Create(ctx, file); err != nil {
-			return fmt.Errorf("failed to persist record file: %w", err)
+		if err = uc.multipartRepo.Create(ctx, upload); err != nil {
+			return fmt.Errorf("failed to persist multipart upload: %w", err)
 		}
 		return nil
 	}); err != nil {
-		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to create binary record: %w", err)
-	}
-
-	written, err := uc.fileStorage.Put(ctx, objectKey, in.EncryptedFile, in.EncryptedSize)
-	now = time.Now().UTC()
-	if err != nil {
-		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
-		if statusErr != nil {
-			return CreateBinaryRecordOutput{}, fmt.Errorf(
-				"failed to mark binary record upload as failed after upload error %q: %w",
+		// Сессия в объектном хранилище создается до транзакции БД, поэтому при ошибке БД ее нужно закрыть отдельно.
+		abortErr := uc.fileStorage.AbortMultipartUpload(ctx, objectKey, storageUploadID)
+		if abortErr != nil {
+			return StartBinaryMultipartUploadOutput{}, fmt.Errorf(
+				"failed to rollback multipart upload after database error %q: %w",
 				err.Error(),
-				statusErr,
+				abortErr,
 			)
 		}
-
-		if errors.Is(err, ErrBinaryEncryptedSizeMismatch) {
-			return CreateBinaryRecordOutput{}, err
-		}
-
-		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to upload record file: %w", err)
-	}
-	if written != in.EncryptedSize {
-		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
-		if statusErr != nil {
-			return CreateBinaryRecordOutput{}, fmt.Errorf(
-				"failed to mark binary record upload as failed after encrypted size mismatch: %w",
-				statusErr,
-			)
-		}
-
-		return CreateBinaryRecordOutput{}, ErrBinaryEncryptedSizeMismatch
-	}
-	if err = uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusUploaded, now); err != nil {
-		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to mark binary record upload as uploaded: %w", err)
+		return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to start binary multipart upload: %w", err)
 	}
 
-	return CreateBinaryRecordOutput{
+	return StartBinaryMultipartUploadOutput{
+		UploadID:     uploadID,
 		RecordID:     recordID,
-		Version:      initialRecordVersion,
+		Version:      recordVersion,
+		PartSize:     in.PartSize,
+		UploadStatus: model.UploadStatusUploading,
+	}, nil
+}
+
+// GetBinaryMultipartUploadStatus возвращает состояние сессии multipart-загрузки и список уже загруженных частей.
+func (uc *RecordUseCase) GetBinaryMultipartUploadStatus(
+	ctx context.Context,
+	in GetBinaryMultipartUploadStatusInput,
+) (GetBinaryMultipartUploadStatusOutput, error) {
+	upload, parts, err := uc.multipartUploadWithParts(ctx, in.UploadID, in.UserID)
+	if err != nil {
+		return GetBinaryMultipartUploadStatusOutput{}, err
+	}
+	return GetBinaryMultipartUploadStatusOutput{
+		UploadID:      upload.ID,
+		RecordID:      upload.RecordID,
+		Version:       upload.RecordVersion,
+		EncryptedSize: upload.EncryptedSize,
+		PartSize:      upload.PartSize,
+		UploadStatus:  uploadStatusFromMultipartStatus(upload.Status),
+		UploadedParts: multipartPartOutputs(parts),
+	}, nil
+}
+
+// UploadBinaryMultipartPart загружает или повторно загружает одну часть файла в активную сессию multipart-загрузки.
+func (uc *RecordUseCase) UploadBinaryMultipartPart(
+	ctx context.Context,
+	in UploadBinaryMultipartPartInput,
+) (UploadBinaryMultipartPartOutput, error) {
+	if in.Data == nil {
+		return UploadBinaryMultipartPartOutput{}, ErrMultipartUploadPartInvalid
+	}
+
+	upload, err := uc.multipartRepo.GetByIDAndUserID(ctx, in.UploadID, in.UserID)
+	if err != nil {
+		if errors.Is(err, ErrMultipartUploadNotFound) {
+			return UploadBinaryMultipartPartOutput{}, ErrMultipartUploadNotFound
+		}
+		return UploadBinaryMultipartPartOutput{}, fmt.Errorf("failed to get multipart upload: %w", err)
+	}
+	if upload.Status != MultipartUploadStatusUploading {
+		return UploadBinaryMultipartPartOutput{}, ErrMultipartUploadNotActive
+	}
+	// Клиент может повторять загрузку части, но номер и размер должны совпадать с разбиением исходного файла.
+	expectedSize, err := expectedMultipartPartSize(upload, in.PartNumber)
+	if err != nil {
+		return UploadBinaryMultipartPartOutput{}, err
+	}
+	if in.PartSize != expectedSize {
+		return UploadBinaryMultipartPartOutput{}, ErrMultipartUploadPartInvalid
+	}
+
+	part, err := uc.fileStorage.PutMultipartPart(
+		ctx,
+		upload.ObjectKey,
+		upload.StorageUploadID,
+		in.PartNumber,
+		in.Data,
+		in.PartSize,
+	)
+	if err != nil {
+		return UploadBinaryMultipartPartOutput{}, fmt.Errorf("failed to upload multipart part: %w", err)
+	}
+	part.UploadID = upload.ID
+	part.CreatedAt = time.Now().UTC()
+	if err = uc.multipartRepo.UpsertPart(ctx, part); err != nil {
+		return UploadBinaryMultipartPartOutput{}, fmt.Errorf("failed to persist multipart part: %w", err)
+	}
+
+	return UploadBinaryMultipartPartOutput{
+		UploadID: upload.ID,
+		Part:     multipartPartOutput(part),
+	}, nil
+}
+
+// CompleteBinaryMultipartUpload завершает multipart-загрузку после получения всех частей файла.
+func (uc *RecordUseCase) CompleteBinaryMultipartUpload(
+	ctx context.Context,
+	in CompleteBinaryMultipartUploadInput,
+) (CompleteBinaryMultipartUploadOutput, error) {
+	upload, parts, err := uc.multipartUploadWithParts(ctx, in.UploadID, in.UserID)
+	if err != nil {
+		return CompleteBinaryMultipartUploadOutput{}, err
+	}
+	if upload.Status != MultipartUploadStatusUploading {
+		return CompleteBinaryMultipartUploadOutput{}, ErrMultipartUploadNotActive
+	}
+	// Перед закрытием multipart-загрузки проверяем, что сервер уже получил непрерывный набор частей полного размера.
+	if err = validateCompleteMultipartParts(upload, parts); err != nil {
+		return CompleteBinaryMultipartUploadOutput{}, err
+	}
+
+	if err = uc.fileStorage.CompleteMultipartUpload(ctx, upload.ObjectKey, upload.StorageUploadID, parts); err != nil {
+		return CompleteBinaryMultipartUploadOutput{}, fmt.Errorf(
+			"failed to complete multipart upload in file storage: %w",
+			err,
+		)
+	}
+
+	now := time.Now().UTC()
+	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		if err = uc.multipartRepo.UpdateStatus(
+			ctx,
+			upload.ID,
+			MultipartUploadStatusCompleted,
+			now,
+			&now,
+		); err != nil {
+			return err
+		}
+		if err = uc.recordFileRepo.UpdateUploadStatus(ctx, upload.FileID, model.UploadStatusUploaded, now); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return CompleteBinaryMultipartUploadOutput{}, fmt.Errorf(
+			"failed to mark multipart upload as completed: %w",
+			err,
+		)
+	}
+
+	return CompleteBinaryMultipartUploadOutput{
+		RecordID:     upload.RecordID,
+		Version:      upload.RecordVersion,
 		UploadStatus: model.UploadStatusUploaded,
 	}, nil
 }
 
-// UpdateBinaryRecord обновляет бинарную приватную запись вместе с заменой зашифрованного файла.
-func (uc *RecordUseCase) UpdateBinaryRecord(
+// AbortBinaryMultipartUpload отменяет активную multipart-загрузку и помечает файл как неуспешно загруженный.
+func (uc *RecordUseCase) AbortBinaryMultipartUpload(
 	ctx context.Context,
-	in UpdateBinaryRecordInput,
-) (UpdateBinaryRecordOutput, error) {
-	currentRecord, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
+	in AbortBinaryMultipartUploadInput,
+) (AbortBinaryMultipartUploadOutput, error) {
+	upload, err := uc.multipartRepo.GetByIDAndUserID(ctx, in.UploadID, in.UserID)
 	if err != nil {
-		if errors.Is(err, ErrRecordNotFound) {
-			return UpdateBinaryRecordOutput{}, ErrRecordNotFound
+		if errors.Is(err, ErrMultipartUploadNotFound) {
+			return AbortBinaryMultipartUploadOutput{}, ErrMultipartUploadNotFound
 		}
-		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to get record for binary update: %w", err)
+		return AbortBinaryMultipartUploadOutput{}, fmt.Errorf("failed to get multipart upload: %w", err)
 	}
-	if currentRecord.Type != model.RecordTypeBinary {
-		return UpdateBinaryRecordOutput{}, ErrRecordIsNotBinary
+	if upload.Status == MultipartUploadStatusCompleted {
+		return AbortBinaryMultipartUploadOutput{}, ErrMultipartUploadNotActive
 	}
-	if currentRecord.File == nil {
-		return UpdateBinaryRecordOutput{}, ErrRecordFileIsNotUploaded
-	}
-
-	fileID, err := uuid.NewV7()
-	if err != nil {
-		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to generate ID for record file: %w", err)
+	if upload.Status == MultipartUploadStatusUploading {
+		if err = uc.fileStorage.AbortMultipartUpload(ctx, upload.ObjectKey, upload.StorageUploadID); err != nil {
+			return AbortBinaryMultipartUploadOutput{}, fmt.Errorf(
+				"failed to abort multipart upload in file storage: %w",
+				err,
+			)
+		}
 	}
 
 	now := time.Now().UTC()
-	encryptedSize := in.EncryptedSize
-	uploadMode := in.UploadMode
-	record := model.Record{
-		ID:               in.RecordID,
-		UserID:           in.UserID,
-		Title:            in.Title,
-		Description:      in.Description,
-		EncryptedDEK:     model.EncryptedBlob{Data: in.EncryptedDEK},
-		EncryptedPayload: model.EncryptedBlob{Data: in.EncryptedPayload},
-		UpdatedAt:        now,
-	}
-	objectKey := uc.fileStorage.ObjectKey(in.UserID, in.RecordID, fileID)
-	file := model.RecordFile{
-		ID:            fileID,
-		RecordID:      in.RecordID,
-		ObjectKey:     objectKey,
-		EncryptedSize: &encryptedSize,
-		UploadMode:    &uploadMode,
-		UploadStatus:  model.UploadStatusUploading,
-		CreatedAt:     currentRecord.File.CreatedAt,
-		UpdatedAt:     now,
-	}
-
-	var version int64
 	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		version, err = uc.recordRepo.Update(ctx, record, in.ExpectedVersion)
-		if err != nil {
+		if err = uc.multipartRepo.UpdateStatus(ctx, upload.ID, MultipartUploadStatusAborted, now, nil); err != nil {
 			return err
 		}
-		if err = uc.recordFileRepo.Replace(ctx, file); err != nil {
+		if err = uc.recordFileRepo.UpdateUploadStatus(ctx, upload.FileID, model.UploadStatusFailed, now); err != nil {
 			return err
 		}
 		return nil
 	}); err != nil {
-		if errors.Is(err, ErrRecordNotFound) ||
-			errors.Is(err, ErrRecordVersionConflict) ||
-			errors.Is(err, ErrRecordIsNotBinary) {
-			return UpdateBinaryRecordOutput{}, err
-		}
-		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to update binary record metadata: %w", err)
+		return AbortBinaryMultipartUploadOutput{}, fmt.Errorf("failed to mark multipart upload as aborted: %w", err)
 	}
 
-	written, err := uc.fileStorage.Put(ctx, objectKey, in.EncryptedFile, in.EncryptedSize)
-	now = time.Now().UTC()
-	if err != nil {
-		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
-		if statusErr != nil {
-			return UpdateBinaryRecordOutput{}, fmt.Errorf(
-				"failed to mark binary record upload as failed after upload error %q: %w",
-				err.Error(),
-				statusErr,
-			)
-		}
-
-		if errors.Is(err, ErrBinaryEncryptedSizeMismatch) {
-			return UpdateBinaryRecordOutput{}, err
-		}
-
-		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to upload record file: %w", err)
-	}
-	if written != in.EncryptedSize {
-		statusErr := uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusFailed, now)
-		if statusErr != nil {
-			return UpdateBinaryRecordOutput{}, fmt.Errorf(
-				"failed to mark binary record upload as failed after encrypted size mismatch: %w",
-				statusErr,
-			)
-		}
-
-		return UpdateBinaryRecordOutput{}, ErrBinaryEncryptedSizeMismatch
-	}
-	if err = uc.recordFileRepo.UpdateUploadStatus(ctx, file.ID, model.UploadStatusUploaded, now); err != nil {
-		return UpdateBinaryRecordOutput{}, fmt.Errorf("failed to mark binary record upload as uploaded: %w", err)
-	}
-
-	return UpdateBinaryRecordOutput{
-		RecordID:     in.RecordID,
-		Version:      version,
-		UploadStatus: model.UploadStatusUploaded,
+	return AbortBinaryMultipartUploadOutput{
+		UploadID:     upload.ID,
+		UploadStatus: model.UploadStatusFailed,
 	}, nil
 }
 
@@ -496,4 +711,101 @@ func (uc *RecordUseCase) DownloadFile(ctx context.Context, in DownloadFileInput)
 		return DownloadFileOutput{}, fmt.Errorf("failed to get record file: %w", err)
 	}
 	return DownloadFileOutput{EncryptedFile: encryptedFile}, nil
+}
+
+// multipartUploadWithParts получает сессию multipart-загрузки вместе со списком уже сохраненных частей.
+func (uc *RecordUseCase) multipartUploadWithParts(
+	ctx context.Context,
+	uploadID uuid.UUID,
+	userID uuid.UUID,
+) (MultipartUpload, []MultipartUploadPart, error) {
+	upload, err := uc.multipartRepo.GetByIDAndUserID(ctx, uploadID, userID)
+	if err != nil {
+		if errors.Is(err, ErrMultipartUploadNotFound) {
+			return MultipartUpload{}, nil, ErrMultipartUploadNotFound
+		}
+		return MultipartUpload{}, nil, fmt.Errorf("failed to get multipart upload: %w", err)
+	}
+	parts, err := uc.multipartRepo.ListParts(ctx, upload.ID)
+	if err != nil {
+		return MultipartUpload{}, nil, fmt.Errorf("failed to list multipart upload parts: %w", err)
+	}
+	return upload, parts, nil
+}
+
+// expectedMultipartPartSize вычисляет ожидаемый размер части с учетом того, что последняя часть может быть короче.
+func expectedMultipartPartSize(upload MultipartUpload, partNumber int32) (int64, error) {
+	if partNumber <= 0 || upload.PartSize <= 0 || upload.EncryptedSize <= 0 {
+		return 0, ErrMultipartUploadPartInvalid
+	}
+	offset := int64(partNumber-1) * upload.PartSize
+	if offset >= upload.EncryptedSize {
+		return 0, ErrMultipartUploadPartInvalid
+	}
+	remaining := upload.EncryptedSize - offset
+	if remaining < upload.PartSize {
+		return remaining, nil
+	}
+	return upload.PartSize, nil
+}
+
+// validateCompleteMultipartParts проверяет, что для завершения загрузки есть все части без пропусков и лишних байт.
+func validateCompleteMultipartParts(upload MultipartUpload, parts []MultipartUploadPart) error {
+	if len(parts) == 0 {
+		return ErrMultipartUploadIncomplete
+	}
+
+	sort.Slice(parts, func(i, j int) bool {
+		return parts[i].PartNumber < parts[j].PartNumber
+	})
+
+	var total int64
+	for i, part := range parts {
+		expectedPartNumber := int32(i + 1)
+		if part.PartNumber != expectedPartNumber {
+			return ErrMultipartUploadIncomplete
+		}
+		expectedSize, err := expectedMultipartPartSize(upload, part.PartNumber)
+		if err != nil {
+			return err
+		}
+		if part.Size != expectedSize || part.ETag == "" {
+			return ErrMultipartUploadIncomplete
+		}
+		total += part.Size
+	}
+	if total != upload.EncryptedSize {
+		return ErrMultipartUploadIncomplete
+	}
+	return nil
+}
+
+// uploadStatusFromMultipartStatus переводит внутренний статус multipart-загрузки в пользовательский статус файла.
+func uploadStatusFromMultipartStatus(status MultipartUploadStatus) model.UploadStatus {
+	switch status {
+	case MultipartUploadStatusCompleted:
+		return model.UploadStatusUploaded
+	case MultipartUploadStatusUploading:
+		return model.UploadStatusUploading
+	default:
+		return model.UploadStatusFailed
+	}
+}
+
+// multipartPartOutputs преобразует список частей из внутреннего формата usecase в выходной формат сценария.
+func multipartPartOutputs(parts []MultipartUploadPart) []MultipartUploadPartOutput {
+	out := make([]MultipartUploadPartOutput, 0, len(parts))
+	for _, part := range parts {
+		out = append(out, multipartPartOutput(part))
+	}
+	return out
+}
+
+// multipartPartOutput преобразует одну загруженную часть в выходной формат сценария.
+func multipartPartOutput(part MultipartUploadPart) MultipartUploadPartOutput {
+	return MultipartUploadPartOutput{
+		PartNumber: part.PartNumber,
+		Size:       part.Size,
+		ETag:       part.ETag,
+	}
 }

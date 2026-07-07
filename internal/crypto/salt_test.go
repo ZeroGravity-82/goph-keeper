@@ -19,7 +19,7 @@ func TestValidateMasterKeySalt(t *testing.T) {
 		{name: "valid", salt: []byte("1234567890abcdef")},
 		{name: "empty", wantErr: true},
 		{name: "short", salt: []byte("short"), wantErr: true},
-		{name: "long", salt: []byte(strings.Repeat("a", masterKeySaltLength+1)), wantErr: true},
+		{name: "long", salt: []byte(strings.Repeat("a", masterKeySaltSizeBytes+1)), wantErr: true},
 	}
 
 	for _, tt := range tests {

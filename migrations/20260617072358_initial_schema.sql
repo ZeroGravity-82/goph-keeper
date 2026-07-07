@@ -44,13 +44,43 @@ CREATE TABLE IF NOT EXISTS record_file (
     record_id      UUID        NOT NULL UNIQUE REFERENCES record(id) ON DELETE RESTRICT,
     object_key     TEXT        NOT NULL,
     encrypted_size BIGINT      NULL,
-    upload_mode    VARCHAR(16) NULL CHECK (upload_mode IN ('single_part', 'multipart')),
     upload_status  VARCHAR(16) NOT NULL CHECK (upload_status IN ('uploading', 'uploaded', 'failed')),
     created_at     TIMESTAMPTZ NOT NULL,
     updated_at     TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS record_file_multipart_upload
+(
+    id                UUID PRIMARY KEY,
+    app_user_id       UUID        NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
+    record_id         UUID        NOT NULL REFERENCES record(id) ON DELETE RESTRICT,
+    record_version    BIGINT      NOT NULL,
+    file_id           UUID        NOT NULL REFERENCES record_file(id) ON DELETE RESTRICT,
+    object_key        TEXT        NOT NULL,
+    storage_upload_id TEXT        NOT NULL,
+    encrypted_size    BIGINT      NOT NULL,
+    part_size         BIGINT      NOT NULL,
+    status            VARCHAR(16) NOT NULL CHECK (status IN ('uploading', 'completed', 'aborted')),
+    created_at        TIMESTAMPTZ NOT NULL,
+    updated_at        TIMESTAMPTZ NOT NULL,
+    completed_at      TIMESTAMPTZ NULL
+);
+CREATE INDEX idx_record_file_multipart_upload_app_user_status
+    ON record_file_multipart_upload(app_user_id, status);
+
+CREATE TABLE IF NOT EXISTS record_file_multipart_part
+(
+    upload_id   UUID        NOT NULL REFERENCES record_file_multipart_upload(id) ON DELETE CASCADE,
+    part_number INTEGER     NOT NULL,
+    size        BIGINT      NOT NULL,
+    etag        TEXT        NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (upload_id, part_number)
+);
+
 -- +goose Down
+DROP TABLE IF EXISTS record_file_multipart_part;
+DROP TABLE IF EXISTS record_file_multipart_upload;
 DROP TABLE IF EXISTS record_file;
 DROP TABLE IF EXISTS record;
 DROP TABLE IF EXISTS refresh_token;

@@ -13,10 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-// TestMinIOStorage_PutAndGet_Integration проверяет реальную запись и чтение объекта через тестовый MinIO.
-func TestMinIOStorage_PutAndGet_Integration(t *testing.T) {
+// TestMinIOStorage_MultipartUploadAndGet_Integration проверяет multipart-загрузку и чтение объекта через тестовый
+// MinIO.
+func TestMinIOStorage_MultipartUploadAndGet_Integration(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	storage := newIntegrationMinIOStorage(t, ctx)
@@ -24,14 +27,17 @@ func TestMinIOStorage_PutAndGet_Integration(t *testing.T) {
 	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-000000000002")
 	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-000000000003")
 	objectKey := storage.ObjectKey(userID, recordID, fileID)
-	data := []byte("encrypted file payload")
+	data := bytes.Repeat([]byte("a"), 5*1024*1024)
 
 	// Act
-	written, err := storage.Put(ctx, objectKey, bytes.NewReader(data), int64(len(data)))
+	uploadID, err := storage.CreateMultipartUpload(ctx, objectKey)
+	require.NoError(t, err)
+	part, err := storage.PutMultipartPart(ctx, objectKey, uploadID, 1, bytes.NewReader(data), int64(len(data)))
+	require.NoError(t, err)
+	err = storage.CompleteMultipartUpload(ctx, objectKey, uploadID, []usecase.MultipartUploadPart{part})
 
 	// Assert
 	require.NoError(t, err)
-	assert.Equal(t, int64(len(data)), written)
 
 	// Act
 	reader, err := storage.Get(ctx, objectKey)

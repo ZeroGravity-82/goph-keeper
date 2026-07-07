@@ -71,50 +71,6 @@ func (x RecordType) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-type UploadMode int32
-
-const (
-	UploadMode_UPLOAD_MODE_UNSPECIFIED UploadMode = 0
-	UploadMode_UPLOAD_MODE_SINGLE_PART UploadMode = 1
-	UploadMode_UPLOAD_MODE_MULTIPART   UploadMode = 2
-)
-
-// Enum value maps for UploadMode.
-var (
-	UploadMode_name = map[int32]string{
-		0: "UPLOAD_MODE_UNSPECIFIED",
-		1: "UPLOAD_MODE_SINGLE_PART",
-		2: "UPLOAD_MODE_MULTIPART",
-	}
-	UploadMode_value = map[string]int32{
-		"UPLOAD_MODE_UNSPECIFIED": 0,
-		"UPLOAD_MODE_SINGLE_PART": 1,
-		"UPLOAD_MODE_MULTIPART":   2,
-	}
-)
-
-func (x UploadMode) Enum() *UploadMode {
-	p := new(UploadMode)
-	*p = x
-	return p
-}
-
-func (x UploadMode) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (UploadMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_records_proto_enumTypes[1].Descriptor()
-}
-
-func (UploadMode) Type() protoreflect.EnumType {
-	return &file_api_records_proto_enumTypes[1]
-}
-
-func (x UploadMode) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
 type UploadStatus int32
 
 const (
@@ -151,11 +107,11 @@ func (x UploadStatus) String() string {
 }
 
 func (UploadStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_records_proto_enumTypes[2].Descriptor()
+	return file_api_records_proto_enumTypes[1].Descriptor()
 }
 
 func (UploadStatus) Type() protoreflect.EnumType {
-	return &file_api_records_proto_enumTypes[2]
+	return &file_api_records_proto_enumTypes[1]
 }
 
 func (x UploadStatus) Number() protoreflect.EnumNumber {
@@ -1931,27 +1887,31 @@ func (b0 DeleteRecordResponse_builder) Build() *DeleteRecordResponse {
 	return m0
 }
 
-type CreateBinaryRecordRequest struct {
-	state              protoimpl.MessageState              `protogen:"opaque.v1"`
-	xxx_hidden_Payload isCreateBinaryRecordRequest_Payload `protobuf_oneof:"payload"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+type MultipartUploadPart struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_PartNumber  int32                  `protobuf:"varint,1,opt,name=part_number,json=partNumber"`
+	xxx_hidden_Size        int64                  `protobuf:"varint,2,opt,name=size"`
+	xxx_hidden_Etag        *string                `protobuf:"bytes,3,opt,name=etag"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
-func (x *CreateBinaryRecordRequest) Reset() {
-	*x = CreateBinaryRecordRequest{}
+func (x *MultipartUploadPart) Reset() {
+	*x = MultipartUploadPart{}
 	mi := &file_api_records_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateBinaryRecordRequest) String() string {
+func (x *MultipartUploadPart) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateBinaryRecordRequest) ProtoMessage() {}
+func (*MultipartUploadPart) ProtoMessage() {}
 
-func (x *CreateBinaryRecordRequest) ProtoReflect() protoreflect.Message {
+func (x *MultipartUploadPart) ProtoReflect() protoreflect.Message {
 	mi := &file_api_records_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1963,172 +1923,138 @@ func (x *CreateBinaryRecordRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *CreateBinaryRecordRequest) GetMetadata() *CreateBinaryRecordMetadata {
+func (x *MultipartUploadPart) GetPartNumber() int32 {
 	if x != nil {
-		if x, ok := x.xxx_hidden_Payload.(*createBinaryRecordRequest_Metadata); ok {
-			return x.Metadata
-		}
+		return x.xxx_hidden_PartNumber
 	}
-	return nil
+	return 0
 }
 
-func (x *CreateBinaryRecordRequest) GetChunk() []byte {
+func (x *MultipartUploadPart) GetSize() int64 {
 	if x != nil {
-		if x, ok := x.xxx_hidden_Payload.(*createBinaryRecordRequest_Chunk); ok {
-			return x.Chunk
+		return x.xxx_hidden_Size
+	}
+	return 0
+}
+
+func (x *MultipartUploadPart) GetEtag() string {
+	if x != nil {
+		if x.xxx_hidden_Etag != nil {
+			return *x.xxx_hidden_Etag
 		}
+		return ""
 	}
-	return nil
+	return ""
 }
 
-func (x *CreateBinaryRecordRequest) SetMetadata(v *CreateBinaryRecordMetadata) {
-	if v == nil {
-		x.xxx_hidden_Payload = nil
-		return
-	}
-	x.xxx_hidden_Payload = &createBinaryRecordRequest_Metadata{v}
+func (x *MultipartUploadPart) SetPartNumber(v int32) {
+	x.xxx_hidden_PartNumber = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
 }
 
-func (x *CreateBinaryRecordRequest) SetChunk(v []byte) {
-	if v == nil {
-		v = []byte{}
-	}
-	x.xxx_hidden_Payload = &createBinaryRecordRequest_Chunk{v}
+func (x *MultipartUploadPart) SetSize(v int64) {
+	x.xxx_hidden_Size = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
 }
 
-func (x *CreateBinaryRecordRequest) HasPayload() bool {
+func (x *MultipartUploadPart) SetEtag(v string) {
+	x.xxx_hidden_Etag = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+}
+
+func (x *MultipartUploadPart) HasPartNumber() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Payload != nil
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
-func (x *CreateBinaryRecordRequest) HasMetadata() bool {
+func (x *MultipartUploadPart) HasSize() bool {
 	if x == nil {
 		return false
 	}
-	_, ok := x.xxx_hidden_Payload.(*createBinaryRecordRequest_Metadata)
-	return ok
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
 }
 
-func (x *CreateBinaryRecordRequest) HasChunk() bool {
+func (x *MultipartUploadPart) HasEtag() bool {
 	if x == nil {
 		return false
 	}
-	_, ok := x.xxx_hidden_Payload.(*createBinaryRecordRequest_Chunk)
-	return ok
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
-func (x *CreateBinaryRecordRequest) ClearPayload() {
-	x.xxx_hidden_Payload = nil
+func (x *MultipartUploadPart) ClearPartNumber() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_PartNumber = 0
 }
 
-func (x *CreateBinaryRecordRequest) ClearMetadata() {
-	if _, ok := x.xxx_hidden_Payload.(*createBinaryRecordRequest_Metadata); ok {
-		x.xxx_hidden_Payload = nil
-	}
+func (x *MultipartUploadPart) ClearSize() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_Size = 0
 }
 
-func (x *CreateBinaryRecordRequest) ClearChunk() {
-	if _, ok := x.xxx_hidden_Payload.(*createBinaryRecordRequest_Chunk); ok {
-		x.xxx_hidden_Payload = nil
-	}
+func (x *MultipartUploadPart) ClearEtag() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_Etag = nil
 }
 
-const CreateBinaryRecordRequest_Payload_not_set_case case_CreateBinaryRecordRequest_Payload = 0
-const CreateBinaryRecordRequest_Metadata_case case_CreateBinaryRecordRequest_Payload = 1
-const CreateBinaryRecordRequest_Chunk_case case_CreateBinaryRecordRequest_Payload = 2
-
-func (x *CreateBinaryRecordRequest) WhichPayload() case_CreateBinaryRecordRequest_Payload {
-	if x == nil {
-		return CreateBinaryRecordRequest_Payload_not_set_case
-	}
-	switch x.xxx_hidden_Payload.(type) {
-	case *createBinaryRecordRequest_Metadata:
-		return CreateBinaryRecordRequest_Metadata_case
-	case *createBinaryRecordRequest_Chunk:
-		return CreateBinaryRecordRequest_Chunk_case
-	default:
-		return CreateBinaryRecordRequest_Payload_not_set_case
-	}
-}
-
-type CreateBinaryRecordRequest_builder struct {
+type MultipartUploadPart_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	// Fields of oneof xxx_hidden_Payload:
-	Metadata *CreateBinaryRecordMetadata
-	Chunk    []byte
-	// -- end of xxx_hidden_Payload
+	PartNumber *int32
+	Size       *int64
+	Etag       *string
 }
 
-func (b0 CreateBinaryRecordRequest_builder) Build() *CreateBinaryRecordRequest {
-	m0 := &CreateBinaryRecordRequest{}
+func (b0 MultipartUploadPart_builder) Build() *MultipartUploadPart {
+	m0 := &MultipartUploadPart{}
 	b, x := &b0, m0
 	_, _ = b, x
-	if b.Metadata != nil {
-		x.xxx_hidden_Payload = &createBinaryRecordRequest_Metadata{b.Metadata}
+	if b.PartNumber != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_PartNumber = *b.PartNumber
 	}
-	if b.Chunk != nil {
-		x.xxx_hidden_Payload = &createBinaryRecordRequest_Chunk{b.Chunk}
+	if b.Size != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		x.xxx_hidden_Size = *b.Size
+	}
+	if b.Etag != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		x.xxx_hidden_Etag = b.Etag
 	}
 	return m0
 }
 
-type case_CreateBinaryRecordRequest_Payload protoreflect.FieldNumber
-
-func (x case_CreateBinaryRecordRequest_Payload) String() string {
-	md := file_api_records_proto_msgTypes[13].Descriptor()
-	if x == 0 {
-		return "not set"
-	}
-	return protoimpl.X.MessageFieldStringOf(md, protoreflect.FieldNumber(x))
-}
-
-type isCreateBinaryRecordRequest_Payload interface {
-	isCreateBinaryRecordRequest_Payload()
-}
-
-type createBinaryRecordRequest_Metadata struct {
-	Metadata *CreateBinaryRecordMetadata `protobuf:"bytes,1,opt,name=metadata,oneof"`
-}
-
-type createBinaryRecordRequest_Chunk struct {
-	Chunk []byte `protobuf:"bytes,2,opt,name=chunk,oneof"`
-}
-
-func (*createBinaryRecordRequest_Metadata) isCreateBinaryRecordRequest_Payload() {}
-
-func (*createBinaryRecordRequest_Chunk) isCreateBinaryRecordRequest_Payload() {}
-
-type CreateBinaryRecordMetadata struct {
+type StartBinaryMultipartUploadRequest struct {
 	state                       protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Title            *string                `protobuf:"bytes,1,opt,name=title"`
 	xxx_hidden_Description      *string                `protobuf:"bytes,2,opt,name=description"`
 	xxx_hidden_EncryptedDek     []byte                 `protobuf:"bytes,3,opt,name=encrypted_dek,json=encryptedDek"`
 	xxx_hidden_EncryptedPayload []byte                 `protobuf:"bytes,4,opt,name=encrypted_payload,json=encryptedPayload"`
 	xxx_hidden_EncryptedSize    int64                  `protobuf:"varint,5,opt,name=encrypted_size,json=encryptedSize"`
-	xxx_hidden_UploadMode       UploadMode             `protobuf:"varint,6,opt,name=upload_mode,json=uploadMode,enum=gophkeeper.v1.UploadMode"`
+	xxx_hidden_PartSize         int64                  `protobuf:"varint,6,opt,name=part_size,json=partSize"`
+	xxx_hidden_RecordId         *string                `protobuf:"bytes,7,opt,name=record_id,json=recordId"`
+	xxx_hidden_ExpectedVersion  int64                  `protobuf:"varint,8,opt,name=expected_version,json=expectedVersion"`
 	XXX_raceDetectHookData      protoimpl.RaceDetectHookData
 	XXX_presence                [1]uint32
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
 
-func (x *CreateBinaryRecordMetadata) Reset() {
-	*x = CreateBinaryRecordMetadata{}
+func (x *StartBinaryMultipartUploadRequest) Reset() {
+	*x = StartBinaryMultipartUploadRequest{}
 	mi := &file_api_records_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateBinaryRecordMetadata) String() string {
+func (x *StartBinaryMultipartUploadRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateBinaryRecordMetadata) ProtoMessage() {}
+func (*StartBinaryMultipartUploadRequest) ProtoMessage() {}
 
-func (x *CreateBinaryRecordMetadata) ProtoReflect() protoreflect.Message {
+func (x *StartBinaryMultipartUploadRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_api_records_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2140,7 +2066,7 @@ func (x *CreateBinaryRecordMetadata) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *CreateBinaryRecordMetadata) GetTitle() string {
+func (x *StartBinaryMultipartUploadRequest) GetTitle() string {
 	if x != nil {
 		if x.xxx_hidden_Title != nil {
 			return *x.xxx_hidden_Title
@@ -2150,7 +2076,7 @@ func (x *CreateBinaryRecordMetadata) GetTitle() string {
 	return ""
 }
 
-func (x *CreateBinaryRecordMetadata) GetDescription() string {
+func (x *StartBinaryMultipartUploadRequest) GetDescription() string {
 	if x != nil {
 		if x.xxx_hidden_Description != nil {
 			return *x.xxx_hidden_Description
@@ -2160,145 +2086,194 @@ func (x *CreateBinaryRecordMetadata) GetDescription() string {
 	return ""
 }
 
-func (x *CreateBinaryRecordMetadata) GetEncryptedDek() []byte {
+func (x *StartBinaryMultipartUploadRequest) GetEncryptedDek() []byte {
 	if x != nil {
 		return x.xxx_hidden_EncryptedDek
 	}
 	return nil
 }
 
-func (x *CreateBinaryRecordMetadata) GetEncryptedPayload() []byte {
+func (x *StartBinaryMultipartUploadRequest) GetEncryptedPayload() []byte {
 	if x != nil {
 		return x.xxx_hidden_EncryptedPayload
 	}
 	return nil
 }
 
-func (x *CreateBinaryRecordMetadata) GetEncryptedSize() int64 {
+func (x *StartBinaryMultipartUploadRequest) GetEncryptedSize() int64 {
 	if x != nil {
 		return x.xxx_hidden_EncryptedSize
 	}
 	return 0
 }
 
-func (x *CreateBinaryRecordMetadata) GetUploadMode() UploadMode {
+func (x *StartBinaryMultipartUploadRequest) GetPartSize() int64 {
 	if x != nil {
-		if protoimpl.X.Present(&(x.XXX_presence[0]), 5) {
-			return x.xxx_hidden_UploadMode
-		}
+		return x.xxx_hidden_PartSize
 	}
-	return UploadMode_UPLOAD_MODE_UNSPECIFIED
+	return 0
 }
 
-func (x *CreateBinaryRecordMetadata) SetTitle(v string) {
+func (x *StartBinaryMultipartUploadRequest) GetRecordId() string {
+	if x != nil {
+		if x.xxx_hidden_RecordId != nil {
+			return *x.xxx_hidden_RecordId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *StartBinaryMultipartUploadRequest) GetExpectedVersion() int64 {
+	if x != nil {
+		return x.xxx_hidden_ExpectedVersion
+	}
+	return 0
+}
+
+func (x *StartBinaryMultipartUploadRequest) SetTitle(v string) {
 	x.xxx_hidden_Title = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 8)
 }
 
-func (x *CreateBinaryRecordMetadata) SetDescription(v string) {
+func (x *StartBinaryMultipartUploadRequest) SetDescription(v string) {
 	x.xxx_hidden_Description = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 8)
 }
 
-func (x *CreateBinaryRecordMetadata) SetEncryptedDek(v []byte) {
+func (x *StartBinaryMultipartUploadRequest) SetEncryptedDek(v []byte) {
 	if v == nil {
 		v = []byte{}
 	}
 	x.xxx_hidden_EncryptedDek = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 8)
 }
 
-func (x *CreateBinaryRecordMetadata) SetEncryptedPayload(v []byte) {
+func (x *StartBinaryMultipartUploadRequest) SetEncryptedPayload(v []byte) {
 	if v == nil {
 		v = []byte{}
 	}
 	x.xxx_hidden_EncryptedPayload = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 8)
 }
 
-func (x *CreateBinaryRecordMetadata) SetEncryptedSize(v int64) {
+func (x *StartBinaryMultipartUploadRequest) SetEncryptedSize(v int64) {
 	x.xxx_hidden_EncryptedSize = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 8)
 }
 
-func (x *CreateBinaryRecordMetadata) SetUploadMode(v UploadMode) {
-	x.xxx_hidden_UploadMode = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 6)
+func (x *StartBinaryMultipartUploadRequest) SetPartSize(v int64) {
+	x.xxx_hidden_PartSize = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 8)
 }
 
-func (x *CreateBinaryRecordMetadata) HasTitle() bool {
+func (x *StartBinaryMultipartUploadRequest) SetRecordId(v string) {
+	x.xxx_hidden_RecordId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 8)
+}
+
+func (x *StartBinaryMultipartUploadRequest) SetExpectedVersion(v int64) {
+	x.xxx_hidden_ExpectedVersion = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
+}
+
+func (x *StartBinaryMultipartUploadRequest) HasTitle() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
-func (x *CreateBinaryRecordMetadata) HasDescription() bool {
+func (x *StartBinaryMultipartUploadRequest) HasDescription() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
 }
 
-func (x *CreateBinaryRecordMetadata) HasEncryptedDek() bool {
+func (x *StartBinaryMultipartUploadRequest) HasEncryptedDek() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
-func (x *CreateBinaryRecordMetadata) HasEncryptedPayload() bool {
+func (x *StartBinaryMultipartUploadRequest) HasEncryptedPayload() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
 }
 
-func (x *CreateBinaryRecordMetadata) HasEncryptedSize() bool {
+func (x *StartBinaryMultipartUploadRequest) HasEncryptedSize() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
 }
 
-func (x *CreateBinaryRecordMetadata) HasUploadMode() bool {
+func (x *StartBinaryMultipartUploadRequest) HasPartSize() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
 }
 
-func (x *CreateBinaryRecordMetadata) ClearTitle() {
+func (x *StartBinaryMultipartUploadRequest) HasRecordId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 6)
+}
+
+func (x *StartBinaryMultipartUploadRequest) HasExpectedVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
+}
+
+func (x *StartBinaryMultipartUploadRequest) ClearTitle() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_Title = nil
 }
 
-func (x *CreateBinaryRecordMetadata) ClearDescription() {
+func (x *StartBinaryMultipartUploadRequest) ClearDescription() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
 	x.xxx_hidden_Description = nil
 }
 
-func (x *CreateBinaryRecordMetadata) ClearEncryptedDek() {
+func (x *StartBinaryMultipartUploadRequest) ClearEncryptedDek() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
 	x.xxx_hidden_EncryptedDek = nil
 }
 
-func (x *CreateBinaryRecordMetadata) ClearEncryptedPayload() {
+func (x *StartBinaryMultipartUploadRequest) ClearEncryptedPayload() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
 	x.xxx_hidden_EncryptedPayload = nil
 }
 
-func (x *CreateBinaryRecordMetadata) ClearEncryptedSize() {
+func (x *StartBinaryMultipartUploadRequest) ClearEncryptedSize() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
 	x.xxx_hidden_EncryptedSize = 0
 }
 
-func (x *CreateBinaryRecordMetadata) ClearUploadMode() {
+func (x *StartBinaryMultipartUploadRequest) ClearPartSize() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 5)
-	x.xxx_hidden_UploadMode = UploadMode_UPLOAD_MODE_UNSPECIFIED
+	x.xxx_hidden_PartSize = 0
 }
 
-type CreateBinaryRecordMetadata_builder struct {
+func (x *StartBinaryMultipartUploadRequest) ClearRecordId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
+	x.xxx_hidden_RecordId = nil
+}
+
+func (x *StartBinaryMultipartUploadRequest) ClearExpectedVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 7)
+	x.xxx_hidden_ExpectedVersion = 0
+}
+
+type StartBinaryMultipartUploadRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Title            *string
@@ -2306,41 +2281,1086 @@ type CreateBinaryRecordMetadata_builder struct {
 	EncryptedDek     []byte
 	EncryptedPayload []byte
 	EncryptedSize    *int64
-	UploadMode       *UploadMode
+	PartSize         *int64
+	RecordId         *string
+	ExpectedVersion  *int64
 }
 
-func (b0 CreateBinaryRecordMetadata_builder) Build() *CreateBinaryRecordMetadata {
-	m0 := &CreateBinaryRecordMetadata{}
+func (b0 StartBinaryMultipartUploadRequest_builder) Build() *StartBinaryMultipartUploadRequest {
+	m0 := &StartBinaryMultipartUploadRequest{}
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.Title != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 8)
 		x.xxx_hidden_Title = b.Title
 	}
 	if b.Description != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 8)
 		x.xxx_hidden_Description = b.Description
 	}
 	if b.EncryptedDek != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 8)
 		x.xxx_hidden_EncryptedDek = b.EncryptedDek
 	}
 	if b.EncryptedPayload != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 8)
 		x.xxx_hidden_EncryptedPayload = b.EncryptedPayload
 	}
 	if b.EncryptedSize != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 8)
 		x.xxx_hidden_EncryptedSize = *b.EncryptedSize
 	}
-	if b.UploadMode != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 6)
-		x.xxx_hidden_UploadMode = *b.UploadMode
+	if b.PartSize != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 8)
+		x.xxx_hidden_PartSize = *b.PartSize
+	}
+	if b.RecordId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
+		x.xxx_hidden_RecordId = b.RecordId
+	}
+	if b.ExpectedVersion != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 8)
+		x.xxx_hidden_ExpectedVersion = *b.ExpectedVersion
 	}
 	return m0
 }
 
-type CreateBinaryRecordResponse struct {
+type StartBinaryMultipartUploadResponse struct {
+	state                    protoimpl.MessageState  `protogen:"opaque.v1"`
+	xxx_hidden_UploadId      *string                 `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	xxx_hidden_RecordId      *string                 `protobuf:"bytes,2,opt,name=record_id,json=recordId"`
+	xxx_hidden_Version       int64                   `protobuf:"varint,3,opt,name=version"`
+	xxx_hidden_PartSize      int64                   `protobuf:"varint,4,opt,name=part_size,json=partSize"`
+	xxx_hidden_UploadStatus  UploadStatus            `protobuf:"varint,5,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
+	xxx_hidden_UploadedParts *[]*MultipartUploadPart `protobuf:"bytes,6,rep,name=uploaded_parts,json=uploadedParts"`
+	XXX_raceDetectHookData   protoimpl.RaceDetectHookData
+	XXX_presence             [1]uint32
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *StartBinaryMultipartUploadResponse) Reset() {
+	*x = StartBinaryMultipartUploadResponse{}
+	mi := &file_api_records_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartBinaryMultipartUploadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartBinaryMultipartUploadResponse) ProtoMessage() {}
+
+func (x *StartBinaryMultipartUploadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *StartBinaryMultipartUploadResponse) GetUploadId() string {
+	if x != nil {
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *StartBinaryMultipartUploadResponse) GetRecordId() string {
+	if x != nil {
+		if x.xxx_hidden_RecordId != nil {
+			return *x.xxx_hidden_RecordId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *StartBinaryMultipartUploadResponse) GetVersion() int64 {
+	if x != nil {
+		return x.xxx_hidden_Version
+	}
+	return 0
+}
+
+func (x *StartBinaryMultipartUploadResponse) GetPartSize() int64 {
+	if x != nil {
+		return x.xxx_hidden_PartSize
+	}
+	return 0
+}
+
+func (x *StartBinaryMultipartUploadResponse) GetUploadStatus() UploadStatus {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 4) {
+			return x.xxx_hidden_UploadStatus
+		}
+	}
+	return UploadStatus_UPLOAD_STATUS_UNSPECIFIED
+}
+
+func (x *StartBinaryMultipartUploadResponse) GetUploadedParts() []*MultipartUploadPart {
+	if x != nil {
+		if x.xxx_hidden_UploadedParts != nil {
+			return *x.xxx_hidden_UploadedParts
+		}
+	}
+	return nil
+}
+
+func (x *StartBinaryMultipartUploadResponse) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 6)
+}
+
+func (x *StartBinaryMultipartUploadResponse) SetRecordId(v string) {
+	x.xxx_hidden_RecordId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 6)
+}
+
+func (x *StartBinaryMultipartUploadResponse) SetVersion(v int64) {
+	x.xxx_hidden_Version = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 6)
+}
+
+func (x *StartBinaryMultipartUploadResponse) SetPartSize(v int64) {
+	x.xxx_hidden_PartSize = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
+}
+
+func (x *StartBinaryMultipartUploadResponse) SetUploadStatus(v UploadStatus) {
+	x.xxx_hidden_UploadStatus = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 6)
+}
+
+func (x *StartBinaryMultipartUploadResponse) SetUploadedParts(v []*MultipartUploadPart) {
+	x.xxx_hidden_UploadedParts = &v
+}
+
+func (x *StartBinaryMultipartUploadResponse) HasUploadId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *StartBinaryMultipartUploadResponse) HasRecordId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *StartBinaryMultipartUploadResponse) HasVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *StartBinaryMultipartUploadResponse) HasPartSize() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
+func (x *StartBinaryMultipartUploadResponse) HasUploadStatus() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
+}
+
+func (x *StartBinaryMultipartUploadResponse) ClearUploadId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_UploadId = nil
+}
+
+func (x *StartBinaryMultipartUploadResponse) ClearRecordId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_RecordId = nil
+}
+
+func (x *StartBinaryMultipartUploadResponse) ClearVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_Version = 0
+}
+
+func (x *StartBinaryMultipartUploadResponse) ClearPartSize() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_PartSize = 0
+}
+
+func (x *StartBinaryMultipartUploadResponse) ClearUploadStatus() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
+	x.xxx_hidden_UploadStatus = UploadStatus_UPLOAD_STATUS_UNSPECIFIED
+}
+
+type StartBinaryMultipartUploadResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UploadId      *string
+	RecordId      *string
+	Version       *int64
+	PartSize      *int64
+	UploadStatus  *UploadStatus
+	UploadedParts []*MultipartUploadPart
+}
+
+func (b0 StartBinaryMultipartUploadResponse_builder) Build() *StartBinaryMultipartUploadResponse {
+	m0 := &StartBinaryMultipartUploadResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 6)
+		x.xxx_hidden_UploadId = b.UploadId
+	}
+	if b.RecordId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 6)
+		x.xxx_hidden_RecordId = b.RecordId
+	}
+	if b.Version != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 6)
+		x.xxx_hidden_Version = *b.Version
+	}
+	if b.PartSize != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 6)
+		x.xxx_hidden_PartSize = *b.PartSize
+	}
+	if b.UploadStatus != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 6)
+		x.xxx_hidden_UploadStatus = *b.UploadStatus
+	}
+	x.xxx_hidden_UploadedParts = &b.UploadedParts
+	return m0
+}
+
+type GetBinaryMultipartUploadStatusRequest struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UploadId    *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *GetBinaryMultipartUploadStatusRequest) Reset() {
+	*x = GetBinaryMultipartUploadStatusRequest{}
+	mi := &file_api_records_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBinaryMultipartUploadStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBinaryMultipartUploadStatusRequest) ProtoMessage() {}
+
+func (x *GetBinaryMultipartUploadStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *GetBinaryMultipartUploadStatusRequest) GetUploadId() string {
+	if x != nil {
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *GetBinaryMultipartUploadStatusRequest) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *GetBinaryMultipartUploadStatusRequest) HasUploadId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *GetBinaryMultipartUploadStatusRequest) ClearUploadId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_UploadId = nil
+}
+
+type GetBinaryMultipartUploadStatusRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UploadId *string
+}
+
+func (b0 GetBinaryMultipartUploadStatusRequest_builder) Build() *GetBinaryMultipartUploadStatusRequest {
+	m0 := &GetBinaryMultipartUploadStatusRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_UploadId = b.UploadId
+	}
+	return m0
+}
+
+type GetBinaryMultipartUploadStatusResponse struct {
+	state                    protoimpl.MessageState  `protogen:"opaque.v1"`
+	xxx_hidden_UploadId      *string                 `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	xxx_hidden_RecordId      *string                 `protobuf:"bytes,2,opt,name=record_id,json=recordId"`
+	xxx_hidden_Version       int64                   `protobuf:"varint,3,opt,name=version"`
+	xxx_hidden_EncryptedSize int64                   `protobuf:"varint,4,opt,name=encrypted_size,json=encryptedSize"`
+	xxx_hidden_PartSize      int64                   `protobuf:"varint,5,opt,name=part_size,json=partSize"`
+	xxx_hidden_UploadStatus  UploadStatus            `protobuf:"varint,6,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
+	xxx_hidden_UploadedParts *[]*MultipartUploadPart `protobuf:"bytes,7,rep,name=uploaded_parts,json=uploadedParts"`
+	XXX_raceDetectHookData   protoimpl.RaceDetectHookData
+	XXX_presence             [1]uint32
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) Reset() {
+	*x = GetBinaryMultipartUploadStatusResponse{}
+	mi := &file_api_records_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBinaryMultipartUploadStatusResponse) ProtoMessage() {}
+
+func (x *GetBinaryMultipartUploadStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) GetUploadId() string {
+	if x != nil {
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) GetRecordId() string {
+	if x != nil {
+		if x.xxx_hidden_RecordId != nil {
+			return *x.xxx_hidden_RecordId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) GetVersion() int64 {
+	if x != nil {
+		return x.xxx_hidden_Version
+	}
+	return 0
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) GetEncryptedSize() int64 {
+	if x != nil {
+		return x.xxx_hidden_EncryptedSize
+	}
+	return 0
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) GetPartSize() int64 {
+	if x != nil {
+		return x.xxx_hidden_PartSize
+	}
+	return 0
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) GetUploadStatus() UploadStatus {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 5) {
+			return x.xxx_hidden_UploadStatus
+		}
+	}
+	return UploadStatus_UPLOAD_STATUS_UNSPECIFIED
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) GetUploadedParts() []*MultipartUploadPart {
+	if x != nil {
+		if x.xxx_hidden_UploadedParts != nil {
+			return *x.xxx_hidden_UploadedParts
+		}
+	}
+	return nil
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 7)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) SetRecordId(v string) {
+	x.xxx_hidden_RecordId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 7)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) SetVersion(v int64) {
+	x.xxx_hidden_Version = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 7)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) SetEncryptedSize(v int64) {
+	x.xxx_hidden_EncryptedSize = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 7)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) SetPartSize(v int64) {
+	x.xxx_hidden_PartSize = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 7)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) SetUploadStatus(v UploadStatus) {
+	x.xxx_hidden_UploadStatus = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 7)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) SetUploadedParts(v []*MultipartUploadPart) {
+	x.xxx_hidden_UploadedParts = &v
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) HasUploadId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) HasRecordId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) HasVersion() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) HasEncryptedSize() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) HasPartSize() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) HasUploadStatus() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) ClearUploadId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_UploadId = nil
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) ClearRecordId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_RecordId = nil
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) ClearVersion() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_Version = 0
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) ClearEncryptedSize() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_EncryptedSize = 0
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) ClearPartSize() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
+	x.xxx_hidden_PartSize = 0
+}
+
+func (x *GetBinaryMultipartUploadStatusResponse) ClearUploadStatus() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 5)
+	x.xxx_hidden_UploadStatus = UploadStatus_UPLOAD_STATUS_UNSPECIFIED
+}
+
+type GetBinaryMultipartUploadStatusResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UploadId      *string
+	RecordId      *string
+	Version       *int64
+	EncryptedSize *int64
+	PartSize      *int64
+	UploadStatus  *UploadStatus
+	UploadedParts []*MultipartUploadPart
+}
+
+func (b0 GetBinaryMultipartUploadStatusResponse_builder) Build() *GetBinaryMultipartUploadStatusResponse {
+	m0 := &GetBinaryMultipartUploadStatusResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 7)
+		x.xxx_hidden_UploadId = b.UploadId
+	}
+	if b.RecordId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 7)
+		x.xxx_hidden_RecordId = b.RecordId
+	}
+	if b.Version != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 7)
+		x.xxx_hidden_Version = *b.Version
+	}
+	if b.EncryptedSize != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 7)
+		x.xxx_hidden_EncryptedSize = *b.EncryptedSize
+	}
+	if b.PartSize != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 7)
+		x.xxx_hidden_PartSize = *b.PartSize
+	}
+	if b.UploadStatus != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 7)
+		x.xxx_hidden_UploadStatus = *b.UploadStatus
+	}
+	x.xxx_hidden_UploadedParts = &b.UploadedParts
+	return m0
+}
+
+type UploadBinaryMultipartPartRequest struct {
+	state              protoimpl.MessageState                     `protogen:"opaque.v1"`
+	xxx_hidden_Payload isUploadBinaryMultipartPartRequest_Payload `protobuf_oneof:"payload"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *UploadBinaryMultipartPartRequest) Reset() {
+	*x = UploadBinaryMultipartPartRequest{}
+	mi := &file_api_records_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UploadBinaryMultipartPartRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UploadBinaryMultipartPartRequest) ProtoMessage() {}
+
+func (x *UploadBinaryMultipartPartRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *UploadBinaryMultipartPartRequest) GetMetadata() *UploadBinaryMultipartPartMetadata {
+	if x != nil {
+		if x, ok := x.xxx_hidden_Payload.(*uploadBinaryMultipartPartRequest_Metadata); ok {
+			return x.Metadata
+		}
+	}
+	return nil
+}
+
+func (x *UploadBinaryMultipartPartRequest) GetChunk() []byte {
+	if x != nil {
+		if x, ok := x.xxx_hidden_Payload.(*uploadBinaryMultipartPartRequest_Chunk); ok {
+			return x.Chunk
+		}
+	}
+	return nil
+}
+
+func (x *UploadBinaryMultipartPartRequest) SetMetadata(v *UploadBinaryMultipartPartMetadata) {
+	if v == nil {
+		x.xxx_hidden_Payload = nil
+		return
+	}
+	x.xxx_hidden_Payload = &uploadBinaryMultipartPartRequest_Metadata{v}
+}
+
+func (x *UploadBinaryMultipartPartRequest) SetChunk(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_Payload = &uploadBinaryMultipartPartRequest_Chunk{v}
+}
+
+func (x *UploadBinaryMultipartPartRequest) HasPayload() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Payload != nil
+}
+
+func (x *UploadBinaryMultipartPartRequest) HasMetadata() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Payload.(*uploadBinaryMultipartPartRequest_Metadata)
+	return ok
+}
+
+func (x *UploadBinaryMultipartPartRequest) HasChunk() bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.xxx_hidden_Payload.(*uploadBinaryMultipartPartRequest_Chunk)
+	return ok
+}
+
+func (x *UploadBinaryMultipartPartRequest) ClearPayload() {
+	x.xxx_hidden_Payload = nil
+}
+
+func (x *UploadBinaryMultipartPartRequest) ClearMetadata() {
+	if _, ok := x.xxx_hidden_Payload.(*uploadBinaryMultipartPartRequest_Metadata); ok {
+		x.xxx_hidden_Payload = nil
+	}
+}
+
+func (x *UploadBinaryMultipartPartRequest) ClearChunk() {
+	if _, ok := x.xxx_hidden_Payload.(*uploadBinaryMultipartPartRequest_Chunk); ok {
+		x.xxx_hidden_Payload = nil
+	}
+}
+
+const UploadBinaryMultipartPartRequest_Payload_not_set_case case_UploadBinaryMultipartPartRequest_Payload = 0
+const UploadBinaryMultipartPartRequest_Metadata_case case_UploadBinaryMultipartPartRequest_Payload = 1
+const UploadBinaryMultipartPartRequest_Chunk_case case_UploadBinaryMultipartPartRequest_Payload = 2
+
+func (x *UploadBinaryMultipartPartRequest) WhichPayload() case_UploadBinaryMultipartPartRequest_Payload {
+	if x == nil {
+		return UploadBinaryMultipartPartRequest_Payload_not_set_case
+	}
+	switch x.xxx_hidden_Payload.(type) {
+	case *uploadBinaryMultipartPartRequest_Metadata:
+		return UploadBinaryMultipartPartRequest_Metadata_case
+	case *uploadBinaryMultipartPartRequest_Chunk:
+		return UploadBinaryMultipartPartRequest_Chunk_case
+	default:
+		return UploadBinaryMultipartPartRequest_Payload_not_set_case
+	}
+}
+
+type UploadBinaryMultipartPartRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	// Fields of oneof xxx_hidden_Payload:
+	Metadata *UploadBinaryMultipartPartMetadata
+	Chunk    []byte
+	// -- end of xxx_hidden_Payload
+}
+
+func (b0 UploadBinaryMultipartPartRequest_builder) Build() *UploadBinaryMultipartPartRequest {
+	m0 := &UploadBinaryMultipartPartRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Metadata != nil {
+		x.xxx_hidden_Payload = &uploadBinaryMultipartPartRequest_Metadata{b.Metadata}
+	}
+	if b.Chunk != nil {
+		x.xxx_hidden_Payload = &uploadBinaryMultipartPartRequest_Chunk{b.Chunk}
+	}
+	return m0
+}
+
+type case_UploadBinaryMultipartPartRequest_Payload protoreflect.FieldNumber
+
+func (x case_UploadBinaryMultipartPartRequest_Payload) String() string {
+	md := file_api_records_proto_msgTypes[18].Descriptor()
+	if x == 0 {
+		return "not set"
+	}
+	return protoimpl.X.MessageFieldStringOf(md, protoreflect.FieldNumber(x))
+}
+
+type isUploadBinaryMultipartPartRequest_Payload interface {
+	isUploadBinaryMultipartPartRequest_Payload()
+}
+
+type uploadBinaryMultipartPartRequest_Metadata struct {
+	Metadata *UploadBinaryMultipartPartMetadata `protobuf:"bytes,1,opt,name=metadata,oneof"`
+}
+
+type uploadBinaryMultipartPartRequest_Chunk struct {
+	Chunk []byte `protobuf:"bytes,2,opt,name=chunk,oneof"`
+}
+
+func (*uploadBinaryMultipartPartRequest_Metadata) isUploadBinaryMultipartPartRequest_Payload() {}
+
+func (*uploadBinaryMultipartPartRequest_Chunk) isUploadBinaryMultipartPartRequest_Payload() {}
+
+type UploadBinaryMultipartPartMetadata struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UploadId    *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	xxx_hidden_PartNumber  int32                  `protobuf:"varint,2,opt,name=part_number,json=partNumber"`
+	xxx_hidden_PartSize    int64                  `protobuf:"varint,3,opt,name=part_size,json=partSize"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *UploadBinaryMultipartPartMetadata) Reset() {
+	*x = UploadBinaryMultipartPartMetadata{}
+	mi := &file_api_records_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UploadBinaryMultipartPartMetadata) ProtoMessage() {}
+
+func (x *UploadBinaryMultipartPartMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) GetUploadId() string {
+	if x != nil {
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *UploadBinaryMultipartPartMetadata) GetPartNumber() int32 {
+	if x != nil {
+		return x.xxx_hidden_PartNumber
+	}
+	return 0
+}
+
+func (x *UploadBinaryMultipartPartMetadata) GetPartSize() int64 {
+	if x != nil {
+		return x.xxx_hidden_PartSize
+	}
+	return 0
+}
+
+func (x *UploadBinaryMultipartPartMetadata) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) SetPartNumber(v int32) {
+	x.xxx_hidden_PartNumber = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) SetPartSize(v int64) {
+	x.xxx_hidden_PartSize = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) HasUploadId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) HasPartNumber() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) HasPartSize() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *UploadBinaryMultipartPartMetadata) ClearUploadId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_UploadId = nil
+}
+
+func (x *UploadBinaryMultipartPartMetadata) ClearPartNumber() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_PartNumber = 0
+}
+
+func (x *UploadBinaryMultipartPartMetadata) ClearPartSize() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_PartSize = 0
+}
+
+type UploadBinaryMultipartPartMetadata_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UploadId   *string
+	PartNumber *int32
+	PartSize   *int64
+}
+
+func (b0 UploadBinaryMultipartPartMetadata_builder) Build() *UploadBinaryMultipartPartMetadata {
+	m0 := &UploadBinaryMultipartPartMetadata{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_UploadId = b.UploadId
+	}
+	if b.PartNumber != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		x.xxx_hidden_PartNumber = *b.PartNumber
+	}
+	if b.PartSize != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		x.xxx_hidden_PartSize = *b.PartSize
+	}
+	return m0
+}
+
+type UploadBinaryMultipartPartResponse struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UploadId    *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	xxx_hidden_Part        *MultipartUploadPart   `protobuf:"bytes,2,opt,name=part"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *UploadBinaryMultipartPartResponse) Reset() {
+	*x = UploadBinaryMultipartPartResponse{}
+	mi := &file_api_records_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UploadBinaryMultipartPartResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UploadBinaryMultipartPartResponse) ProtoMessage() {}
+
+func (x *UploadBinaryMultipartPartResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *UploadBinaryMultipartPartResponse) GetUploadId() string {
+	if x != nil {
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *UploadBinaryMultipartPartResponse) GetPart() *MultipartUploadPart {
+	if x != nil {
+		return x.xxx_hidden_Part
+	}
+	return nil
+}
+
+func (x *UploadBinaryMultipartPartResponse) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+}
+
+func (x *UploadBinaryMultipartPartResponse) SetPart(v *MultipartUploadPart) {
+	x.xxx_hidden_Part = v
+}
+
+func (x *UploadBinaryMultipartPartResponse) HasUploadId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *UploadBinaryMultipartPartResponse) HasPart() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Part != nil
+}
+
+func (x *UploadBinaryMultipartPartResponse) ClearUploadId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_UploadId = nil
+}
+
+func (x *UploadBinaryMultipartPartResponse) ClearPart() {
+	x.xxx_hidden_Part = nil
+}
+
+type UploadBinaryMultipartPartResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UploadId *string
+	Part     *MultipartUploadPart
+}
+
+func (b0 UploadBinaryMultipartPartResponse_builder) Build() *UploadBinaryMultipartPartResponse {
+	m0 := &UploadBinaryMultipartPartResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
+		x.xxx_hidden_UploadId = b.UploadId
+	}
+	x.xxx_hidden_Part = b.Part
+	return m0
+}
+
+type CompleteBinaryMultipartUploadRequest struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UploadId    *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *CompleteBinaryMultipartUploadRequest) Reset() {
+	*x = CompleteBinaryMultipartUploadRequest{}
+	mi := &file_api_records_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteBinaryMultipartUploadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteBinaryMultipartUploadRequest) ProtoMessage() {}
+
+func (x *CompleteBinaryMultipartUploadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *CompleteBinaryMultipartUploadRequest) GetUploadId() string {
+	if x != nil {
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *CompleteBinaryMultipartUploadRequest) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+}
+
+func (x *CompleteBinaryMultipartUploadRequest) HasUploadId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *CompleteBinaryMultipartUploadRequest) ClearUploadId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_UploadId = nil
+}
+
+type CompleteBinaryMultipartUploadRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UploadId *string
+}
+
+func (b0 CompleteBinaryMultipartUploadRequest_builder) Build() *CompleteBinaryMultipartUploadRequest {
+	m0 := &CompleteBinaryMultipartUploadRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_UploadId = b.UploadId
+	}
+	return m0
+}
+
+type CompleteBinaryMultipartUploadResponse struct {
 	state                   protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_RecordId     *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
 	xxx_hidden_Version      int64                  `protobuf:"varint,2,opt,name=version"`
@@ -2351,21 +3371,21 @@ type CreateBinaryRecordResponse struct {
 	sizeCache               protoimpl.SizeCache
 }
 
-func (x *CreateBinaryRecordResponse) Reset() {
-	*x = CreateBinaryRecordResponse{}
-	mi := &file_api_records_proto_msgTypes[15]
+func (x *CompleteBinaryMultipartUploadResponse) Reset() {
+	*x = CompleteBinaryMultipartUploadResponse{}
+	mi := &file_api_records_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateBinaryRecordResponse) String() string {
+func (x *CompleteBinaryMultipartUploadResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateBinaryRecordResponse) ProtoMessage() {}
+func (*CompleteBinaryMultipartUploadResponse) ProtoMessage() {}
 
-func (x *CreateBinaryRecordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[15]
+func (x *CompleteBinaryMultipartUploadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2376,7 +3396,7 @@ func (x *CreateBinaryRecordResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *CreateBinaryRecordResponse) GetRecordId() string {
+func (x *CompleteBinaryMultipartUploadResponse) GetRecordId() string {
 	if x != nil {
 		if x.xxx_hidden_RecordId != nil {
 			return *x.xxx_hidden_RecordId
@@ -2386,14 +3406,14 @@ func (x *CreateBinaryRecordResponse) GetRecordId() string {
 	return ""
 }
 
-func (x *CreateBinaryRecordResponse) GetVersion() int64 {
+func (x *CompleteBinaryMultipartUploadResponse) GetVersion() int64 {
 	if x != nil {
 		return x.xxx_hidden_Version
 	}
 	return 0
 }
 
-func (x *CreateBinaryRecordResponse) GetUploadStatus() UploadStatus {
+func (x *CompleteBinaryMultipartUploadResponse) GetUploadStatus() UploadStatus {
 	if x != nil {
 		if protoimpl.X.Present(&(x.XXX_presence[0]), 2) {
 			return x.xxx_hidden_UploadStatus
@@ -2402,58 +3422,58 @@ func (x *CreateBinaryRecordResponse) GetUploadStatus() UploadStatus {
 	return UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
-func (x *CreateBinaryRecordResponse) SetRecordId(v string) {
+func (x *CompleteBinaryMultipartUploadResponse) SetRecordId(v string) {
 	x.xxx_hidden_RecordId = &v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
 }
 
-func (x *CreateBinaryRecordResponse) SetVersion(v int64) {
+func (x *CompleteBinaryMultipartUploadResponse) SetVersion(v int64) {
 	x.xxx_hidden_Version = v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
 }
 
-func (x *CreateBinaryRecordResponse) SetUploadStatus(v UploadStatus) {
+func (x *CompleteBinaryMultipartUploadResponse) SetUploadStatus(v UploadStatus) {
 	x.xxx_hidden_UploadStatus = v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
 }
 
-func (x *CreateBinaryRecordResponse) HasRecordId() bool {
+func (x *CompleteBinaryMultipartUploadResponse) HasRecordId() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
-func (x *CreateBinaryRecordResponse) HasVersion() bool {
+func (x *CompleteBinaryMultipartUploadResponse) HasVersion() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
 }
 
-func (x *CreateBinaryRecordResponse) HasUploadStatus() bool {
+func (x *CompleteBinaryMultipartUploadResponse) HasUploadStatus() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
-func (x *CreateBinaryRecordResponse) ClearRecordId() {
+func (x *CompleteBinaryMultipartUploadResponse) ClearRecordId() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_RecordId = nil
 }
 
-func (x *CreateBinaryRecordResponse) ClearVersion() {
+func (x *CompleteBinaryMultipartUploadResponse) ClearVersion() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
 	x.xxx_hidden_Version = 0
 }
 
-func (x *CreateBinaryRecordResponse) ClearUploadStatus() {
+func (x *CompleteBinaryMultipartUploadResponse) ClearUploadStatus() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
 	x.xxx_hidden_UploadStatus = UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
-type CreateBinaryRecordResponse_builder struct {
+type CompleteBinaryMultipartUploadResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	RecordId     *string
@@ -2461,8 +3481,8 @@ type CreateBinaryRecordResponse_builder struct {
 	UploadStatus *UploadStatus
 }
 
-func (b0 CreateBinaryRecordResponse_builder) Build() *CreateBinaryRecordResponse {
-	m0 := &CreateBinaryRecordResponse{}
+func (b0 CompleteBinaryMultipartUploadResponse_builder) Build() *CompleteBinaryMultipartUploadResponse {
+	m0 := &CompleteBinaryMultipartUploadResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.RecordId != nil {
@@ -2480,28 +3500,30 @@ func (b0 CreateBinaryRecordResponse_builder) Build() *CreateBinaryRecordResponse
 	return m0
 }
 
-type UpdateBinaryRecordRequest struct {
-	state              protoimpl.MessageState              `protogen:"opaque.v1"`
-	xxx_hidden_Payload isUpdateBinaryRecordRequest_Payload `protobuf_oneof:"payload"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+type AbortBinaryMultipartUploadRequest struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UploadId    *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
-func (x *UpdateBinaryRecordRequest) Reset() {
-	*x = UpdateBinaryRecordRequest{}
-	mi := &file_api_records_proto_msgTypes[16]
+func (x *AbortBinaryMultipartUploadRequest) Reset() {
+	*x = AbortBinaryMultipartUploadRequest{}
+	mi := &file_api_records_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UpdateBinaryRecordRequest) String() string {
+func (x *AbortBinaryMultipartUploadRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UpdateBinaryRecordRequest) ProtoMessage() {}
+func (*AbortBinaryMultipartUploadRequest) ProtoMessage() {}
 
-func (x *UpdateBinaryRecordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[16]
+func (x *AbortBinaryMultipartUploadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2512,472 +3534,75 @@ func (x *UpdateBinaryRecordRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *UpdateBinaryRecordRequest) GetMetadata() *UpdateBinaryRecordMetadata {
+func (x *AbortBinaryMultipartUploadRequest) GetUploadId() string {
 	if x != nil {
-		if x, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *UpdateBinaryRecordRequest) GetChunk() []byte {
-	if x != nil {
-		if x, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Chunk); ok {
-			return x.Chunk
-		}
-	}
-	return nil
-}
-
-func (x *UpdateBinaryRecordRequest) SetMetadata(v *UpdateBinaryRecordMetadata) {
-	if v == nil {
-		x.xxx_hidden_Payload = nil
-		return
-	}
-	x.xxx_hidden_Payload = &updateBinaryRecordRequest_Metadata{v}
-}
-
-func (x *UpdateBinaryRecordRequest) SetChunk(v []byte) {
-	if v == nil {
-		v = []byte{}
-	}
-	x.xxx_hidden_Payload = &updateBinaryRecordRequest_Chunk{v}
-}
-
-func (x *UpdateBinaryRecordRequest) HasPayload() bool {
-	if x == nil {
-		return false
-	}
-	return x.xxx_hidden_Payload != nil
-}
-
-func (x *UpdateBinaryRecordRequest) HasMetadata() bool {
-	if x == nil {
-		return false
-	}
-	_, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Metadata)
-	return ok
-}
-
-func (x *UpdateBinaryRecordRequest) HasChunk() bool {
-	if x == nil {
-		return false
-	}
-	_, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Chunk)
-	return ok
-}
-
-func (x *UpdateBinaryRecordRequest) ClearPayload() {
-	x.xxx_hidden_Payload = nil
-}
-
-func (x *UpdateBinaryRecordRequest) ClearMetadata() {
-	if _, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Metadata); ok {
-		x.xxx_hidden_Payload = nil
-	}
-}
-
-func (x *UpdateBinaryRecordRequest) ClearChunk() {
-	if _, ok := x.xxx_hidden_Payload.(*updateBinaryRecordRequest_Chunk); ok {
-		x.xxx_hidden_Payload = nil
-	}
-}
-
-const UpdateBinaryRecordRequest_Payload_not_set_case case_UpdateBinaryRecordRequest_Payload = 0
-const UpdateBinaryRecordRequest_Metadata_case case_UpdateBinaryRecordRequest_Payload = 1
-const UpdateBinaryRecordRequest_Chunk_case case_UpdateBinaryRecordRequest_Payload = 2
-
-func (x *UpdateBinaryRecordRequest) WhichPayload() case_UpdateBinaryRecordRequest_Payload {
-	if x == nil {
-		return UpdateBinaryRecordRequest_Payload_not_set_case
-	}
-	switch x.xxx_hidden_Payload.(type) {
-	case *updateBinaryRecordRequest_Metadata:
-		return UpdateBinaryRecordRequest_Metadata_case
-	case *updateBinaryRecordRequest_Chunk:
-		return UpdateBinaryRecordRequest_Chunk_case
-	default:
-		return UpdateBinaryRecordRequest_Payload_not_set_case
-	}
-}
-
-type UpdateBinaryRecordRequest_builder struct {
-	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
-
-	// Fields of oneof xxx_hidden_Payload:
-	Metadata *UpdateBinaryRecordMetadata
-	Chunk    []byte
-	// -- end of xxx_hidden_Payload
-}
-
-func (b0 UpdateBinaryRecordRequest_builder) Build() *UpdateBinaryRecordRequest {
-	m0 := &UpdateBinaryRecordRequest{}
-	b, x := &b0, m0
-	_, _ = b, x
-	if b.Metadata != nil {
-		x.xxx_hidden_Payload = &updateBinaryRecordRequest_Metadata{b.Metadata}
-	}
-	if b.Chunk != nil {
-		x.xxx_hidden_Payload = &updateBinaryRecordRequest_Chunk{b.Chunk}
-	}
-	return m0
-}
-
-type case_UpdateBinaryRecordRequest_Payload protoreflect.FieldNumber
-
-func (x case_UpdateBinaryRecordRequest_Payload) String() string {
-	md := file_api_records_proto_msgTypes[16].Descriptor()
-	if x == 0 {
-		return "not set"
-	}
-	return protoimpl.X.MessageFieldStringOf(md, protoreflect.FieldNumber(x))
-}
-
-type isUpdateBinaryRecordRequest_Payload interface {
-	isUpdateBinaryRecordRequest_Payload()
-}
-
-type updateBinaryRecordRequest_Metadata struct {
-	Metadata *UpdateBinaryRecordMetadata `protobuf:"bytes,1,opt,name=metadata,oneof"`
-}
-
-type updateBinaryRecordRequest_Chunk struct {
-	Chunk []byte `protobuf:"bytes,2,opt,name=chunk,oneof"`
-}
-
-func (*updateBinaryRecordRequest_Metadata) isUpdateBinaryRecordRequest_Payload() {}
-
-func (*updateBinaryRecordRequest_Chunk) isUpdateBinaryRecordRequest_Payload() {}
-
-type UpdateBinaryRecordMetadata struct {
-	state                       protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_RecordId         *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
-	xxx_hidden_Title            *string                `protobuf:"bytes,2,opt,name=title"`
-	xxx_hidden_Description      *string                `protobuf:"bytes,3,opt,name=description"`
-	xxx_hidden_EncryptedDek     []byte                 `protobuf:"bytes,4,opt,name=encrypted_dek,json=encryptedDek"`
-	xxx_hidden_EncryptedPayload []byte                 `protobuf:"bytes,5,opt,name=encrypted_payload,json=encryptedPayload"`
-	xxx_hidden_EncryptedSize    int64                  `protobuf:"varint,6,opt,name=encrypted_size,json=encryptedSize"`
-	xxx_hidden_UploadMode       UploadMode             `protobuf:"varint,7,opt,name=upload_mode,json=uploadMode,enum=gophkeeper.v1.UploadMode"`
-	xxx_hidden_ExpectedVersion  int64                  `protobuf:"varint,8,opt,name=expected_version,json=expectedVersion"`
-	XXX_raceDetectHookData      protoimpl.RaceDetectHookData
-	XXX_presence                [1]uint32
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
-}
-
-func (x *UpdateBinaryRecordMetadata) Reset() {
-	*x = UpdateBinaryRecordMetadata{}
-	mi := &file_api_records_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateBinaryRecordMetadata) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateBinaryRecordMetadata) ProtoMessage() {}
-
-func (x *UpdateBinaryRecordMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-func (x *UpdateBinaryRecordMetadata) GetRecordId() string {
-	if x != nil {
-		if x.xxx_hidden_RecordId != nil {
-			return *x.xxx_hidden_RecordId
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
 		}
 		return ""
 	}
 	return ""
 }
 
-func (x *UpdateBinaryRecordMetadata) GetTitle() string {
-	if x != nil {
-		if x.xxx_hidden_Title != nil {
-			return *x.xxx_hidden_Title
-		}
-		return ""
-	}
-	return ""
+func (x *AbortBinaryMultipartUploadRequest) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
 }
 
-func (x *UpdateBinaryRecordMetadata) GetDescription() string {
-	if x != nil {
-		if x.xxx_hidden_Description != nil {
-			return *x.xxx_hidden_Description
-		}
-		return ""
-	}
-	return ""
-}
-
-func (x *UpdateBinaryRecordMetadata) GetEncryptedDek() []byte {
-	if x != nil {
-		return x.xxx_hidden_EncryptedDek
-	}
-	return nil
-}
-
-func (x *UpdateBinaryRecordMetadata) GetEncryptedPayload() []byte {
-	if x != nil {
-		return x.xxx_hidden_EncryptedPayload
-	}
-	return nil
-}
-
-func (x *UpdateBinaryRecordMetadata) GetEncryptedSize() int64 {
-	if x != nil {
-		return x.xxx_hidden_EncryptedSize
-	}
-	return 0
-}
-
-func (x *UpdateBinaryRecordMetadata) GetUploadMode() UploadMode {
-	if x != nil {
-		if protoimpl.X.Present(&(x.XXX_presence[0]), 6) {
-			return x.xxx_hidden_UploadMode
-		}
-	}
-	return UploadMode_UPLOAD_MODE_UNSPECIFIED
-}
-
-func (x *UpdateBinaryRecordMetadata) GetExpectedVersion() int64 {
-	if x != nil {
-		return x.xxx_hidden_ExpectedVersion
-	}
-	return 0
-}
-
-func (x *UpdateBinaryRecordMetadata) SetRecordId(v string) {
-	x.xxx_hidden_RecordId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) SetTitle(v string) {
-	x.xxx_hidden_Title = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) SetDescription(v string) {
-	x.xxx_hidden_Description = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) SetEncryptedDek(v []byte) {
-	if v == nil {
-		v = []byte{}
-	}
-	x.xxx_hidden_EncryptedDek = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) SetEncryptedPayload(v []byte) {
-	if v == nil {
-		v = []byte{}
-	}
-	x.xxx_hidden_EncryptedPayload = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) SetEncryptedSize(v int64) {
-	x.xxx_hidden_EncryptedSize = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) SetUploadMode(v UploadMode) {
-	x.xxx_hidden_UploadMode = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) SetExpectedVersion(v int64) {
-	x.xxx_hidden_ExpectedVersion = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
-}
-
-func (x *UpdateBinaryRecordMetadata) HasRecordId() bool {
+func (x *AbortBinaryMultipartUploadRequest) HasUploadId() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
-func (x *UpdateBinaryRecordMetadata) HasTitle() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
-}
-
-func (x *UpdateBinaryRecordMetadata) HasDescription() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
-}
-
-func (x *UpdateBinaryRecordMetadata) HasEncryptedDek() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
-}
-
-func (x *UpdateBinaryRecordMetadata) HasEncryptedPayload() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
-}
-
-func (x *UpdateBinaryRecordMetadata) HasEncryptedSize() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
-}
-
-func (x *UpdateBinaryRecordMetadata) HasUploadMode() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 6)
-}
-
-func (x *UpdateBinaryRecordMetadata) HasExpectedVersion() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
-}
-
-func (x *UpdateBinaryRecordMetadata) ClearRecordId() {
+func (x *AbortBinaryMultipartUploadRequest) ClearUploadId() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
-	x.xxx_hidden_RecordId = nil
+	x.xxx_hidden_UploadId = nil
 }
 
-func (x *UpdateBinaryRecordMetadata) ClearTitle() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
-	x.xxx_hidden_Title = nil
-}
-
-func (x *UpdateBinaryRecordMetadata) ClearDescription() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
-	x.xxx_hidden_Description = nil
-}
-
-func (x *UpdateBinaryRecordMetadata) ClearEncryptedDek() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
-	x.xxx_hidden_EncryptedDek = nil
-}
-
-func (x *UpdateBinaryRecordMetadata) ClearEncryptedPayload() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
-	x.xxx_hidden_EncryptedPayload = nil
-}
-
-func (x *UpdateBinaryRecordMetadata) ClearEncryptedSize() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 5)
-	x.xxx_hidden_EncryptedSize = 0
-}
-
-func (x *UpdateBinaryRecordMetadata) ClearUploadMode() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
-	x.xxx_hidden_UploadMode = UploadMode_UPLOAD_MODE_UNSPECIFIED
-}
-
-func (x *UpdateBinaryRecordMetadata) ClearExpectedVersion() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 7)
-	x.xxx_hidden_ExpectedVersion = 0
-}
-
-type UpdateBinaryRecordMetadata_builder struct {
+type AbortBinaryMultipartUploadRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	RecordId         *string
-	Title            *string
-	Description      *string
-	EncryptedDek     []byte
-	EncryptedPayload []byte
-	EncryptedSize    *int64
-	UploadMode       *UploadMode
-	ExpectedVersion  *int64
+	UploadId *string
 }
 
-func (b0 UpdateBinaryRecordMetadata_builder) Build() *UpdateBinaryRecordMetadata {
-	m0 := &UpdateBinaryRecordMetadata{}
+func (b0 AbortBinaryMultipartUploadRequest_builder) Build() *AbortBinaryMultipartUploadRequest {
+	m0 := &AbortBinaryMultipartUploadRequest{}
 	b, x := &b0, m0
 	_, _ = b, x
-	if b.RecordId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 8)
-		x.xxx_hidden_RecordId = b.RecordId
-	}
-	if b.Title != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 8)
-		x.xxx_hidden_Title = b.Title
-	}
-	if b.Description != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 8)
-		x.xxx_hidden_Description = b.Description
-	}
-	if b.EncryptedDek != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 8)
-		x.xxx_hidden_EncryptedDek = b.EncryptedDek
-	}
-	if b.EncryptedPayload != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 8)
-		x.xxx_hidden_EncryptedPayload = b.EncryptedPayload
-	}
-	if b.EncryptedSize != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 8)
-		x.xxx_hidden_EncryptedSize = *b.EncryptedSize
-	}
-	if b.UploadMode != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
-		x.xxx_hidden_UploadMode = *b.UploadMode
-	}
-	if b.ExpectedVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 8)
-		x.xxx_hidden_ExpectedVersion = *b.ExpectedVersion
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		x.xxx_hidden_UploadId = b.UploadId
 	}
 	return m0
 }
 
-type UpdateBinaryRecordResponse struct {
+type AbortBinaryMultipartUploadResponse struct {
 	state                   protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_RecordId     *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
-	xxx_hidden_Version      int64                  `protobuf:"varint,2,opt,name=version"`
-	xxx_hidden_UploadStatus UploadStatus           `protobuf:"varint,3,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
+	xxx_hidden_UploadId     *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	xxx_hidden_UploadStatus UploadStatus           `protobuf:"varint,2,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
 	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
 	XXX_presence            [1]uint32
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
 
-func (x *UpdateBinaryRecordResponse) Reset() {
-	*x = UpdateBinaryRecordResponse{}
-	mi := &file_api_records_proto_msgTypes[18]
+func (x *AbortBinaryMultipartUploadResponse) Reset() {
+	*x = AbortBinaryMultipartUploadResponse{}
+	mi := &file_api_records_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UpdateBinaryRecordResponse) String() string {
+func (x *AbortBinaryMultipartUploadResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UpdateBinaryRecordResponse) ProtoMessage() {}
+func (*AbortBinaryMultipartUploadResponse) ProtoMessage() {}
 
-func (x *UpdateBinaryRecordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[18]
+func (x *AbortBinaryMultipartUploadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_records_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2988,105 +3613,76 @@ func (x *UpdateBinaryRecordResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *UpdateBinaryRecordResponse) GetRecordId() string {
+func (x *AbortBinaryMultipartUploadResponse) GetUploadId() string {
 	if x != nil {
-		if x.xxx_hidden_RecordId != nil {
-			return *x.xxx_hidden_RecordId
+		if x.xxx_hidden_UploadId != nil {
+			return *x.xxx_hidden_UploadId
 		}
 		return ""
 	}
 	return ""
 }
 
-func (x *UpdateBinaryRecordResponse) GetVersion() int64 {
+func (x *AbortBinaryMultipartUploadResponse) GetUploadStatus() UploadStatus {
 	if x != nil {
-		return x.xxx_hidden_Version
-	}
-	return 0
-}
-
-func (x *UpdateBinaryRecordResponse) GetUploadStatus() UploadStatus {
-	if x != nil {
-		if protoimpl.X.Present(&(x.XXX_presence[0]), 2) {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 1) {
 			return x.xxx_hidden_UploadStatus
 		}
 	}
 	return UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
-func (x *UpdateBinaryRecordResponse) SetRecordId(v string) {
-	x.xxx_hidden_RecordId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+func (x *AbortBinaryMultipartUploadResponse) SetUploadId(v string) {
+	x.xxx_hidden_UploadId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
 }
 
-func (x *UpdateBinaryRecordResponse) SetVersion(v int64) {
-	x.xxx_hidden_Version = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
-}
-
-func (x *UpdateBinaryRecordResponse) SetUploadStatus(v UploadStatus) {
+func (x *AbortBinaryMultipartUploadResponse) SetUploadStatus(v UploadStatus) {
 	x.xxx_hidden_UploadStatus = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
 }
 
-func (x *UpdateBinaryRecordResponse) HasRecordId() bool {
+func (x *AbortBinaryMultipartUploadResponse) HasUploadId() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
-func (x *UpdateBinaryRecordResponse) HasVersion() bool {
+func (x *AbortBinaryMultipartUploadResponse) HasUploadStatus() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
 }
 
-func (x *UpdateBinaryRecordResponse) HasUploadStatus() bool {
-	if x == nil {
-		return false
-	}
-	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
-}
-
-func (x *UpdateBinaryRecordResponse) ClearRecordId() {
+func (x *AbortBinaryMultipartUploadResponse) ClearUploadId() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
-	x.xxx_hidden_RecordId = nil
+	x.xxx_hidden_UploadId = nil
 }
 
-func (x *UpdateBinaryRecordResponse) ClearVersion() {
+func (x *AbortBinaryMultipartUploadResponse) ClearUploadStatus() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
-	x.xxx_hidden_Version = 0
-}
-
-func (x *UpdateBinaryRecordResponse) ClearUploadStatus() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
 	x.xxx_hidden_UploadStatus = UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
-type UpdateBinaryRecordResponse_builder struct {
+type AbortBinaryMultipartUploadResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	RecordId     *string
-	Version      *int64
+	UploadId     *string
 	UploadStatus *UploadStatus
 }
 
-func (b0 UpdateBinaryRecordResponse_builder) Build() *UpdateBinaryRecordResponse {
-	m0 := &UpdateBinaryRecordResponse{}
+func (b0 AbortBinaryMultipartUploadResponse_builder) Build() *AbortBinaryMultipartUploadResponse {
+	m0 := &AbortBinaryMultipartUploadResponse{}
 	b, x := &b0, m0
 	_, _ = b, x
-	if b.RecordId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
-		x.xxx_hidden_RecordId = b.RecordId
-	}
-	if b.Version != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
-		x.xxx_hidden_Version = *b.Version
+	if b.UploadId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
+		x.xxx_hidden_UploadId = b.UploadId
 	}
 	if b.UploadStatus != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
 		x.xxx_hidden_UploadStatus = *b.UploadStatus
 	}
 	return m0
@@ -3103,7 +3699,7 @@ type DownloadFileRequest struct {
 
 func (x *DownloadFileRequest) Reset() {
 	*x = DownloadFileRequest{}
-	mi := &file_api_records_proto_msgTypes[19]
+	mi := &file_api_records_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3115,7 +3711,7 @@ func (x *DownloadFileRequest) String() string {
 func (*DownloadFileRequest) ProtoMessage() {}
 
 func (x *DownloadFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[19]
+	mi := &file_api_records_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3181,7 +3777,7 @@ type DownloadFileResponse struct {
 
 func (x *DownloadFileResponse) Reset() {
 	*x = DownloadFileResponse{}
-	mi := &file_api_records_proto_msgTypes[20]
+	mi := &file_api_records_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3193,7 +3789,7 @@ func (x *DownloadFileResponse) String() string {
 func (*DownloadFileResponse) ProtoMessage() {}
 
 func (x *DownloadFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_records_proto_msgTypes[20]
+	mi := &file_api_records_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3311,41 +3907,61 @@ const file_api_records_proto_rawDesc = "" +
 	"\x13DeleteRecordRequest\x12\x1b\n" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\"3\n" +
 	"\x14DeleteRecordResponse\x12\x1b\n" +
-	"\trecord_id\x18\x01 \x01(\tR\brecordId\"\x87\x01\n" +
-	"\x19CreateBinaryRecordRequest\x12G\n" +
-	"\bmetadata\x18\x01 \x01(\v2).gophkeeper.v1.CreateBinaryRecordMetadataH\x00R\bmetadata\x12\x16\n" +
-	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\t\n" +
-	"\apayload\"\x89\x02\n" +
-	"\x1aCreateBinaryRecordMetadata\x12\x14\n" +
+	"\trecord_id\x18\x01 \x01(\tR\brecordId\"^\n" +
+	"\x13MultipartUploadPart\x12\x1f\n" +
+	"\vpart_number\x18\x01 \x01(\x05R\n" +
+	"partNumber\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x03R\x04size\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\"\xb9\x02\n" +
+	"!StartBinaryMultipartUploadRequest\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12#\n" +
 	"\rencrypted_dek\x18\x03 \x01(\fR\fencryptedDek\x12+\n" +
 	"\x11encrypted_payload\x18\x04 \x01(\fR\x10encryptedPayload\x12%\n" +
-	"\x0eencrypted_size\x18\x05 \x01(\x03R\rencryptedSize\x12:\n" +
-	"\vupload_mode\x18\x06 \x01(\x0e2\x19.gophkeeper.v1.UploadModeR\n" +
-	"uploadMode\"\x95\x01\n" +
-	"\x1aCreateBinaryRecordResponse\x12\x1b\n" +
-	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\x03R\aversion\x12@\n" +
-	"\rupload_status\x18\x03 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"\x87\x01\n" +
-	"\x19UpdateBinaryRecordRequest\x12G\n" +
-	"\bmetadata\x18\x01 \x01(\v2).gophkeeper.v1.UpdateBinaryRecordMetadataH\x00R\bmetadata\x12\x16\n" +
+	"\x0eencrypted_size\x18\x05 \x01(\x03R\rencryptedSize\x12\x1b\n" +
+	"\tpart_size\x18\x06 \x01(\x03R\bpartSize\x12\x1b\n" +
+	"\trecord_id\x18\a \x01(\tR\brecordId\x12)\n" +
+	"\x10expected_version\x18\b \x01(\x03R\x0fexpectedVersion\"\xa2\x02\n" +
+	"\"StartBinaryMultipartUploadResponse\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\x12\x1b\n" +
+	"\trecord_id\x18\x02 \x01(\tR\brecordId\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\x03R\aversion\x12\x1b\n" +
+	"\tpart_size\x18\x04 \x01(\x03R\bpartSize\x12@\n" +
+	"\rupload_status\x18\x05 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\x12I\n" +
+	"\x0euploaded_parts\x18\x06 \x03(\v2\".gophkeeper.v1.MultipartUploadPartR\ruploadedParts\"D\n" +
+	"%GetBinaryMultipartUploadStatusRequest\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\"\xcd\x02\n" +
+	"&GetBinaryMultipartUploadStatusResponse\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\x12\x1b\n" +
+	"\trecord_id\x18\x02 \x01(\tR\brecordId\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\x03R\aversion\x12%\n" +
+	"\x0eencrypted_size\x18\x04 \x01(\x03R\rencryptedSize\x12\x1b\n" +
+	"\tpart_size\x18\x05 \x01(\x03R\bpartSize\x12@\n" +
+	"\rupload_status\x18\x06 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\x12I\n" +
+	"\x0euploaded_parts\x18\a \x03(\v2\".gophkeeper.v1.MultipartUploadPartR\ruploadedParts\"\x95\x01\n" +
+	" UploadBinaryMultipartPartRequest\x12N\n" +
+	"\bmetadata\x18\x01 \x01(\v20.gophkeeper.v1.UploadBinaryMultipartPartMetadataH\x00R\bmetadata\x12\x16\n" +
 	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\t\n" +
-	"\apayload\"\xd1\x02\n" +
-	"\x1aUpdateBinaryRecordMetadata\x12\x1b\n" +
-	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12\x14\n" +
-	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\x12#\n" +
-	"\rencrypted_dek\x18\x04 \x01(\fR\fencryptedDek\x12+\n" +
-	"\x11encrypted_payload\x18\x05 \x01(\fR\x10encryptedPayload\x12%\n" +
-	"\x0eencrypted_size\x18\x06 \x01(\x03R\rencryptedSize\x12:\n" +
-	"\vupload_mode\x18\a \x01(\x0e2\x19.gophkeeper.v1.UploadModeR\n" +
-	"uploadMode\x12)\n" +
-	"\x10expected_version\x18\b \x01(\x03R\x0fexpectedVersion\"\x95\x01\n" +
-	"\x1aUpdateBinaryRecordResponse\x12\x1b\n" +
+	"\apayload\"~\n" +
+	"!UploadBinaryMultipartPartMetadata\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\x12\x1f\n" +
+	"\vpart_number\x18\x02 \x01(\x05R\n" +
+	"partNumber\x12\x1b\n" +
+	"\tpart_size\x18\x03 \x01(\x03R\bpartSize\"x\n" +
+	"!UploadBinaryMultipartPartResponse\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\x126\n" +
+	"\x04part\x18\x02 \x01(\v2\".gophkeeper.v1.MultipartUploadPartR\x04part\"C\n" +
+	"$CompleteBinaryMultipartUploadRequest\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\"\xa0\x01\n" +
+	"%CompleteBinaryMultipartUploadResponse\x12\x1b\n" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x12@\n" +
-	"\rupload_status\x18\x03 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"2\n" +
+	"\rupload_status\x18\x03 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"@\n" +
+	"!AbortBinaryMultipartUploadRequest\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\"\x83\x01\n" +
+	"\"AbortBinaryMultipartUploadResponse\x12\x1b\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\x12@\n" +
+	"\rupload_status\x18\x02 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"2\n" +
 	"\x13DownloadFileRequest\x12\x1b\n" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\",\n" +
 	"\x14DownloadFileResponse\x12\x14\n" +
@@ -3356,97 +3972,108 @@ const file_api_records_proto_rawDesc = "" +
 	"\x16RECORD_TYPE_CREDENTIAL\x10\x01\x12\x14\n" +
 	"\x10RECORD_TYPE_TEXT\x10\x02\x12\x14\n" +
 	"\x10RECORD_TYPE_CARD\x10\x03\x12\x16\n" +
-	"\x12RECORD_TYPE_BINARY\x10\x04*a\n" +
-	"\n" +
-	"UploadMode\x12\x1b\n" +
-	"\x17UPLOAD_MODE_UNSPECIFIED\x10\x00\x12\x1b\n" +
-	"\x17UPLOAD_MODE_SINGLE_PART\x10\x01\x12\x19\n" +
-	"\x15UPLOAD_MODE_MULTIPART\x10\x02*\x80\x01\n" +
+	"\x12RECORD_TYPE_BINARY\x10\x04*\x80\x01\n" +
 	"\fUploadStatus\x12\x1d\n" +
 	"\x19UPLOAD_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17UPLOAD_STATUS_UPLOADING\x10\x01\x12\x1a\n" +
 	"\x16UPLOAD_STATUS_UPLOADED\x10\x02\x12\x18\n" +
-	"\x14UPLOAD_STATUS_FAILED\x10\x032\xef\x05\n" +
+	"\x14UPLOAD_STATUS_FAILED\x10\x032\xbd\t\n" +
 	"\aRecords\x12W\n" +
-	"\fCreateRecord\x12\".gophkeeper.v1.CreateRecordRequest\x1a#.gophkeeper.v1.CreateRecordResponse\x12k\n" +
-	"\x12CreateBinaryRecord\x12(.gophkeeper.v1.CreateBinaryRecordRequest\x1a).gophkeeper.v1.CreateBinaryRecordResponse(\x01\x12T\n" +
+	"\fCreateRecord\x12\".gophkeeper.v1.CreateRecordRequest\x1a#.gophkeeper.v1.CreateRecordResponse\x12\x81\x01\n" +
+	"\x1aStartBinaryMultipartUpload\x120.gophkeeper.v1.StartBinaryMultipartUploadRequest\x1a1.gophkeeper.v1.StartBinaryMultipartUploadResponse\x12\x8d\x01\n" +
+	"\x1eGetBinaryMultipartUploadStatus\x124.gophkeeper.v1.GetBinaryMultipartUploadStatusRequest\x1a5.gophkeeper.v1.GetBinaryMultipartUploadStatusResponse\x12\x80\x01\n" +
+	"\x19UploadBinaryMultipartPart\x12/.gophkeeper.v1.UploadBinaryMultipartPartRequest\x1a0.gophkeeper.v1.UploadBinaryMultipartPartResponse(\x01\x12\x8a\x01\n" +
+	"\x1dCompleteBinaryMultipartUpload\x123.gophkeeper.v1.CompleteBinaryMultipartUploadRequest\x1a4.gophkeeper.v1.CompleteBinaryMultipartUploadResponse\x12\x81\x01\n" +
+	"\x1aAbortBinaryMultipartUpload\x120.gophkeeper.v1.AbortBinaryMultipartUploadRequest\x1a1.gophkeeper.v1.AbortBinaryMultipartUploadResponse\x12T\n" +
 	"\vListRecords\x12!.gophkeeper.v1.ListRecordsRequest\x1a\".gophkeeper.v1.ListRecordsResponse\x12N\n" +
 	"\tGetRecord\x12\x1f.gophkeeper.v1.GetRecordRequest\x1a .gophkeeper.v1.GetRecordResponse\x12W\n" +
-	"\fUpdateRecord\x12\".gophkeeper.v1.UpdateRecordRequest\x1a#.gophkeeper.v1.UpdateRecordResponse\x12k\n" +
-	"\x12UpdateBinaryRecord\x12(.gophkeeper.v1.UpdateBinaryRecordRequest\x1a).gophkeeper.v1.UpdateBinaryRecordResponse(\x01\x12W\n" +
+	"\fUpdateRecord\x12\".gophkeeper.v1.UpdateRecordRequest\x1a#.gophkeeper.v1.UpdateRecordResponse\x12W\n" +
 	"\fDeleteRecord\x12\".gophkeeper.v1.DeleteRecordRequest\x1a#.gophkeeper.v1.DeleteRecordResponse\x12Y\n" +
 	"\fDownloadFile\x12\".gophkeeper.v1.DownloadFileRequest\x1a#.gophkeeper.v1.DownloadFileResponse0\x01B+Z)zerogravity-82/goph-keeper/internal/pb;pbb\beditionsp\xe8\a"
 
-var file_api_records_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_api_records_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_api_records_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_api_records_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_api_records_proto_goTypes = []any{
-	(RecordType)(0),                    // 0: gophkeeper.v1.RecordType
-	(UploadMode)(0),                    // 1: gophkeeper.v1.UploadMode
-	(UploadStatus)(0),                  // 2: gophkeeper.v1.UploadStatus
-	(*Record)(nil),                     // 3: gophkeeper.v1.Record
-	(*RecordFile)(nil),                 // 4: gophkeeper.v1.RecordFile
-	(*RecordListItem)(nil),             // 5: gophkeeper.v1.RecordListItem
-	(*CreateRecordRequest)(nil),        // 6: gophkeeper.v1.CreateRecordRequest
-	(*CreateRecordResponse)(nil),       // 7: gophkeeper.v1.CreateRecordResponse
-	(*ListRecordsRequest)(nil),         // 8: gophkeeper.v1.ListRecordsRequest
-	(*ListRecordsResponse)(nil),        // 9: gophkeeper.v1.ListRecordsResponse
-	(*GetRecordRequest)(nil),           // 10: gophkeeper.v1.GetRecordRequest
-	(*GetRecordResponse)(nil),          // 11: gophkeeper.v1.GetRecordResponse
-	(*UpdateRecordRequest)(nil),        // 12: gophkeeper.v1.UpdateRecordRequest
-	(*UpdateRecordResponse)(nil),       // 13: gophkeeper.v1.UpdateRecordResponse
-	(*DeleteRecordRequest)(nil),        // 14: gophkeeper.v1.DeleteRecordRequest
-	(*DeleteRecordResponse)(nil),       // 15: gophkeeper.v1.DeleteRecordResponse
-	(*CreateBinaryRecordRequest)(nil),  // 16: gophkeeper.v1.CreateBinaryRecordRequest
-	(*CreateBinaryRecordMetadata)(nil), // 17: gophkeeper.v1.CreateBinaryRecordMetadata
-	(*CreateBinaryRecordResponse)(nil), // 18: gophkeeper.v1.CreateBinaryRecordResponse
-	(*UpdateBinaryRecordRequest)(nil),  // 19: gophkeeper.v1.UpdateBinaryRecordRequest
-	(*UpdateBinaryRecordMetadata)(nil), // 20: gophkeeper.v1.UpdateBinaryRecordMetadata
-	(*UpdateBinaryRecordResponse)(nil), // 21: gophkeeper.v1.UpdateBinaryRecordResponse
-	(*DownloadFileRequest)(nil),        // 22: gophkeeper.v1.DownloadFileRequest
-	(*DownloadFileResponse)(nil),       // 23: gophkeeper.v1.DownloadFileResponse
-	(*timestamppb.Timestamp)(nil),      // 24: google.protobuf.Timestamp
+	(RecordType)(0),                                // 0: gophkeeper.v1.RecordType
+	(UploadStatus)(0),                              // 1: gophkeeper.v1.UploadStatus
+	(*Record)(nil),                                 // 2: gophkeeper.v1.Record
+	(*RecordFile)(nil),                             // 3: gophkeeper.v1.RecordFile
+	(*RecordListItem)(nil),                         // 4: gophkeeper.v1.RecordListItem
+	(*CreateRecordRequest)(nil),                    // 5: gophkeeper.v1.CreateRecordRequest
+	(*CreateRecordResponse)(nil),                   // 6: gophkeeper.v1.CreateRecordResponse
+	(*ListRecordsRequest)(nil),                     // 7: gophkeeper.v1.ListRecordsRequest
+	(*ListRecordsResponse)(nil),                    // 8: gophkeeper.v1.ListRecordsResponse
+	(*GetRecordRequest)(nil),                       // 9: gophkeeper.v1.GetRecordRequest
+	(*GetRecordResponse)(nil),                      // 10: gophkeeper.v1.GetRecordResponse
+	(*UpdateRecordRequest)(nil),                    // 11: gophkeeper.v1.UpdateRecordRequest
+	(*UpdateRecordResponse)(nil),                   // 12: gophkeeper.v1.UpdateRecordResponse
+	(*DeleteRecordRequest)(nil),                    // 13: gophkeeper.v1.DeleteRecordRequest
+	(*DeleteRecordResponse)(nil),                   // 14: gophkeeper.v1.DeleteRecordResponse
+	(*MultipartUploadPart)(nil),                    // 15: gophkeeper.v1.MultipartUploadPart
+	(*StartBinaryMultipartUploadRequest)(nil),      // 16: gophkeeper.v1.StartBinaryMultipartUploadRequest
+	(*StartBinaryMultipartUploadResponse)(nil),     // 17: gophkeeper.v1.StartBinaryMultipartUploadResponse
+	(*GetBinaryMultipartUploadStatusRequest)(nil),  // 18: gophkeeper.v1.GetBinaryMultipartUploadStatusRequest
+	(*GetBinaryMultipartUploadStatusResponse)(nil), // 19: gophkeeper.v1.GetBinaryMultipartUploadStatusResponse
+	(*UploadBinaryMultipartPartRequest)(nil),       // 20: gophkeeper.v1.UploadBinaryMultipartPartRequest
+	(*UploadBinaryMultipartPartMetadata)(nil),      // 21: gophkeeper.v1.UploadBinaryMultipartPartMetadata
+	(*UploadBinaryMultipartPartResponse)(nil),      // 22: gophkeeper.v1.UploadBinaryMultipartPartResponse
+	(*CompleteBinaryMultipartUploadRequest)(nil),   // 23: gophkeeper.v1.CompleteBinaryMultipartUploadRequest
+	(*CompleteBinaryMultipartUploadResponse)(nil),  // 24: gophkeeper.v1.CompleteBinaryMultipartUploadResponse
+	(*AbortBinaryMultipartUploadRequest)(nil),      // 25: gophkeeper.v1.AbortBinaryMultipartUploadRequest
+	(*AbortBinaryMultipartUploadResponse)(nil),     // 26: gophkeeper.v1.AbortBinaryMultipartUploadResponse
+	(*DownloadFileRequest)(nil),                    // 27: gophkeeper.v1.DownloadFileRequest
+	(*DownloadFileResponse)(nil),                   // 28: gophkeeper.v1.DownloadFileResponse
+	(*timestamppb.Timestamp)(nil),                  // 29: google.protobuf.Timestamp
 }
 var file_api_records_proto_depIdxs = []int32{
 	0,  // 0: gophkeeper.v1.Record.type:type_name -> gophkeeper.v1.RecordType
-	24, // 1: gophkeeper.v1.Record.created_at:type_name -> google.protobuf.Timestamp
-	24, // 2: gophkeeper.v1.Record.updated_at:type_name -> google.protobuf.Timestamp
-	24, // 3: gophkeeper.v1.Record.deleted_at:type_name -> google.protobuf.Timestamp
-	4,  // 4: gophkeeper.v1.Record.file:type_name -> gophkeeper.v1.RecordFile
-	2,  // 5: gophkeeper.v1.RecordFile.upload_status:type_name -> gophkeeper.v1.UploadStatus
+	29, // 1: gophkeeper.v1.Record.created_at:type_name -> google.protobuf.Timestamp
+	29, // 2: gophkeeper.v1.Record.updated_at:type_name -> google.protobuf.Timestamp
+	29, // 3: gophkeeper.v1.Record.deleted_at:type_name -> google.protobuf.Timestamp
+	3,  // 4: gophkeeper.v1.Record.file:type_name -> gophkeeper.v1.RecordFile
+	1,  // 5: gophkeeper.v1.RecordFile.upload_status:type_name -> gophkeeper.v1.UploadStatus
 	0,  // 6: gophkeeper.v1.RecordListItem.type:type_name -> gophkeeper.v1.RecordType
-	24, // 7: gophkeeper.v1.RecordListItem.created_at:type_name -> google.protobuf.Timestamp
-	24, // 8: gophkeeper.v1.RecordListItem.updated_at:type_name -> google.protobuf.Timestamp
-	4,  // 9: gophkeeper.v1.RecordListItem.file:type_name -> gophkeeper.v1.RecordFile
+	29, // 7: gophkeeper.v1.RecordListItem.created_at:type_name -> google.protobuf.Timestamp
+	29, // 8: gophkeeper.v1.RecordListItem.updated_at:type_name -> google.protobuf.Timestamp
+	3,  // 9: gophkeeper.v1.RecordListItem.file:type_name -> gophkeeper.v1.RecordFile
 	0,  // 10: gophkeeper.v1.CreateRecordRequest.type:type_name -> gophkeeper.v1.RecordType
-	5,  // 11: gophkeeper.v1.ListRecordsResponse.items:type_name -> gophkeeper.v1.RecordListItem
-	3,  // 12: gophkeeper.v1.GetRecordResponse.record:type_name -> gophkeeper.v1.Record
-	17, // 13: gophkeeper.v1.CreateBinaryRecordRequest.metadata:type_name -> gophkeeper.v1.CreateBinaryRecordMetadata
-	1,  // 14: gophkeeper.v1.CreateBinaryRecordMetadata.upload_mode:type_name -> gophkeeper.v1.UploadMode
-	2,  // 15: gophkeeper.v1.CreateBinaryRecordResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
-	20, // 16: gophkeeper.v1.UpdateBinaryRecordRequest.metadata:type_name -> gophkeeper.v1.UpdateBinaryRecordMetadata
-	1,  // 17: gophkeeper.v1.UpdateBinaryRecordMetadata.upload_mode:type_name -> gophkeeper.v1.UploadMode
-	2,  // 18: gophkeeper.v1.UpdateBinaryRecordResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
-	6,  // 19: gophkeeper.v1.Records.CreateRecord:input_type -> gophkeeper.v1.CreateRecordRequest
-	16, // 20: gophkeeper.v1.Records.CreateBinaryRecord:input_type -> gophkeeper.v1.CreateBinaryRecordRequest
-	8,  // 21: gophkeeper.v1.Records.ListRecords:input_type -> gophkeeper.v1.ListRecordsRequest
-	10, // 22: gophkeeper.v1.Records.GetRecord:input_type -> gophkeeper.v1.GetRecordRequest
-	12, // 23: gophkeeper.v1.Records.UpdateRecord:input_type -> gophkeeper.v1.UpdateRecordRequest
-	19, // 24: gophkeeper.v1.Records.UpdateBinaryRecord:input_type -> gophkeeper.v1.UpdateBinaryRecordRequest
-	14, // 25: gophkeeper.v1.Records.DeleteRecord:input_type -> gophkeeper.v1.DeleteRecordRequest
-	22, // 26: gophkeeper.v1.Records.DownloadFile:input_type -> gophkeeper.v1.DownloadFileRequest
-	7,  // 27: gophkeeper.v1.Records.CreateRecord:output_type -> gophkeeper.v1.CreateRecordResponse
-	18, // 28: gophkeeper.v1.Records.CreateBinaryRecord:output_type -> gophkeeper.v1.CreateBinaryRecordResponse
-	9,  // 29: gophkeeper.v1.Records.ListRecords:output_type -> gophkeeper.v1.ListRecordsResponse
-	11, // 30: gophkeeper.v1.Records.GetRecord:output_type -> gophkeeper.v1.GetRecordResponse
-	13, // 31: gophkeeper.v1.Records.UpdateRecord:output_type -> gophkeeper.v1.UpdateRecordResponse
-	21, // 32: gophkeeper.v1.Records.UpdateBinaryRecord:output_type -> gophkeeper.v1.UpdateBinaryRecordResponse
-	15, // 33: gophkeeper.v1.Records.DeleteRecord:output_type -> gophkeeper.v1.DeleteRecordResponse
-	23, // 34: gophkeeper.v1.Records.DownloadFile:output_type -> gophkeeper.v1.DownloadFileResponse
-	27, // [27:35] is the sub-list for method output_type
-	19, // [19:27] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	4,  // 11: gophkeeper.v1.ListRecordsResponse.items:type_name -> gophkeeper.v1.RecordListItem
+	2,  // 12: gophkeeper.v1.GetRecordResponse.record:type_name -> gophkeeper.v1.Record
+	1,  // 13: gophkeeper.v1.StartBinaryMultipartUploadResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
+	15, // 14: gophkeeper.v1.StartBinaryMultipartUploadResponse.uploaded_parts:type_name -> gophkeeper.v1.MultipartUploadPart
+	1,  // 15: gophkeeper.v1.GetBinaryMultipartUploadStatusResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
+	15, // 16: gophkeeper.v1.GetBinaryMultipartUploadStatusResponse.uploaded_parts:type_name -> gophkeeper.v1.MultipartUploadPart
+	21, // 17: gophkeeper.v1.UploadBinaryMultipartPartRequest.metadata:type_name -> gophkeeper.v1.UploadBinaryMultipartPartMetadata
+	15, // 18: gophkeeper.v1.UploadBinaryMultipartPartResponse.part:type_name -> gophkeeper.v1.MultipartUploadPart
+	1,  // 19: gophkeeper.v1.CompleteBinaryMultipartUploadResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
+	1,  // 20: gophkeeper.v1.AbortBinaryMultipartUploadResponse.upload_status:type_name -> gophkeeper.v1.UploadStatus
+	5,  // 21: gophkeeper.v1.Records.CreateRecord:input_type -> gophkeeper.v1.CreateRecordRequest
+	16, // 22: gophkeeper.v1.Records.StartBinaryMultipartUpload:input_type -> gophkeeper.v1.StartBinaryMultipartUploadRequest
+	18, // 23: gophkeeper.v1.Records.GetBinaryMultipartUploadStatus:input_type -> gophkeeper.v1.GetBinaryMultipartUploadStatusRequest
+	20, // 24: gophkeeper.v1.Records.UploadBinaryMultipartPart:input_type -> gophkeeper.v1.UploadBinaryMultipartPartRequest
+	23, // 25: gophkeeper.v1.Records.CompleteBinaryMultipartUpload:input_type -> gophkeeper.v1.CompleteBinaryMultipartUploadRequest
+	25, // 26: gophkeeper.v1.Records.AbortBinaryMultipartUpload:input_type -> gophkeeper.v1.AbortBinaryMultipartUploadRequest
+	7,  // 27: gophkeeper.v1.Records.ListRecords:input_type -> gophkeeper.v1.ListRecordsRequest
+	9,  // 28: gophkeeper.v1.Records.GetRecord:input_type -> gophkeeper.v1.GetRecordRequest
+	11, // 29: gophkeeper.v1.Records.UpdateRecord:input_type -> gophkeeper.v1.UpdateRecordRequest
+	13, // 30: gophkeeper.v1.Records.DeleteRecord:input_type -> gophkeeper.v1.DeleteRecordRequest
+	27, // 31: gophkeeper.v1.Records.DownloadFile:input_type -> gophkeeper.v1.DownloadFileRequest
+	6,  // 32: gophkeeper.v1.Records.CreateRecord:output_type -> gophkeeper.v1.CreateRecordResponse
+	17, // 33: gophkeeper.v1.Records.StartBinaryMultipartUpload:output_type -> gophkeeper.v1.StartBinaryMultipartUploadResponse
+	19, // 34: gophkeeper.v1.Records.GetBinaryMultipartUploadStatus:output_type -> gophkeeper.v1.GetBinaryMultipartUploadStatusResponse
+	22, // 35: gophkeeper.v1.Records.UploadBinaryMultipartPart:output_type -> gophkeeper.v1.UploadBinaryMultipartPartResponse
+	24, // 36: gophkeeper.v1.Records.CompleteBinaryMultipartUpload:output_type -> gophkeeper.v1.CompleteBinaryMultipartUploadResponse
+	26, // 37: gophkeeper.v1.Records.AbortBinaryMultipartUpload:output_type -> gophkeeper.v1.AbortBinaryMultipartUploadResponse
+	8,  // 38: gophkeeper.v1.Records.ListRecords:output_type -> gophkeeper.v1.ListRecordsResponse
+	10, // 39: gophkeeper.v1.Records.GetRecord:output_type -> gophkeeper.v1.GetRecordResponse
+	12, // 40: gophkeeper.v1.Records.UpdateRecord:output_type -> gophkeeper.v1.UpdateRecordResponse
+	14, // 41: gophkeeper.v1.Records.DeleteRecord:output_type -> gophkeeper.v1.DeleteRecordResponse
+	28, // 42: gophkeeper.v1.Records.DownloadFile:output_type -> gophkeeper.v1.DownloadFileResponse
+	32, // [32:43] is the sub-list for method output_type
+	21, // [21:32] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_api_records_proto_init() }
@@ -3454,21 +4081,17 @@ func file_api_records_proto_init() {
 	if File_api_records_proto != nil {
 		return
 	}
-	file_api_records_proto_msgTypes[13].OneofWrappers = []any{
-		(*createBinaryRecordRequest_Metadata)(nil),
-		(*createBinaryRecordRequest_Chunk)(nil),
-	}
-	file_api_records_proto_msgTypes[16].OneofWrappers = []any{
-		(*updateBinaryRecordRequest_Metadata)(nil),
-		(*updateBinaryRecordRequest_Chunk)(nil),
+	file_api_records_proto_msgTypes[18].OneofWrappers = []any{
+		(*uploadBinaryMultipartPartRequest_Metadata)(nil),
+		(*uploadBinaryMultipartPartRequest_Chunk)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_records_proto_rawDesc), len(file_api_records_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   21,
+			NumEnums:      2,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

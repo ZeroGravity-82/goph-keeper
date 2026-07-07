@@ -65,7 +65,7 @@ func Test_validateAndNormalizeCard_InvalidHolderName(t *testing.T) {
 // Test_validateAndNormalizeCard_LongHolderName проверяет лимит длины имени владельца карты.
 func Test_validateAndNormalizeCard_LongHolderName(t *testing.T) {
 	// Act
-	_, err := validateAndNormalizeCard("4111111111111111", strings.Repeat("A", cardHolderNameMaxChars+1), "12/30", "123")
+	_, err := validateAndNormalizeCard("4111111111111111", strings.Repeat("A", cardHolderNameMaxSizeChars+1), "12/30", "123")
 
 	// Assert
 	require.Error(t, err)

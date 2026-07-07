@@ -115,10 +115,13 @@ func replaceSelectedBinaryFile(
 	if err != nil {
 		return err
 	}
-	file, err := os.ReadFile(path)
+	file, fileSize, err := openInputFile(path)
 	if err != nil {
-		return fmt.Errorf("не удалось прочитать файл: %w", err)
+		return err
 	}
+	defer func() {
+		_ = file.Close()
+	}()
 	filename := filepath.Base(path)
 	contentType := mime.TypeByExtension(filepath.Ext(path))
 	if contentType == "" {
@@ -135,6 +138,7 @@ func replaceSelectedBinaryFile(
 		Filename:        filename,
 		ContentType:     contentType,
 		File:            file,
+		FileSize:        fileSize,
 	})
 	if err != nil {
 		return err
@@ -143,11 +147,26 @@ func replaceSelectedBinaryFile(
 	record.Description = description
 	record.Filename = filename
 	record.ContentType = contentType
-	record.Size = int64(len(file))
+	record.Size = fileSize
 	record.Version = updated.Version
 	state.storeBinary(record)
 	fmt.Fprintf(out, "заменен файл бинарной приватной записи: %s\n", record.Title)
 	return nil
+}
+
+func openInputFile(path string) (*os.File, int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("не удалось проверить файл: %w", err)
+	}
+	if info.IsDir() {
+		return nil, 0, errors.New("путь к файлу указывает на директорию")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("не удалось открыть файл: %w", err)
+	}
+	return file, info.Size(), nil
 }
 
 // createBinary запрашивает метаданные и путь к файлу, затем создает зашифрованную файловую приватную запись.
@@ -166,10 +185,13 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 		return err
 	}
 
-	file, err := os.ReadFile(path)
+	file, fileSize, err := openInputFile(path)
 	if err != nil {
-		return fmt.Errorf("не удалось прочитать файл: %w", err)
+		return err
 	}
+	defer func() {
+		_ = file.Close()
+	}()
 
 	filename := filepath.Base(path)
 	contentType := mime.TypeByExtension(filepath.Ext(path))
@@ -185,6 +207,7 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 		Filename:    filename,
 		ContentType: contentType,
 		File:        file,
+		FileSize:    fileSize,
 	})
 	if err != nil {
 		return err

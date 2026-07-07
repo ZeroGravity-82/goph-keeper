@@ -14,12 +14,6 @@ enum RecordType {
   RECORD_TYPE_BINARY = 4;
 }
 
-enum UploadMode {
-  UPLOAD_MODE_UNSPECIFIED = 0;
-  UPLOAD_MODE_SINGLE_PART = 1;
-  UPLOAD_MODE_MULTIPART = 2;
-}
-
 enum UploadStatus {
   UPLOAD_STATUS_UNSPECIFIED = 0;
   UPLOAD_STATUS_UPLOADING = 1;
@@ -104,50 +98,81 @@ message DeleteRecordResponse {
   string record_id = 1;
 }
 
-message CreateBinaryRecordRequest {
-  oneof payload {
-    CreateBinaryRecordMetadata metadata = 1;
-    bytes chunk = 2;
-  }
+message MultipartUploadPart {
+  int32 part_number = 1;
+  int64 size = 2;
+  string etag = 3;
 }
 
-message CreateBinaryRecordMetadata {
+message StartBinaryMultipartUploadRequest {
   string title = 1;
   string description = 2;
   bytes encrypted_dek = 3;
   bytes encrypted_payload = 4;
   int64 encrypted_size = 5;
-  UploadMode upload_mode = 6;
+  int64 part_size = 6;
+  string record_id = 7;
+  int64 expected_version = 8;
 }
 
-message CreateBinaryRecordResponse {
-  string record_id = 1;
-  int64 version = 2;
-  UploadStatus upload_status = 3;
+message StartBinaryMultipartUploadResponse {
+  string upload_id = 1;
+  string record_id = 2;
+  int64 version = 3;
+  int64 part_size = 4;
+  UploadStatus upload_status = 5;
+  repeated MultipartUploadPart uploaded_parts = 6;
 }
 
-message UpdateBinaryRecordRequest {
+message GetBinaryMultipartUploadStatusRequest {
+  string upload_id = 1;
+}
+
+message GetBinaryMultipartUploadStatusResponse {
+  string upload_id = 1;
+  string record_id = 2;
+  int64 version = 3;
+  int64 encrypted_size = 4;
+  int64 part_size = 5;
+  UploadStatus upload_status = 6;
+  repeated MultipartUploadPart uploaded_parts = 7;
+}
+
+message UploadBinaryMultipartPartRequest {
   oneof payload {
-    UpdateBinaryRecordMetadata metadata = 1;
+    UploadBinaryMultipartPartMetadata metadata = 1;
     bytes chunk = 2;
   }
 }
 
-message UpdateBinaryRecordMetadata {
-  string record_id = 1;
-  string title = 2;
-  string description = 3;
-  bytes encrypted_dek = 4;
-  bytes encrypted_payload = 5;
-  int64 encrypted_size = 6;
-  UploadMode upload_mode = 7;
-  int64 expected_version = 8;
+message UploadBinaryMultipartPartMetadata {
+  string upload_id = 1;
+  int32 part_number = 2;
+  int64 part_size = 3;
 }
 
-message UpdateBinaryRecordResponse {
+message UploadBinaryMultipartPartResponse {
+  string upload_id = 1;
+  MultipartUploadPart part = 2;
+}
+
+message CompleteBinaryMultipartUploadRequest {
+  string upload_id = 1;
+}
+
+message CompleteBinaryMultipartUploadResponse {
   string record_id = 1;
   int64 version = 2;
   UploadStatus upload_status = 3;
+}
+
+message AbortBinaryMultipartUploadRequest {
+  string upload_id = 1;
+}
+
+message AbortBinaryMultipartUploadResponse {
+  string upload_id = 1;
+  UploadStatus upload_status = 2;
 }
 
 message DownloadFileRequest {
@@ -160,11 +185,14 @@ message DownloadFileResponse {
 
 service Records {
   rpc CreateRecord(CreateRecordRequest) returns (CreateRecordResponse);
-  rpc CreateBinaryRecord(stream CreateBinaryRecordRequest) returns (CreateBinaryRecordResponse);
+  rpc StartBinaryMultipartUpload(StartBinaryMultipartUploadRequest) returns (StartBinaryMultipartUploadResponse);
+  rpc GetBinaryMultipartUploadStatus(GetBinaryMultipartUploadStatusRequest) returns (GetBinaryMultipartUploadStatusResponse);
+  rpc UploadBinaryMultipartPart(stream UploadBinaryMultipartPartRequest) returns (UploadBinaryMultipartPartResponse);
+  rpc CompleteBinaryMultipartUpload(CompleteBinaryMultipartUploadRequest) returns (CompleteBinaryMultipartUploadResponse);
+  rpc AbortBinaryMultipartUpload(AbortBinaryMultipartUploadRequest) returns (AbortBinaryMultipartUploadResponse);
   rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
   rpc GetRecord(GetRecordRequest) returns (GetRecordResponse);
   rpc UpdateRecord(UpdateRecordRequest) returns (UpdateRecordResponse);
-  rpc UpdateBinaryRecord(stream UpdateBinaryRecordRequest) returns (UpdateBinaryRecordResponse);
   rpc DeleteRecord(DeleteRecordRequest) returns (DeleteRecordResponse);
   rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
 }

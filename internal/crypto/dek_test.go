@@ -45,7 +45,7 @@ func Test_decryptDEK_FailWithWrongKEK(t *testing.T) {
 	dek, err := generateDEK()
 	require.NoError(t, err)
 	kek := testKEK(t)
-	wrongKEK := bytes.Repeat([]byte{2}, kekLength)
+	wrongKEK := bytes.Repeat([]byte{2}, kekSizeBytes)
 	encryptedDEK, err := encryptDEK(dek, kek)
 	require.NoError(t, err)
 
@@ -103,5 +103,5 @@ func Test_decryptDEK_FailWithInvalidPlaintextLength(t *testing.T) {
 
 func testKEK(t *testing.T) []byte {
 	t.Helper()
-	return bytes.Repeat([]byte{1}, kekLength)
+	return bytes.Repeat([]byte{1}, kekSizeBytes)
 }

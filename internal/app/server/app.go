@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	accessTokenTTL  = 15 * time.Minute // TODO вынести TTL в конфиг
+	// TODO вынести TTL access/refresh-токенов в конфиг сервера.
+	accessTokenTTL  = 15 * time.Minute
 	refreshTokenTTL = 30 * 24 * time.Hour
 )
 
@@ -174,6 +175,10 @@ func buildRecordUseCase(db *sqlx.DB, fileStorageCfg config.FileStorage) (*usecas
 	if err != nil {
 		return nil, fmt.Errorf("failed to create record file repository: %w", err)
 	}
+	multipartUploadRepo, err := postgres.NewMultipartUploadRepository(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multipart upload repository: %w", err)
+	}
 	fileStorage, err := minioStorage.NewMinIOStorage(
 		context.Background(),
 		fileStorageCfg.Endpoint,
@@ -189,7 +194,7 @@ func buildRecordUseCase(db *sqlx.DB, fileStorageCfg config.FileStorage) (*usecas
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transactor: %w", err)
 	}
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, fileStorage, transactor)
+	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, multipartUploadRepo, fileStorage, transactor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create record use case: %w", err)
 	}

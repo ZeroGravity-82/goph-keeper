@@ -39,7 +39,6 @@ type RecordWithFile struct {
 	FileRecordID      *uuid.UUID `db:"file_record_id"`
 	FileObjectKey     *string    `db:"file_object_key"`
 	FileEncryptedSize *int64     `db:"file_encrypted_size"`
-	FileUploadMode    *string    `db:"file_upload_mode"`
 	FileUploadStatus  *string    `db:"file_upload_status"`
 	FileCreatedAt     *time.Time `db:"file_created_at"`
 	FileUpdatedAt     *time.Time `db:"file_updated_at"`
@@ -62,8 +61,33 @@ type RecordFile struct {
 	RecordID      uuid.UUID `db:"record_id"`
 	ObjectKey     string    `db:"object_key"`
 	EncryptedSize *int64    `db:"encrypted_size"`
-	UploadMode    *string   `db:"upload_mode"`
 	UploadStatus  string    `db:"upload_status"`
 	CreatedAt     time.Time `db:"created_at"`
 	UpdatedAt     time.Time `db:"updated_at"`
+}
+
+// MultipartUpload описывает строку таблицы record_file_multipart_upload.
+type MultipartUpload struct {
+	ID              uuid.UUID  `db:"id"`
+	UserID          uuid.UUID  `db:"app_user_id"`
+	RecordID        uuid.UUID  `db:"record_id"`
+	RecordVersion   int64      `db:"record_version"`
+	FileID          uuid.UUID  `db:"file_id"`
+	ObjectKey       string     `db:"object_key"`
+	StorageUploadID string     `db:"storage_upload_id"`
+	EncryptedSize   int64      `db:"encrypted_size"`
+	PartSize        int64      `db:"part_size"`
+	Status          string     `db:"status"`
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       time.Time  `db:"updated_at"`
+	CompletedAt     *time.Time `db:"completed_at"`
+}
+
+// MultipartUploadPart описывает строку таблицы record_file_multipart_part.
+type MultipartUploadPart struct {
+	UploadID   uuid.UUID `db:"upload_id"`
+	PartNumber int32     `db:"part_number"`
+	Size       int64     `db:"size"`
+	ETag       string    `db:"etag"`
+	CreatedAt  time.Time `db:"created_at"`
 }

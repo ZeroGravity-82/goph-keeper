@@ -19,14 +19,17 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Records_CreateRecord_FullMethodName       = "/gophkeeper.v1.Records/CreateRecord"
-	Records_CreateBinaryRecord_FullMethodName = "/gophkeeper.v1.Records/CreateBinaryRecord"
-	Records_ListRecords_FullMethodName        = "/gophkeeper.v1.Records/ListRecords"
-	Records_GetRecord_FullMethodName          = "/gophkeeper.v1.Records/GetRecord"
-	Records_UpdateRecord_FullMethodName       = "/gophkeeper.v1.Records/UpdateRecord"
-	Records_UpdateBinaryRecord_FullMethodName = "/gophkeeper.v1.Records/UpdateBinaryRecord"
-	Records_DeleteRecord_FullMethodName       = "/gophkeeper.v1.Records/DeleteRecord"
-	Records_DownloadFile_FullMethodName       = "/gophkeeper.v1.Records/DownloadFile"
+	Records_CreateRecord_FullMethodName                   = "/gophkeeper.v1.Records/CreateRecord"
+	Records_StartBinaryMultipartUpload_FullMethodName     = "/gophkeeper.v1.Records/StartBinaryMultipartUpload"
+	Records_GetBinaryMultipartUploadStatus_FullMethodName = "/gophkeeper.v1.Records/GetBinaryMultipartUploadStatus"
+	Records_UploadBinaryMultipartPart_FullMethodName      = "/gophkeeper.v1.Records/UploadBinaryMultipartPart"
+	Records_CompleteBinaryMultipartUpload_FullMethodName  = "/gophkeeper.v1.Records/CompleteBinaryMultipartUpload"
+	Records_AbortBinaryMultipartUpload_FullMethodName     = "/gophkeeper.v1.Records/AbortBinaryMultipartUpload"
+	Records_ListRecords_FullMethodName                    = "/gophkeeper.v1.Records/ListRecords"
+	Records_GetRecord_FullMethodName                      = "/gophkeeper.v1.Records/GetRecord"
+	Records_UpdateRecord_FullMethodName                   = "/gophkeeper.v1.Records/UpdateRecord"
+	Records_DeleteRecord_FullMethodName                   = "/gophkeeper.v1.Records/DeleteRecord"
+	Records_DownloadFile_FullMethodName                   = "/gophkeeper.v1.Records/DownloadFile"
 )
 
 // RecordsClient is the client API for Records service.
@@ -34,11 +37,14 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RecordsClient interface {
 	CreateRecord(ctx context.Context, in *CreateRecordRequest, opts ...grpc.CallOption) (*CreateRecordResponse, error)
-	CreateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[CreateBinaryRecordRequest, CreateBinaryRecordResponse], error)
+	StartBinaryMultipartUpload(ctx context.Context, in *StartBinaryMultipartUploadRequest, opts ...grpc.CallOption) (*StartBinaryMultipartUploadResponse, error)
+	GetBinaryMultipartUploadStatus(ctx context.Context, in *GetBinaryMultipartUploadStatusRequest, opts ...grpc.CallOption) (*GetBinaryMultipartUploadStatusResponse, error)
+	UploadBinaryMultipartPart(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse], error)
+	CompleteBinaryMultipartUpload(ctx context.Context, in *CompleteBinaryMultipartUploadRequest, opts ...grpc.CallOption) (*CompleteBinaryMultipartUploadResponse, error)
+	AbortBinaryMultipartUpload(ctx context.Context, in *AbortBinaryMultipartUploadRequest, opts ...grpc.CallOption) (*AbortBinaryMultipartUploadResponse, error)
 	ListRecords(ctx context.Context, in *ListRecordsRequest, opts ...grpc.CallOption) (*ListRecordsResponse, error)
 	GetRecord(ctx context.Context, in *GetRecordRequest, opts ...grpc.CallOption) (*GetRecordResponse, error)
 	UpdateRecord(ctx context.Context, in *UpdateRecordRequest, opts ...grpc.CallOption) (*UpdateRecordResponse, error)
-	UpdateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse], error)
 	DeleteRecord(ctx context.Context, in *DeleteRecordRequest, opts ...grpc.CallOption) (*DeleteRecordResponse, error)
 	DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadFileResponse], error)
 }
@@ -61,18 +67,58 @@ func (c *recordsClient) CreateRecord(ctx context.Context, in *CreateRecordReques
 	return out, nil
 }
 
-func (c *recordsClient) CreateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[CreateBinaryRecordRequest, CreateBinaryRecordResponse], error) {
+func (c *recordsClient) StartBinaryMultipartUpload(ctx context.Context, in *StartBinaryMultipartUploadRequest, opts ...grpc.CallOption) (*StartBinaryMultipartUploadResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[0], Records_CreateBinaryRecord_FullMethodName, cOpts...)
+	out := new(StartBinaryMultipartUploadResponse)
+	err := c.cc.Invoke(ctx, Records_StartBinaryMultipartUpload_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[CreateBinaryRecordRequest, CreateBinaryRecordResponse]{ClientStream: stream}
+	return out, nil
+}
+
+func (c *recordsClient) GetBinaryMultipartUploadStatus(ctx context.Context, in *GetBinaryMultipartUploadStatusRequest, opts ...grpc.CallOption) (*GetBinaryMultipartUploadStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBinaryMultipartUploadStatusResponse)
+	err := c.cc.Invoke(ctx, Records_GetBinaryMultipartUploadStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *recordsClient) UploadBinaryMultipartPart(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[0], Records_UploadBinaryMultipartPart_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Records_CreateBinaryRecordClient = grpc.ClientStreamingClient[CreateBinaryRecordRequest, CreateBinaryRecordResponse]
+type Records_UploadBinaryMultipartPartClient = grpc.ClientStreamingClient[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse]
+
+func (c *recordsClient) CompleteBinaryMultipartUpload(ctx context.Context, in *CompleteBinaryMultipartUploadRequest, opts ...grpc.CallOption) (*CompleteBinaryMultipartUploadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteBinaryMultipartUploadResponse)
+	err := c.cc.Invoke(ctx, Records_CompleteBinaryMultipartUpload_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *recordsClient) AbortBinaryMultipartUpload(ctx context.Context, in *AbortBinaryMultipartUploadRequest, opts ...grpc.CallOption) (*AbortBinaryMultipartUploadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AbortBinaryMultipartUploadResponse)
+	err := c.cc.Invoke(ctx, Records_AbortBinaryMultipartUpload_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *recordsClient) ListRecords(ctx context.Context, in *ListRecordsRequest, opts ...grpc.CallOption) (*ListRecordsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -104,19 +150,6 @@ func (c *recordsClient) UpdateRecord(ctx context.Context, in *UpdateRecordReques
 	return out, nil
 }
 
-func (c *recordsClient) UpdateBinaryRecord(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[1], Records_UpdateBinaryRecord_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]{ClientStream: stream}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Records_UpdateBinaryRecordClient = grpc.ClientStreamingClient[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]
-
 func (c *recordsClient) DeleteRecord(ctx context.Context, in *DeleteRecordRequest, opts ...grpc.CallOption) (*DeleteRecordResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteRecordResponse)
@@ -129,7 +162,7 @@ func (c *recordsClient) DeleteRecord(ctx context.Context, in *DeleteRecordReques
 
 func (c *recordsClient) DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadFileResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[2], Records_DownloadFile_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Records_ServiceDesc.Streams[1], Records_DownloadFile_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -151,11 +184,14 @@ type Records_DownloadFileClient = grpc.ServerStreamingClient[DownloadFileRespons
 // for forward compatibility.
 type RecordsServer interface {
 	CreateRecord(context.Context, *CreateRecordRequest) (*CreateRecordResponse, error)
-	CreateBinaryRecord(grpc.ClientStreamingServer[CreateBinaryRecordRequest, CreateBinaryRecordResponse]) error
+	StartBinaryMultipartUpload(context.Context, *StartBinaryMultipartUploadRequest) (*StartBinaryMultipartUploadResponse, error)
+	GetBinaryMultipartUploadStatus(context.Context, *GetBinaryMultipartUploadStatusRequest) (*GetBinaryMultipartUploadStatusResponse, error)
+	UploadBinaryMultipartPart(grpc.ClientStreamingServer[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse]) error
+	CompleteBinaryMultipartUpload(context.Context, *CompleteBinaryMultipartUploadRequest) (*CompleteBinaryMultipartUploadResponse, error)
+	AbortBinaryMultipartUpload(context.Context, *AbortBinaryMultipartUploadRequest) (*AbortBinaryMultipartUploadResponse, error)
 	ListRecords(context.Context, *ListRecordsRequest) (*ListRecordsResponse, error)
 	GetRecord(context.Context, *GetRecordRequest) (*GetRecordResponse, error)
 	UpdateRecord(context.Context, *UpdateRecordRequest) (*UpdateRecordResponse, error)
-	UpdateBinaryRecord(grpc.ClientStreamingServer[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]) error
 	DeleteRecord(context.Context, *DeleteRecordRequest) (*DeleteRecordResponse, error)
 	DownloadFile(*DownloadFileRequest, grpc.ServerStreamingServer[DownloadFileResponse]) error
 	mustEmbedUnimplementedRecordsServer()
@@ -171,8 +207,20 @@ type UnimplementedRecordsServer struct{}
 func (UnimplementedRecordsServer) CreateRecord(context.Context, *CreateRecordRequest) (*CreateRecordResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateRecord not implemented")
 }
-func (UnimplementedRecordsServer) CreateBinaryRecord(grpc.ClientStreamingServer[CreateBinaryRecordRequest, CreateBinaryRecordResponse]) error {
-	return status.Error(codes.Unimplemented, "method CreateBinaryRecord not implemented")
+func (UnimplementedRecordsServer) StartBinaryMultipartUpload(context.Context, *StartBinaryMultipartUploadRequest) (*StartBinaryMultipartUploadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartBinaryMultipartUpload not implemented")
+}
+func (UnimplementedRecordsServer) GetBinaryMultipartUploadStatus(context.Context, *GetBinaryMultipartUploadStatusRequest) (*GetBinaryMultipartUploadStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBinaryMultipartUploadStatus not implemented")
+}
+func (UnimplementedRecordsServer) UploadBinaryMultipartPart(grpc.ClientStreamingServer[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse]) error {
+	return status.Error(codes.Unimplemented, "method UploadBinaryMultipartPart not implemented")
+}
+func (UnimplementedRecordsServer) CompleteBinaryMultipartUpload(context.Context, *CompleteBinaryMultipartUploadRequest) (*CompleteBinaryMultipartUploadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteBinaryMultipartUpload not implemented")
+}
+func (UnimplementedRecordsServer) AbortBinaryMultipartUpload(context.Context, *AbortBinaryMultipartUploadRequest) (*AbortBinaryMultipartUploadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AbortBinaryMultipartUpload not implemented")
 }
 func (UnimplementedRecordsServer) ListRecords(context.Context, *ListRecordsRequest) (*ListRecordsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRecords not implemented")
@@ -182,9 +230,6 @@ func (UnimplementedRecordsServer) GetRecord(context.Context, *GetRecordRequest) 
 }
 func (UnimplementedRecordsServer) UpdateRecord(context.Context, *UpdateRecordRequest) (*UpdateRecordResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateRecord not implemented")
-}
-func (UnimplementedRecordsServer) UpdateBinaryRecord(grpc.ClientStreamingServer[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]) error {
-	return status.Error(codes.Unimplemented, "method UpdateBinaryRecord not implemented")
 }
 func (UnimplementedRecordsServer) DeleteRecord(context.Context, *DeleteRecordRequest) (*DeleteRecordResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteRecord not implemented")
@@ -231,12 +276,84 @@ func _Records_CreateRecord_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Records_CreateBinaryRecord_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(RecordsServer).CreateBinaryRecord(&grpc.GenericServerStream[CreateBinaryRecordRequest, CreateBinaryRecordResponse]{ServerStream: stream})
+func _Records_StartBinaryMultipartUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartBinaryMultipartUploadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RecordsServer).StartBinaryMultipartUpload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Records_StartBinaryMultipartUpload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RecordsServer).StartBinaryMultipartUpload(ctx, req.(*StartBinaryMultipartUploadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Records_GetBinaryMultipartUploadStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBinaryMultipartUploadStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RecordsServer).GetBinaryMultipartUploadStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Records_GetBinaryMultipartUploadStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RecordsServer).GetBinaryMultipartUploadStatus(ctx, req.(*GetBinaryMultipartUploadStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Records_UploadBinaryMultipartPart_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(RecordsServer).UploadBinaryMultipartPart(&grpc.GenericServerStream[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Records_CreateBinaryRecordServer = grpc.ClientStreamingServer[CreateBinaryRecordRequest, CreateBinaryRecordResponse]
+type Records_UploadBinaryMultipartPartServer = grpc.ClientStreamingServer[UploadBinaryMultipartPartRequest, UploadBinaryMultipartPartResponse]
+
+func _Records_CompleteBinaryMultipartUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteBinaryMultipartUploadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RecordsServer).CompleteBinaryMultipartUpload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Records_CompleteBinaryMultipartUpload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RecordsServer).CompleteBinaryMultipartUpload(ctx, req.(*CompleteBinaryMultipartUploadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Records_AbortBinaryMultipartUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AbortBinaryMultipartUploadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RecordsServer).AbortBinaryMultipartUpload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Records_AbortBinaryMultipartUpload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RecordsServer).AbortBinaryMultipartUpload(ctx, req.(*AbortBinaryMultipartUploadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _Records_ListRecords_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListRecordsRequest)
@@ -292,13 +409,6 @@ func _Records_UpdateRecord_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Records_UpdateBinaryRecord_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(RecordsServer).UpdateBinaryRecord(&grpc.GenericServerStream[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Records_UpdateBinaryRecordServer = grpc.ClientStreamingServer[UpdateBinaryRecordRequest, UpdateBinaryRecordResponse]
-
 func _Records_DeleteRecord_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteRecordRequest)
 	if err := dec(in); err != nil {
@@ -340,6 +450,22 @@ var Records_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Records_CreateRecord_Handler,
 		},
 		{
+			MethodName: "StartBinaryMultipartUpload",
+			Handler:    _Records_StartBinaryMultipartUpload_Handler,
+		},
+		{
+			MethodName: "GetBinaryMultipartUploadStatus",
+			Handler:    _Records_GetBinaryMultipartUploadStatus_Handler,
+		},
+		{
+			MethodName: "CompleteBinaryMultipartUpload",
+			Handler:    _Records_CompleteBinaryMultipartUpload_Handler,
+		},
+		{
+			MethodName: "AbortBinaryMultipartUpload",
+			Handler:    _Records_AbortBinaryMultipartUpload_Handler,
+		},
+		{
 			MethodName: "ListRecords",
 			Handler:    _Records_ListRecords_Handler,
 		},
@@ -358,13 +484,8 @@ var Records_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "CreateBinaryRecord",
-			Handler:       _Records_CreateBinaryRecord_Handler,
-			ClientStreams: true,
-		},
-		{
-			StreamName:    "UpdateBinaryRecord",
-			Handler:       _Records_UpdateBinaryRecord_Handler,
+			StreamName:    "UploadBinaryMultipartPart",
+			Handler:       _Records_UploadBinaryMultipartPart_Handler,
 			ClientStreams: true,
 		},
 		{

@@ -263,7 +263,7 @@ func Test_unmarshalPayload_FailWithInvalidBinaryPayloadFieldType(t *testing.T) {
 // TestEncryptDecryptRecordData проверяет полный цикл шифрования и расшифровки данных приватной записи.
 func TestEncryptDecryptRecordData(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.CredentialPayload{Login: "user", Password: "secret"}
 
@@ -282,7 +282,7 @@ func TestEncryptDecryptRecordData(t *testing.T) {
 // TestEncryptDecryptBinaryRecordData проверяет полный цикл шифрования и расшифровки бинарной приватной записи.
 func TestEncryptDecryptBinaryRecordData(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
 	file := []byte("file-secret")
@@ -306,10 +306,44 @@ func TestEncryptDecryptBinaryRecordData(t *testing.T) {
 	assert.Equal(t, file, decryptedFile)
 }
 
+// TestEncryptDecryptBinaryRecordFileChunks проверяет потоковый формат файла из нескольких зашифрованных частей.
+func TestEncryptDecryptBinaryRecordFileChunks(t *testing.T) {
+	// Arrange
+	masterKey := "мастер-ключ"
+	salt := []byte("1234567890abcdef")
+	payload := model.BinaryPayload{Filename: "archive.bin", ContentType: "application/octet-stream", Size: 7}
+	file := []byte("abcdefg")
+	plainChunkSize := int64(4)
+
+	// Act
+	encryption, err := NewBinaryRecordEncryption(masterKey, salt, payload)
+	require.NoError(t, err)
+	firstPart, err := encryption.EncryptFileChunk(1, file[:4])
+	require.NoError(t, err)
+	secondPart, err := encryption.EncryptFileChunk(2, file[4:])
+	require.NoError(t, err)
+	encryptedFile := model.EncryptedBlob{Data: append(firstPart.Data, secondPart.Data...)}
+	decryptedFile, err := DecryptBinaryRecordFileChunks(
+		masterKey,
+		salt,
+		encryption.EncryptedDEK,
+		encryptedFile,
+		int64(len(file)),
+		plainChunkSize,
+	)
+	expectedSize, sizeErr := EncryptedChunkedBlobSize(int64(len(file)), plainChunkSize)
+
+	// Assert
+	require.NoError(t, err)
+	require.NoError(t, sizeErr)
+	assert.Len(t, encryptedFile.Data, int(expectedSize))
+	assert.Equal(t, file, decryptedFile)
+}
+
 // TestDecryptBinaryRecordFile_FailWithWrongMasterKey проверяет ошибку расшифровки файла неправильным мастер-ключом.
 func TestDecryptBinaryRecordFile_FailWithWrongMasterKey(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
 	encrypted, err := EncryptBinaryRecordData(masterKey, salt, payload, []byte("file-secret"))
@@ -372,7 +406,7 @@ func TestDecryptBinaryRecordFile_FailWithInvalidSalt(t *testing.T) {
 // TestDecryptBinaryRecordFile_FailWithDamagedEncryptedDEK проверяет ошибку при поврежденном encrypted DEK.
 func TestDecryptBinaryRecordFile_FailWithDamagedEncryptedDEK(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
 	encrypted, err := EncryptBinaryRecordData(masterKey, salt, payload, []byte("file-secret"))
@@ -390,7 +424,7 @@ func TestDecryptBinaryRecordFile_FailWithDamagedEncryptedDEK(t *testing.T) {
 // TestDecryptBinaryRecordFile_FailWithDamagedEncryptedFile проверяет ошибку при поврежденном encrypted file.
 func TestDecryptBinaryRecordFile_FailWithDamagedEncryptedFile(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.BinaryPayload{Filename: "passport.pdf", ContentType: "application/pdf", Size: 11}
 	encrypted, err := EncryptBinaryRecordData(masterKey, salt, payload, []byte("file-secret"))
@@ -437,7 +471,7 @@ func TestEncryptRecordData_FailWithInvalidSalt(t *testing.T) {
 // TestEncryptRecordData_FailWithUnsupportedPayload проверяет ошибку при неподдерживаемом payload.
 func TestEncryptRecordData_FailWithUnsupportedPayload(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := struct {
 		Value string
@@ -488,7 +522,7 @@ func TestDecryptRecordData_FailWithInvalidSalt(t *testing.T) {
 // TestDecryptRecordData_FailWithDamagedEncryptedDEK проверяет ошибку при поврежденном encrypted DEK.
 func TestDecryptRecordData_FailWithDamagedEncryptedDEK(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.TextPayload{Text: "secret"}
 	encrypted, err := EncryptRecordData(masterKey, salt, payload)
@@ -506,7 +540,7 @@ func TestDecryptRecordData_FailWithDamagedEncryptedDEK(t *testing.T) {
 // TestDecryptRecordData_FailWithDamagedEncryptedPayload проверяет ошибку при поврежденном encrypted payload.
 func TestDecryptRecordData_FailWithDamagedEncryptedPayload(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.TextPayload{Text: "secret"}
 	encrypted, err := EncryptRecordData(masterKey, salt, payload)
@@ -524,7 +558,7 @@ func TestDecryptRecordData_FailWithDamagedEncryptedPayload(t *testing.T) {
 // TestDecryptRecordData_FailWithUnsupportedPayload проверяет ошибку расшифровки в неподдерживаемый тип.
 func TestDecryptRecordData_FailWithUnsupportedPayload(t *testing.T) {
 	// Arrange
-	masterKey := "correct horse battery staple"
+	masterKey := "мастер-ключ"
 	salt := []byte("1234567890abcdef")
 	payload := model.TextPayload{Text: "secret"}
 	encrypted, err := EncryptRecordData(masterKey, salt, payload)

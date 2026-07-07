@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	userLoginMaxChars         = 128
-	userPasswordMaxChars      = 256
-	masterKeySaltBytes        = 16
-	masterKeyVerifierMaxBytes = 128
+	userLoginMaxSizeChars         = 128
+	userPasswordMaxSizeChars      = 256
+	masterKeySaltSizeBytes        = 16
+	masterKeyVerifierMaxSizeBytes = 128
 )
 
 // authUseCase описывает сценарии сервиса аутентификации: регистрация, вход в аккаунт, обновление пары токенов, выход
@@ -111,10 +111,10 @@ func validateCredentials(login, password string) error {
 	if password == "" {
 		return status.Error(codes.InvalidArgument, "password is required")
 	}
-	if utf8.RuneCountInString(login) > userLoginMaxChars {
+	if utf8.RuneCountInString(login) > userLoginMaxSizeChars {
 		return status.Error(codes.InvalidArgument, "login exceeds size limit")
 	}
-	if utf8.RuneCountInString(password) > userPasswordMaxChars {
+	if utf8.RuneCountInString(password) > userPasswordMaxSizeChars {
 		return status.Error(codes.InvalidArgument, "password exceeds size limit")
 	}
 	return nil
@@ -122,7 +122,7 @@ func validateCredentials(login, password string) error {
 
 // validateMasterKeySaltSize проверяет размер соли мастер-ключа из gRPC-запроса.
 func validateMasterKeySaltSize(salt []byte) error {
-	if len(salt) != masterKeySaltBytes {
+	if len(salt) != masterKeySaltSizeBytes {
 		return status.Error(codes.InvalidArgument, "master key salt has invalid length")
 	}
 	return nil
@@ -130,7 +130,7 @@ func validateMasterKeySaltSize(salt []byte) error {
 
 // validateMasterKeyVerifierSize проверяет размер зашифрованного верификатора мастер-ключа из gRPC-запроса.
 func validateMasterKeyVerifierSize(verifier []byte) error {
-	if len(verifier) > masterKeyVerifierMaxBytes {
+	if len(verifier) > masterKeyVerifierMaxSizeBytes {
 		return status.Error(codes.InvalidArgument, "master key verifier exceeds size limit")
 	}
 	return nil
@@ -324,7 +324,7 @@ func changeMasterKeyInputFromRequest(
 		if len(item.GetEncryptedDek()) == 0 {
 			return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "record encrypted DEK is required")
 		}
-		if len(item.GetEncryptedDek()) > recordEncryptedDEKMaxBytes {
+		if len(item.GetEncryptedDek()) > recordEncryptedDEKMaxSizeBytes {
 			return usecase.ChangeMasterKeyInput{}, status.Error(
 				codes.InvalidArgument,
 				"record encrypted DEK exceeds size limit",

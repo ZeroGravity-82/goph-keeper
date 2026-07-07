@@ -1,9 +1,7 @@
 package minio
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"testing"
 
 	"github.com/google/uuid"
@@ -89,48 +87,6 @@ func TestMinIOStorage_ObjectKey(t *testing.T) {
 			"files/018f6b7c-0000-7000-8000-000000000003/payload",
 		key,
 	)
-}
-
-// TestMinIOStorage_PutValidatesInput проверяет локальную валидацию перед сохранением объекта.
-func TestMinIOStorage_PutValidatesInput(t *testing.T) {
-	tests := []struct {
-		name      string
-		objectKey string
-		data      io.Reader
-		size      int64
-		wantErr   string
-	}{
-		{
-			name:    "empty key",
-			data:    bytes.NewReader([]byte("data")),
-			size:    4,
-			wantErr: "object key is not provided",
-		},
-		{
-			name:      "nil reader",
-			objectKey: "object",
-			size:      4,
-			wantErr:   "object data reader is not provided",
-		},
-		{
-			name:      "invalid size",
-			objectKey: "object",
-			data:      bytes.NewReader([]byte("data")),
-			wantErr:   "object size is invalid",
-		},
-	}
-
-	storage := &MinIOStorage{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Act
-			_, err := storage.Put(context.Background(), tt.objectKey, tt.data, tt.size)
-
-			// Assert
-			require.Error(t, err)
-			assert.Equal(t, tt.wantErr, err.Error())
-		})
-	}
 }
 
 // TestMinIOStorage_GetRequiresObjectKey проверяет локальную валидацию ключа объекта перед чтением.

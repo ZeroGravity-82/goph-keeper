@@ -24,7 +24,7 @@ func TestEncryptionRoundTrip(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	assert.Equal(t, plaintext, decrypted)
-	assert.Len(t, blob.Data, nonceLength+len(plaintext)+16)
+	assert.Len(t, blob.Data, nonceSizeBytes+len(plaintext)+16)
 	assert.NotEqual(t, plaintext, blob.Data)
 }
 
@@ -41,7 +41,7 @@ func TestEncryptionRoundTrip_EmptyPlaintext(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	assert.Empty(t, decrypted)
-	assert.Len(t, blob.Data, nonceLength+16)
+	assert.Len(t, blob.Data, nonceSizeBytes+16)
 }
 
 // Test_encrypt_UniqueNonce проверяет, что повторное шифрование одного plaintext дает разные blob.
@@ -77,7 +77,7 @@ func Test_encrypt_FailWithInvalidKey(t *testing.T) {
 func Test_decrypt_FailWithInvalidKey(t *testing.T) {
 	// Arrange
 	invalidKey := []byte("short-key")
-	blob := model.EncryptedBlob{Data: bytes.Repeat([]byte{1}, nonceLength+16)}
+	blob := model.EncryptedBlob{Data: bytes.Repeat([]byte{1}, nonceSizeBytes+16)}
 	encrypted, encryptErr := encrypt([]byte("payload"), invalidKey)
 
 	// Act
@@ -94,7 +94,7 @@ func Test_decrypt_FailWithInvalidKey(t *testing.T) {
 func Test_decrypt_FailWithWrongKey(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
-	wrongKey := bytes.Repeat([]byte{2}, dekLength)
+	wrongKey := bytes.Repeat([]byte{2}, dekSizeBytes)
 	blob, err := encrypt([]byte("secret payload"), key)
 	require.NoError(t, err)
 
@@ -126,7 +126,7 @@ func Test_decrypt_FailWithDamagedCiphertext(t *testing.T) {
 func Test_decrypt_FailWithShortBlob(t *testing.T) {
 	// Arrange
 	key := testDEK(t)
-	blob := model.EncryptedBlob{Data: bytes.Repeat([]byte{1}, nonceLength-1)}
+	blob := model.EncryptedBlob{Data: bytes.Repeat([]byte{1}, nonceSizeBytes-1)}
 
 	// Act
 	decrypted, err := decrypt(blob, key)

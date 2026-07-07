@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"sync"
 	"testing"
 	"time"
 
@@ -110,54 +108,51 @@ func newIntegrationRecordsServiceWithFileStorage(
 	require.NoError(t, err)
 	recordFileRepo, err := postgres.NewRecordFileRepository(db)
 	require.NoError(t, err)
+	multipartUploadRepo, err := postgres.NewMultipartUploadRepository(db)
+	require.NoError(t, err)
 	transactor, err := postgres.NewTransactor(db)
 	require.NoError(t, err)
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, fileStorage, transactor)
+	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, multipartUploadRepo, fileStorage, transactor)
 	require.NoError(t, err)
 	recordsService, err := NewRecordsService(recordUC, logging.NopLogger())
 	require.NoError(t, err)
 	return recordsService
 }
 
-type fakeFileStorage struct {
-	mu      sync.Mutex
-	objects map[string][]byte
-	err     error
-}
+func createBinaryRecordMultipart(
+	t *testing.T,
+	recordsService *RecordsService,
+	ctx context.Context,
+	title string,
+	encryptedFile []byte,
+) *pb.CompleteBinaryMultipartUploadResponse {
+	t.Helper()
 
-func newFakeFileStorage() *fakeFileStorage {
-	return &fakeFileStorage{objects: make(map[string][]byte)}
-}
+	encryptedSize := int64(len(encryptedFile))
+	partSize := encryptedSize
+	startResp, err := recordsService.StartBinaryMultipartUpload(ctx, pb.StartBinaryMultipartUploadRequest_builder{
+		Title:            &title,
+		Description:      new("description"),
+		EncryptedDek:     []byte("encrypted-dek"),
+		EncryptedPayload: []byte("encrypted-payload"),
+		EncryptedSize:    &encryptedSize,
+		PartSize:         &partSize,
+	}.Build())
+	require.NoError(t, err)
 
-func (s *fakeFileStorage) ObjectKey(userID, recordID, fileID uuid.UUID) string {
-	return fmt.Sprintf("users/%s/records/%s/files/%s/payload", userID, recordID, fileID)
-}
-
-func (s *fakeFileStorage) Put(_ context.Context, objectKey string, data io.Reader, _ int64) (int64, error) {
-	if s.err != nil {
-		return 0, s.err
-	}
-	copied, err := io.ReadAll(data)
-	if err != nil {
-		return 0, err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.objects[objectKey] = copied
-	return int64(len(copied)), nil
-}
-
-func (s *fakeFileStorage) Get(_ context.Context, objectKey string) (io.ReadCloser, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	data, ok := s.objects[objectKey]
-	if !ok {
-		return nil, fmt.Errorf("object %q not found", objectKey)
-	}
-	return io.NopCloser(bytes.NewReader(append([]byte(nil), data...))), nil
+	stream := newUploadBinaryMultipartPartIntegrationStream(
+		ctx,
+		startResp.GetUploadId(),
+		1,
+		encryptedFile,
+	)
+	require.NoError(t, recordsService.UploadBinaryMultipartPart(stream))
+	completeResp, err := recordsService.CompleteBinaryMultipartUpload(
+		ctx,
+		pb.CompleteBinaryMultipartUploadRequest_builder{UploadId: new(startResp.GetUploadId())}.Build(),
+	)
+	require.NoError(t, err)
+	return completeResp
 }
 
 func getStoredRecord(t *testing.T, ctx context.Context, db *sqlx.DB, recordID uuid.UUID) dto.Record {
@@ -215,9 +210,9 @@ func TestRecordsService_CreateRecord_Integration_Binary(t *testing.T) {
 	assert.Equal(t, 0, recordCount)
 }
 
-// TestRecordsService_CreateBinaryRecord_Integration проверяет создание бинарной приватной записи через реальные
+// TestRecordsService_CreateBinaryMultipart_Integration проверяет создание бинарной приватной записи через реальные
 // зависимости, кроме файлового хранилища.
-func TestRecordsService_CreateBinaryRecord_Integration(t *testing.T) {
+func TestRecordsService_CreateBinaryMultipart_Integration(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
@@ -225,23 +220,16 @@ func TestRecordsService_CreateBinaryRecord_Integration(t *testing.T) {
 	recordsService := newIntegrationRecordsService(t, db)
 	requestCtx := authcontext.WithUserID(ctx, user.ID)
 	encryptedFile := []byte("encrypted-file")
-	stream := newCreateBinaryRecordTestStream(
-		requestCtx,
-		newCreateBinaryRecordMetadata("binary title", int64(len(encryptedFile))),
-		encryptedFile,
-	)
 
 	// Act
-	err := recordsService.CreateBinaryRecord(stream)
+	resp := createBinaryRecordMultipart(t, recordsService, requestCtx, "binary title", encryptedFile)
 
 	// Assert
-	require.NoError(t, err)
-	require.NotNil(t, stream.response)
-	assert.NotEmpty(t, stream.response.GetRecordId())
-	assert.Equal(t, int64(1), stream.response.GetVersion())
-	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADED, stream.response.GetUploadStatus())
+	assert.NotEmpty(t, resp.GetRecordId())
+	assert.Equal(t, int64(1), resp.GetVersion())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADED, resp.GetUploadStatus())
 
-	recordID, err := uuid.Parse(stream.response.GetRecordId())
+	recordID, err := uuid.Parse(resp.GetRecordId())
 	require.NoError(t, err)
 	storedRecord := getStoredRecord(t, ctx, db, recordID)
 	assert.Equal(t, user.ID, storedRecord.UserID)
@@ -253,10 +241,10 @@ func TestRecordsService_CreateBinaryRecord_Integration(t *testing.T) {
 
 	var storedFile dto.RecordFile
 	err = db.GetContext(ctx, &storedFile, `
-SELECT id, record_id, object_key, encrypted_size, upload_mode, upload_status, created_at, updated_at
+SELECT id, record_id, object_key, encrypted_size, upload_status, created_at, updated_at
 FROM record_file
 WHERE record_id = $1
-`, recordID)
+	`, recordID)
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, storedFile.ID)
 	assert.Equal(t, recordID, storedFile.RecordID)
@@ -264,42 +252,47 @@ WHERE record_id = $1
 	assert.Equal(t, expectedObjectKey, storedFile.ObjectKey)
 	require.NotNil(t, storedFile.EncryptedSize)
 	assert.Equal(t, int64(len(encryptedFile)), *storedFile.EncryptedSize)
-	require.NotNil(t, storedFile.UploadMode)
-	assert.Equal(t, string(model.UploadModeSinglePart), *storedFile.UploadMode)
 	assert.Equal(t, string(model.UploadStatusUploaded), storedFile.UploadStatus)
 }
 
-// TestRecordsService_CreateBinaryRecord_Integration_SizeMismatch проверяет, что при несовпадении размера приватная
-// запись файла получает статус failed.
-func TestRecordsService_CreateBinaryRecord_Integration_SizeMismatch(t *testing.T) {
+// TestRecordsService_UploadBinaryMultipartPart_Integration_SizeMismatch проверяет ошибку при несовпадении размера части.
+func TestRecordsService_UploadBinaryMultipartPart_Integration_SizeMismatch(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	db := openTestDB(t, ctx)
 	user := createIntegrationUser(t, ctx, db, "record-create-binary-size-mismatch-user")
 	recordsService := newIntegrationRecordsService(t, db)
 	requestCtx := authcontext.WithUserID(ctx, user.ID)
-	stream := newCreateBinaryRecordTestStream(
+	encryptedSize := int64(100)
+	partSize := int64(100)
+	startResp, err := recordsService.StartBinaryMultipartUpload(
 		requestCtx,
-		newCreateBinaryRecordMetadata("binary title", 100),
-		[]byte("short"),
+		pb.StartBinaryMultipartUploadRequest_builder{
+			Title:            new("binary title"),
+			Description:      new("description"),
+			EncryptedDek:     []byte("encrypted-dek"),
+			EncryptedPayload: []byte("encrypted-payload"),
+			EncryptedSize:    &encryptedSize,
+			PartSize:         &partSize,
+		}.Build(),
 	)
+	require.NoError(t, err)
+	stream := newUploadBinaryMultipartPartIntegrationStream(requestCtx, startResp.GetUploadId(), 1, []byte("short"))
+	partNumber := int32(1)
+	stream.requests[0] = pb.UploadBinaryMultipartPartRequest_builder{
+		Metadata: pb.UploadBinaryMultipartPartMetadata_builder{
+			UploadId:   new(startResp.GetUploadId()),
+			PartNumber: &partNumber,
+			PartSize:   &partSize,
+		}.Build(),
+	}.Build()
 
 	// Act
-	err := recordsService.CreateBinaryRecord(stream)
+	err = recordsService.UploadBinaryMultipartPart(stream)
 
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
-
-	var storedFile dto.RecordFile
-	err = db.GetContext(ctx, &storedFile, `
-SELECT rf.id, rf.record_id, rf.object_key, rf.encrypted_size, rf.upload_mode, rf.upload_status, rf.created_at, rf.updated_at
-FROM record_file rf
-JOIN record r ON r.id = rf.record_id
-WHERE r.app_user_id = $1
-`, user.ID)
-	require.NoError(t, err)
-	assert.Equal(t, string(model.UploadStatusFailed), storedFile.UploadStatus)
 }
 
 // TestRecordsService_ListRecords_Integration проверяет получение списка приватных записей.
@@ -427,19 +420,17 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL)
 	require.NoError(t, err)
 
 	encryptedSize := int64(1024)
-	uploadMode := string(model.UploadModeSinglePart)
 	objectKey := fmt.Sprintf("users/%s/records/%s/files/%s/payload", userID, recordID, fileID)
 	_, err = db.ExecContext(ctx, `
 INSERT INTO record_file (
-    id, record_id, object_key, encrypted_size, upload_mode, upload_status, created_at, updated_at
+    id, record_id, object_key, encrypted_size, upload_status, created_at, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `,
 		fileID,
 		recordID,
 		objectKey,
 		encryptedSize,
-		uploadMode,
 		string(model.UploadStatusUploaded),
 		now,
 		now,
@@ -675,14 +666,9 @@ func TestRecordsService_DownloadFile_Integration(t *testing.T) {
 	fileStorage := newFakeFileStorage()
 	recordsService := newIntegrationRecordsServiceWithFileStorage(t, db, fileStorage)
 	requestCtx := authcontext.WithUserID(ctx, user.ID)
-	encryptedFile := bytes.Repeat([]byte("a"), downloadChunkSize+10)
-	createStream := newCreateBinaryRecordTestStream(
-		requestCtx,
-		newCreateBinaryRecordMetadata("binary title", int64(len(encryptedFile))),
-		encryptedFile,
-	)
-	require.NoError(t, recordsService.CreateBinaryRecord(createStream))
-	recordID := createStream.response.GetRecordId()
+	encryptedFile := bytes.Repeat([]byte("a"), downloadChunkSizeBytes+10)
+	createResp := createBinaryRecordMultipart(t, recordsService, requestCtx, "binary title", encryptedFile)
+	recordID := createResp.GetRecordId()
 	downloadStream := newDownloadFileTestStream(requestCtx)
 	req := pb.DownloadFileRequest_builder{RecordId: &recordID}.Build()
 
@@ -692,6 +678,6 @@ func TestRecordsService_DownloadFile_Integration(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	require.Len(t, downloadStream.chunks, 2)
-	assert.Equal(t, downloadChunkSize, len(downloadStream.chunks[0]))
+	assert.Equal(t, downloadChunkSizeBytes, len(downloadStream.chunks[0]))
 	assert.Equal(t, encryptedFile, bytes.Join(downloadStream.chunks, nil))
 }

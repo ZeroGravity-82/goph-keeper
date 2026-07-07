@@ -81,7 +81,6 @@ SELECT
     rf.record_id AS file_record_id,
     rf.object_key AS file_object_key,
     rf.encrypted_size AS file_encrypted_size,
-    rf.upload_mode AS file_upload_mode,
     rf.upload_status AS file_upload_status,
     rf.created_at AS file_created_at,
     rf.updated_at AS file_updated_at
@@ -253,7 +252,12 @@ SELECT EXISTS (
 // Delete помечает приватную запись удаленной (мягкое удаление).
 //
 // Если приватная запись не найдена, возвращает usecase.ErrRecordNotFound.
-func (r *RecordRepository) Delete(ctx context.Context, recordID uuid.UUID, userID uuid.UUID, deletedAt time.Time) error {
+func (r *RecordRepository) Delete(
+	ctx context.Context,
+	recordID uuid.UUID,
+	userID uuid.UUID,
+	deletedAt time.Time,
+) error {
 	const q = `
 UPDATE record
 SET deleted_at = $1, updated_at = $1
@@ -309,7 +313,6 @@ func recordWithFileFromDTO(row dto.RecordWithFile) model.Record {
 			RecordID:      *row.FileRecordID,
 			ObjectKey:     *row.FileObjectKey,
 			EncryptedSize: row.FileEncryptedSize,
-			UploadMode:    uploadModeFromDB(row.FileUploadMode),
 			UploadStatus:  model.UploadStatus(*row.FileUploadStatus),
 			CreatedAt:     *row.FileCreatedAt,
 			UpdatedAt:     *row.FileUpdatedAt,
@@ -318,8 +321,7 @@ func recordWithFileFromDTO(row dto.RecordWithFile) model.Record {
 	return record
 }
 
-// RecordFileRepository реализует доступ к техническим данным (ключ в объектном хранилище, размер зашифрованного файла,
-// режим загрузки на сервер, статус загрузки на сервер) файлов приватных записей в PostgreSQL.
+// RecordFileRepository реализует доступ к техническим данным файлов приватных записей в PostgreSQL.
 type RecordFileRepository struct {
 	db *sqlx.DB
 }
@@ -335,8 +337,8 @@ func NewRecordFileRepository(db *sqlx.DB) (*RecordFileRepository, error) {
 // Create сохраняет техническую информацию о файле приватной записи.
 func (r *RecordFileRepository) Create(ctx context.Context, file model.RecordFile) error {
 	const q = `
-INSERT INTO record_file (id, record_id, object_key, encrypted_size, upload_mode, upload_status, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO record_file (id, record_id, object_key, encrypted_size, upload_status, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 	exec := executorFromContext(ctx, r.db)
 	_, err := exec.ExecContext(
@@ -346,7 +348,6 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		file.RecordID,
 		file.ObjectKey,
 		file.EncryptedSize,
-		uploadModeToDB(file.UploadMode),
 		string(file.UploadStatus),
 		file.CreatedAt,
 		file.UpdatedAt,
@@ -365,24 +366,17 @@ SET
     id = $1,
     object_key = $2,
     encrypted_size = $3,
-    upload_mode = $4,
-    upload_status = $5,
-    updated_at = $6
-WHERE record_id = $7
+    upload_status = $4,
+    updated_at = $5
+WHERE record_id = $6
 `
 	exec := executorFromContext(ctx, r.db)
-	var uploadMode *string
-	if file.UploadMode != nil {
-		v := string(*file.UploadMode)
-		uploadMode = &v
-	}
 	result, err := exec.ExecContext(
 		ctx,
 		q,
 		file.ID,
 		file.ObjectKey,
 		file.EncryptedSize,
-		uploadMode,
 		string(file.UploadStatus),
 		file.UpdatedAt,
 		file.RecordID,
@@ -427,18 +421,164 @@ WHERE id = $3
 	return nil
 }
 
-func uploadModeToDB(uploadMode *model.UploadMode) *string {
-	if uploadMode == nil {
-		return nil
-	}
-	value := string(*uploadMode)
-	return &value
+// MultipartUploadRepository реализует доступ к состоянию возобновляемых multipart-загрузок файлов.
+type MultipartUploadRepository struct {
+	db *sqlx.DB
 }
 
-func uploadModeFromDB(uploadMode *string) *model.UploadMode {
-	if uploadMode == nil {
-		return nil
+// NewMultipartUploadRepository создает MultipartUploadRepository на основе подключения к БД.
+func NewMultipartUploadRepository(db *sqlx.DB) (*MultipartUploadRepository, error) {
+	if db == nil {
+		return nil, errors.New("database connection is not provided")
 	}
-	value := model.UploadMode(*uploadMode)
-	return &value
+	return &MultipartUploadRepository{db: db}, nil
+}
+
+// Create сохраняет новую сессию multipart-загрузки.
+func (r *MultipartUploadRepository) Create(ctx context.Context, upload usecase.MultipartUpload) error {
+	const q = `
+INSERT INTO record_file_multipart_upload (
+    id, app_user_id, record_id, record_version, file_id, object_key, storage_upload_id, encrypted_size, part_size, status, created_at, updated_at, completed_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+`
+	exec := executorFromContext(ctx, r.db)
+	_, err := exec.ExecContext(
+		ctx,
+		q,
+		upload.ID,
+		upload.UserID,
+		upload.RecordID,
+		upload.RecordVersion,
+		upload.FileID,
+		upload.ObjectKey,
+		upload.StorageUploadID,
+		upload.EncryptedSize,
+		upload.PartSize,
+		string(upload.Status),
+		upload.CreatedAt,
+		upload.UpdatedAt,
+		upload.CompletedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to persist multipart upload: %w", err)
+	}
+	return nil
+}
+
+// GetByIDAndUserID возвращает сессию multipart-загрузки по ID и пользователю.
+func (r *MultipartUploadRepository) GetByIDAndUserID(
+	ctx context.Context,
+	uploadID uuid.UUID,
+	userID uuid.UUID,
+) (usecase.MultipartUpload, error) {
+	const q = `
+SELECT id, app_user_id, record_id, record_version, file_id, object_key, storage_upload_id, encrypted_size, part_size, status, created_at, updated_at, completed_at
+FROM record_file_multipart_upload
+WHERE id = $1 AND app_user_id = $2
+`
+	var row dto.MultipartUpload
+	exec := executorFromContext(ctx, r.db)
+	if err := exec.GetContext(ctx, &row, q, uploadID, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return usecase.MultipartUpload{}, usecase.ErrMultipartUploadNotFound
+		}
+		return usecase.MultipartUpload{}, fmt.Errorf("failed to select multipart upload: %w", err)
+	}
+	return multipartUploadFromDTO(row), nil
+}
+
+// UpsertPart сохраняет или обновляет информацию о загруженной части.
+func (r *MultipartUploadRepository) UpsertPart(ctx context.Context, part usecase.MultipartUploadPart) error {
+	const q = `
+INSERT INTO record_file_multipart_part (upload_id, part_number, size, etag, created_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (upload_id, part_number)
+DO UPDATE SET size = EXCLUDED.size, etag = EXCLUDED.etag, created_at = EXCLUDED.created_at
+`
+	exec := executorFromContext(ctx, r.db)
+	_, err := exec.ExecContext(ctx, q, part.UploadID, part.PartNumber, part.Size, part.ETag, part.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to upsert multipart upload part: %w", err)
+	}
+	return nil
+}
+
+// ListParts возвращает список загруженных частей сессии multipart-загрузки.
+func (r *MultipartUploadRepository) ListParts(
+	ctx context.Context,
+	uploadID uuid.UUID,
+) ([]usecase.MultipartUploadPart, error) {
+	const q = `
+SELECT upload_id, part_number, size, etag, created_at
+FROM record_file_multipart_part
+WHERE upload_id = $1
+ORDER BY part_number
+`
+	var rows []dto.MultipartUploadPart
+	exec := executorFromContext(ctx, r.db)
+	if err := exec.SelectContext(ctx, &rows, q, uploadID); err != nil {
+		return nil, fmt.Errorf("failed to select multipart upload parts: %w", err)
+	}
+	parts := make([]usecase.MultipartUploadPart, 0, len(rows))
+	for _, row := range rows {
+		parts = append(parts, multipartUploadPartFromDTO(row))
+	}
+	return parts, nil
+}
+
+// UpdateStatus обновляет статус сессии multipart-загрузки.
+func (r *MultipartUploadRepository) UpdateStatus(
+	ctx context.Context,
+	uploadID uuid.UUID,
+	status usecase.MultipartUploadStatus,
+	updatedAt time.Time,
+	completedAt *time.Time,
+) error {
+	const q = `
+UPDATE record_file_multipart_upload
+SET status = $1, updated_at = $2, completed_at = $3
+WHERE id = $4
+`
+	exec := executorFromContext(ctx, r.db)
+	result, err := exec.ExecContext(ctx, q, string(status), updatedAt, completedAt, uploadID)
+	if err != nil {
+		return fmt.Errorf("failed to update multipart upload status: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read affected rows count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return usecase.ErrMultipartUploadNotFound
+	}
+	return nil
+}
+
+func multipartUploadFromDTO(row dto.MultipartUpload) usecase.MultipartUpload {
+	return usecase.MultipartUpload{
+		ID:              row.ID,
+		UserID:          row.UserID,
+		RecordID:        row.RecordID,
+		RecordVersion:   row.RecordVersion,
+		FileID:          row.FileID,
+		ObjectKey:       row.ObjectKey,
+		StorageUploadID: row.StorageUploadID,
+		EncryptedSize:   row.EncryptedSize,
+		PartSize:        row.PartSize,
+		Status:          usecase.MultipartUploadStatus(row.Status),
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+		CompletedAt:     row.CompletedAt,
+	}
+}
+
+func multipartUploadPartFromDTO(row dto.MultipartUploadPart) usecase.MultipartUploadPart {
+	return usecase.MultipartUploadPart{
+		UploadID:   row.UploadID,
+		PartNumber: row.PartNumber,
+		Size:       row.Size,
+		ETag:       row.ETag,
+		CreatedAt:  row.CreatedAt,
+	}
 }

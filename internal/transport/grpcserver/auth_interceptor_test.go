@@ -262,7 +262,7 @@ func TestAuthenticateStream_AddsUserIDToContext(t *testing.T) {
 	srv := &GRPCServer{tokenParser: parser, sessionChecker: sessionChecker}
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer access-token"))
 	stream := &authTestServerStream{ctx: ctx}
-	info := &grpc.StreamServerInfo{FullMethod: pb.Records_CreateBinaryRecord_FullMethodName}
+	info := &grpc.StreamServerInfo{FullMethod: pb.Records_UploadBinaryMultipartPart_FullMethodName}
 
 	// Act
 	err = srv.authenticateStreamInterceptor(nil, stream, info, func(_ any, stream grpc.ServerStream) error {
