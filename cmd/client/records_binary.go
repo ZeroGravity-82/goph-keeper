@@ -51,10 +51,10 @@ func downloadSelectedBinaryFile(
 	if err = os.WriteFile(outputPath, file.Data, 0o600); err != nil {
 		return fmt.Errorf("не удалось сохранить файл: %w", err)
 	}
-	fmt.Fprintf(out, "файл сохранен: %s\n", outputPath)
-	fmt.Fprintf(out, "исходное имя: %s\n", file.Filename)
-	fmt.Fprintf(out, "MIME-тип: %s\n", file.ContentType)
-	fmt.Fprintf(out, "размер: %d байт\n", file.DeclaredSize)
+	_, _ = fmt.Fprintf(out, "файл сохранен: %s\n", outputPath)
+	_, _ = fmt.Fprintf(out, "исходное имя: %s\n", file.Filename)
+	_, _ = fmt.Fprintf(out, "MIME-тип: %s\n", file.ContentType)
+	_, _ = fmt.Fprintf(out, "размер: %d байт\n", file.DeclaredSize)
 	return nil
 }
 
@@ -159,7 +159,7 @@ func replaceSelectedBinaryFile(
 	record.Version = updated.Version
 	state.storeBinary(record)
 	progress.finish()
-	fmt.Fprintf(out, "заменен файл бинарной приватной записи: %s\n", record.Title)
+	_, _ = fmt.Fprintf(out, "заменен файл бинарной приватной записи: %s\n", record.Title)
 	return nil
 }
 
@@ -225,7 +225,7 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 		return err
 	}
 	progress.finish()
-	fmt.Fprintln(out, "создана файловая приватная запись")
+	_, _ = fmt.Fprintln(out, "создана файловая приватная запись")
 	return nil
 }
 
@@ -247,7 +247,7 @@ func (p *binaryUploadProgressPrinter) update(progress clientApp.BinaryUploadProg
 	}
 	uploadedBytes := min(max(progress.UploadedBytes, 0), progress.TotalBytes)
 	percent := float64(uploadedBytes) * 100 / float64(progress.TotalBytes)
-	fmt.Fprintf(
+	_, _ = fmt.Fprintf(
 		p.out,
 		"\rЗагрузка файла: %s из %s, %.1f%%",
 		formatMiB(uploadedBytes),
@@ -260,7 +260,7 @@ func (p *binaryUploadProgressPrinter) update(progress clientApp.BinaryUploadProg
 // finish переводит вывод на новую строку после прогресса, чтобы итоговое сообщение не прилипало к нему.
 func (p *binaryUploadProgressPrinter) finish() {
 	if p.printed {
-		fmt.Fprintln(p.out)
+		_, _ = fmt.Fprintln(p.out)
 		p.printed = false
 	}
 }

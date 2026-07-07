@@ -50,6 +50,6 @@ func createCard(ctx context.Context, app *clientApp.App, reader *bufio.Reader, o
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "создана приватная запись банковской карты")
+	_, _ = fmt.Fprintln(out, "создана приватная запись банковской карты")
 	return nil
 }

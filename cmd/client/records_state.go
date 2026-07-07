@@ -43,8 +43,8 @@ func (s *recordsMenuState) enterReadonly(out io.Writer) {
 		return
 	}
 	s.readonly = true
-	fmt.Fprintln(out, "потеряна связь с сервером, включен режим чтения")
-	fmt.Fprintln(out, "доступны только список и записи, уже загруженные за текущий запуск приложения")
+	_, _ = fmt.Fprintln(out, "потеряна связь с сервером, включен режим чтения")
+	_, _ = fmt.Fprintln(out, "доступны только список и записи, уже загруженные за текущий запуск приложения")
 }
 
 // exitReadonly возвращает меню записей в обычный режим и уведомляет пользователя один раз.
@@ -53,7 +53,7 @@ func (s *recordsMenuState) exitReadonly(out io.Writer) {
 		return
 	}
 	s.readonly = false
-	fmt.Fprintln(out, "связь с сервером восстановлена, режим чтения выключен")
+	_, _ = fmt.Fprintln(out, "связь с сервером восстановлена, режим чтения выключен")
 }
 
 // ensureWritable проверяет, что текущее меню записей не находится в режиме чтения.

@@ -22,7 +22,7 @@ func confirm(reader *bufio.Reader, out io.Writer, question string) (bool, error)
 // printActionError печатает отмену действия как штатный результат, а остальные ошибки в общем формате.
 func printActionError(out io.Writer, err error) {
 	if errors.Is(err, errActionCanceled) {
-		fmt.Fprintln(out, "действие отменено")
+		_, _ = fmt.Fprintln(out, "действие отменено")
 		return
 	}
 	printError(out, err)
@@ -54,7 +54,7 @@ func promptWithDefaultCancelable(reader *bufio.Reader, out io.Writer, label stri
 
 // printCancelHint печатает подсказку с командами отмены текущего действия.
 func printCancelHint(out io.Writer) {
-	fmt.Fprintln(out, "Чтобы отменить действие, введите :q, cancel или отмена.")
+	_, _ = fmt.Fprintln(out, "Чтобы отменить действие, введите :q, cancel или отмена.")
 }
 
 // waitForEnter ожидает подтверждающее нажатие Enter перед продолжением.
@@ -74,10 +74,10 @@ func pauseBeforeClearScreen(out io.Writer) {
 
 // clearScreen очищает экран ANSI-последовательностью.
 func clearScreen(out io.Writer) {
-	fmt.Fprint(out, "\033[H\033[2J")
+	_, _ = fmt.Fprint(out, "\033[H\033[2J")
 }
 
 // printError печатает пользовательскую ошибку в едином формате CLI-клиента.
 func printError(out io.Writer, err error) {
-	fmt.Fprintf(out, "ошибка: %v\n", err)
+	_, _ = fmt.Fprintf(out, "ошибка: %v\n", err)
 }

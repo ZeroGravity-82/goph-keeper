@@ -30,9 +30,11 @@ func (e requiredInputError) Error() string {
 // клиента с перенаправленным вводом.
 func promptSecret(reader *bufio.Reader, in io.Reader, out io.Writer, label string) (string, error) {
 	if file, ok := in.(*os.File); ok && isTerminal(file) && reader.Buffered() == 0 {
-		fmt.Fprint(out, label)
+		if _, err := fmt.Fprint(out, label); err != nil {
+			return "", err
+		}
 		value, err := readSecretFromTerminal(file)
-		fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out)
 		if err != nil {
 			return "", err
 		}
@@ -216,7 +218,9 @@ func promptRequiredRetryCancelable(
 
 // prompt печатает промпт (приглашение к вводу), читает одну строку пользовательского ввода и нормализует ее.
 func prompt(reader *bufio.Reader, out io.Writer, label string) (string, error) {
-	fmt.Fprint(out, label)
+	if _, err := fmt.Fprint(out, label); err != nil {
+		return "", err
+	}
 	value, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("не удалось прочитать ввод: %w", err)

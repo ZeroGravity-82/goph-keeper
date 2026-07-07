@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,7 +14,7 @@ import (
 func Test_run_ReturnsAppInitError(t *testing.T) {
 	// Arrange
 	cfg := config.ServerConfig{DatabaseURI: "://bad-database-uri"}
-	var logger *slog.Logger = logging.NopLogger()
+	logger := logging.NopLogger()
 
 	// Act
 	err := run(cfg, logger)

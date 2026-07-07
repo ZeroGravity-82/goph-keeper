@@ -29,11 +29,11 @@ func runRecordsMenu(
 		clearScreen(out)
 		if welcomeLogin != "" {
 			printWelcome(out, welcomeLogin)
-			fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out)
 			welcomeLogin = ""
 		}
 		printRecordsMenu(out, state.items, state.readonly)
-		fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out)
 		choice, err := promptRequiredRetry(reader, out, "Выберите действие: ", "действие обязательно")
 		if err != nil {
 			return err
@@ -150,7 +150,7 @@ func runRecordsMenu(
 			}
 			return errExitApplication
 		default:
-			fmt.Fprintln(out, "неизвестное действие")
+			_, _ = fmt.Fprintln(out, "неизвестное действие")
 		}
 		if err := waitForEnter(reader, out); err != nil {
 			return err
@@ -163,20 +163,20 @@ func runRecordsMenu(
 func printRecordsMenu(out io.Writer, items []clientApp.RecordListItem, readonly bool) {
 	printRecordsTable(out, items)
 	if readonly {
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Режим чтения: создание, изменение и удаление записей временно недоступны.")
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out, "Режим чтения: создание, изменение и удаление записей временно недоступны.")
 	}
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Действия:")
-	fmt.Fprintln(out, "1. Выполнить действие над записью из списка")
-	fmt.Fprintln(out, "2. Создать запись с учетными данными")
-	fmt.Fprintln(out, "3. Создать текстовую запись")
-	fmt.Fprintln(out, "4. Создать запись для банковской карты")
-	fmt.Fprintln(out, "5. Создать бинарную запись с файлом")
-	fmt.Fprintln(out, "6. Обновить список записей")
-	fmt.Fprintln(out, "7. Сменить мастер-ключ")
-	fmt.Fprintln(out, "8. Выйти из аккаунта")
-	fmt.Fprintln(out, "9. Завершить приложение")
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "Действия:")
+	_, _ = fmt.Fprintln(out, "1. Выполнить действие над записью из списка")
+	_, _ = fmt.Fprintln(out, "2. Создать запись с учетными данными")
+	_, _ = fmt.Fprintln(out, "3. Создать текстовую запись")
+	_, _ = fmt.Fprintln(out, "4. Создать запись для банковской карты")
+	_, _ = fmt.Fprintln(out, "5. Создать бинарную запись с файлом")
+	_, _ = fmt.Fprintln(out, "6. Обновить список записей")
+	_, _ = fmt.Fprintln(out, "7. Сменить мастер-ключ")
+	_, _ = fmt.Fprintln(out, "8. Выйти из аккаунта")
+	_, _ = fmt.Fprintln(out, "9. Завершить приложение")
 }
 
 // refreshRecordsMenu обновляет список записей и переключает режим чтения по результату запроса.
@@ -201,7 +201,7 @@ func refreshRecordsAfterBinaryFailure(ctx context.Context, app *clientApp.App, s
 func handleConnectionError(state *recordsMenuState, out io.Writer, err error) {
 	if clientApp.IsConnectionError(err) {
 		if state.readonly {
-			fmt.Fprintln(out, "режим чтения: связь с сервером все еще недоступна")
+			_, _ = fmt.Fprintln(out, "режим чтения: связь с сервером все еще недоступна")
 			return
 		}
 		state.enterReadonly(out)
@@ -227,9 +227,9 @@ func operateSelectedRecord(
 	if err = openSelectedRecord(ctx, app, state, item, out); err != nil {
 		return err
 	}
-	fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out)
 	printRecordActionMenu(out, item.Type)
-	fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out)
 	choice, err := promptRequiredRetry(reader, out, "Выберите действие: ", "действие обязательно")
 	if err != nil {
 		return err
@@ -284,13 +284,13 @@ func promptRecordRow(reader *bufio.Reader, out io.Writer, maxRow int) (int, erro
 
 // printRecordActionMenu печатает действия, доступные для выбранной записи.
 func printRecordActionMenu(out io.Writer, recordType string) {
-	fmt.Fprintln(out, "Действия с записью:")
-	fmt.Fprintln(out, "0. Вернуться к списку")
-	fmt.Fprintln(out, "1. Изменить")
-	fmt.Fprintln(out, "2. Удалить")
+	_, _ = fmt.Fprintln(out, "Действия с записью:")
+	_, _ = fmt.Fprintln(out, "0. Вернуться к списку")
+	_, _ = fmt.Fprintln(out, "1. Изменить")
+	_, _ = fmt.Fprintln(out, "2. Удалить")
 	if recordType == "binary" {
-		fmt.Fprintln(out, "3. Скачать файл")
-		fmt.Fprintln(out, "4. Заменить файл")
+		_, _ = fmt.Fprintln(out, "3. Скачать файл")
+		_, _ = fmt.Fprintln(out, "4. Заменить файл")
 	}
 }
 
@@ -424,7 +424,7 @@ func deleteSelectedRecord(
 		return err
 	}
 	if !confirmed {
-		fmt.Fprintln(out, "удаление отменено")
+		_, _ = fmt.Fprintln(out, "удаление отменено")
 		return nil
 	}
 
@@ -441,6 +441,6 @@ func deleteSelectedRecord(
 			break
 		}
 	}
-	fmt.Fprintf(out, "приватная запись удалена: %s\n", item.Title)
+	_, _ = fmt.Fprintf(out, "приватная запись удалена: %s\n", item.Title)
 	return nil
 }

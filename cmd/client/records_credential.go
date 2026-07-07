@@ -40,6 +40,6 @@ func createCredential(ctx context.Context, app *clientApp.App, reader *bufio.Rea
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "создана приватная запись с учетными данными")
+	_, _ = fmt.Fprintln(out, "создана приватная запись с учетными данными")
 	return nil
 }

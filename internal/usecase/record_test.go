@@ -744,7 +744,9 @@ func TestRecordUseCase_DownloadFile(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	defer out.EncryptedFile.Close()
+	defer func() {
+		require.NoError(t, out.EncryptedFile.Close())
+	}()
 	got, err := io.ReadAll(out.EncryptedFile)
 	require.NoError(t, err)
 	assert.Equal(t, fileData, got)

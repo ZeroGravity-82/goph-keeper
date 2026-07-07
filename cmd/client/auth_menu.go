@@ -67,7 +67,7 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 			}
 			return nil
 		default:
-			fmt.Fprintln(out, "неизвестное действие")
+			_, _ = fmt.Fprintln(out, "неизвестное действие")
 			if err = waitForEnter(reader, out); err != nil {
 				return err
 			}
@@ -77,12 +77,12 @@ func runStartMenu(ctx context.Context, app *clientApp.App, build buildinfo.Info,
 
 // printStartMenu печатает меню действий, доступных без активной пользовательской сессии.
 func printStartMenu(out io.Writer, build buildinfo.Info) {
-	fmt.Fprintln(out, build.Title("GophKeeper"))
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "1. Зарегистрироваться")
-	fmt.Fprintln(out, "2. Войти в аккаунт")
-	fmt.Fprintln(out, "3. Завершить приложение")
-	fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, build.Title("GophKeeper"))
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "1. Зарегистрироваться")
+	_, _ = fmt.Fprintln(out, "2. Войти в аккаунт")
+	_, _ = fmt.Fprintln(out, "3. Завершить приложение")
+	_, _ = fmt.Fprintln(out)
 }
 
 // login выполняет вход пользователя в аккаунт, проверяет мастер-ключ и открывает пользовательскую сессию.
@@ -119,7 +119,7 @@ func login(ctx context.Context, app *clientApp.App, reader *bufio.Reader, in io.
 
 // printWelcome печатает приветствие после успешной аутентификации.
 func printWelcome(out io.Writer, login string) {
-	fmt.Fprintf(out, "Добро пожаловать, %s.\n", login)
+	_, _ = fmt.Fprintf(out, "Добро пожаловать, %s.\n", login)
 }
 
 // promptMasterKey запрашивает мастер-ключ без подтверждения.
@@ -168,7 +168,7 @@ func logout(ctx context.Context, app *clientApp.App, out io.Writer) error {
 	if err := app.Logout(callCtx); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "выполнен выход из аккаунта")
+	_, _ = fmt.Fprintln(out, "выполнен выход из аккаунта")
 	return nil
 }
 

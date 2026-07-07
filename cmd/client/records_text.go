@@ -35,6 +35,6 @@ func createText(ctx context.Context, app *clientApp.App, reader *bufio.Reader, o
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "создана текстовая приватная запись")
+	_, _ = fmt.Fprintln(out, "создана текстовая приватная запись")
 	return nil
 }

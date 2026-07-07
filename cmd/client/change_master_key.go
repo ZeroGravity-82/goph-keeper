@@ -54,6 +54,6 @@ func changeMasterKey(
 	if err = app.ChangeMasterKey(callCtx, currentMasterKey, newMasterKey); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "мастер-ключ изменен")
+	_, _ = fmt.Fprintln(out, "мастер-ключ изменен")
 	return nil
 }

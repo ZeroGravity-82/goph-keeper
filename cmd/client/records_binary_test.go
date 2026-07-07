@@ -51,7 +51,9 @@ func Test_openInputFile_ReturnsFileAndSize(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() {
+		require.NoError(t, file.Close())
+	}()
 	assert.Equal(t, int64(4), size)
 }
 

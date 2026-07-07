@@ -69,7 +69,7 @@ func updateSelectedCredential(
 	record.Password = password
 	record.Version = updated.Version
 	state.storeCredential(record)
-	fmt.Fprintf(out, "обновлена приватная запись с учетными данными: %s\n", record.Title)
+	_, _ = fmt.Fprintf(out, "обновлена приватная запись с учетными данными: %s\n", record.Title)
 	return nil
 }
 
@@ -117,7 +117,7 @@ func updateSelectedText(
 	record.Text = text
 	record.Version = updated.Version
 	state.storeText(record)
-	fmt.Fprintf(out, "обновлена текстовая приватная запись: %s\n", record.Title)
+	_, _ = fmt.Fprintf(out, "обновлена текстовая приватная запись: %s\n", record.Title)
 	return nil
 }
 
@@ -183,7 +183,7 @@ func updateSelectedCard(
 	record.CVC = cvc
 	record.Version = updated.Version
 	state.storeCard(record)
-	fmt.Fprintf(out, "обновлена приватная запись банковской карты: %s\n", record.Title)
+	_, _ = fmt.Fprintf(out, "обновлена приватная запись банковской карты: %s\n", record.Title)
 	return nil
 }
 
@@ -225,6 +225,6 @@ func updateSelectedBinaryMetadata(
 	record.Description = description
 	record.Version = updated.Version
 	state.storeBinary(record)
-	fmt.Fprintf(out, "обновлены метаданные бинарной приватной записи: %s\n", record.Title)
+	_, _ = fmt.Fprintf(out, "обновлены метаданные бинарной приватной записи: %s\n", record.Title)
 	return nil
 }

@@ -34,7 +34,9 @@ func readSecretFromTerminal(file *os.File) (string, error) {
 	if err = unix.IoctlSetTermios(fd, unix.TCSETS, &newState); err != nil {
 		return "", fmt.Errorf("не удалось отключить отображение ввода в терминале: %w", err)
 	}
-	defer unix.IoctlSetTermios(fd, unix.TCSETS, oldState)
+	defer func() {
+		_ = unix.IoctlSetTermios(fd, unix.TCSETS, oldState)
+	}()
 
 	return readLineFromFile(file)
 }

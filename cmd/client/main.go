@@ -27,12 +27,12 @@ func main() {
 			// Пользователь запросил справку по флагам командной строки; это штатное завершение.
 			return
 		}
-		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
 		os.Exit(1)
 	}
 
 	if err = run(context.Background(), cfg, os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "ошибка: %v\n", err)
 		os.Exit(1)
 	}
 }
