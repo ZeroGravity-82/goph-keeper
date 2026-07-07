@@ -179,6 +179,130 @@ func TestRecordUseCase_GetBinaryMultipartUploadStatus(t *testing.T) {
 	assert.Equal(t, "etag-1", out.UploadedParts[0].ETag)
 }
 
+// TestRecordUseCase_UploadBinaryMultipartPart проверяет загрузку одной части активной multipart-загрузки.
+func TestRecordUseCase_UploadBinaryMultipartPart(t *testing.T) {
+	// Arrange
+	uc, _, _, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000038")
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000039")
+	multipartRepo.upload = MultipartUpload{
+		ID:              uploadID,
+		UserID:          userID,
+		ObjectKey:       "object-key",
+		StorageUploadID: "storage-upload-id",
+		EncryptedSize:   10,
+		PartSize:        5,
+		Status:          MultipartUploadStatusUploading,
+	}
+
+	// Act
+	out, err := uc.UploadBinaryMultipartPart(context.Background(), UploadBinaryMultipartPartInput{
+		UserID:     userID,
+		UploadID:   uploadID,
+		PartNumber: 2,
+		PartSize:   5,
+		Data:       bytes.NewReader([]byte("part2")),
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, uploadID, out.UploadID)
+	assert.Equal(t, int32(2), out.Part.PartNumber)
+	assert.Equal(t, int64(5), out.Part.Size)
+	assert.Equal(t, "etag", out.Part.ETag)
+	assert.Equal(t, "object-key", storage.putPartObjectKey)
+	assert.Equal(t, "storage-upload-id", storage.putPartStorageID)
+	assert.Equal(t, int32(2), storage.putPartNumber)
+	assert.Equal(t, int64(5), storage.putPartSize)
+	assert.Equal(t, []byte("part2"), storage.putPartData)
+	require.Len(t, multipartRepo.upserted, 1)
+	assert.Equal(t, uploadID, multipartRepo.upserted[0].UploadID)
+	assert.Equal(t, int32(2), multipartRepo.upserted[0].PartNumber)
+}
+
+// TestRecordUseCase_UploadBinaryMultipartPart_FailWithInvalidInput проверяет ошибки валидации части до обращения к
+// файловому хранилищу.
+func TestRecordUseCase_UploadBinaryMultipartPart_FailWithInvalidInput(t *testing.T) {
+	tests := []struct {
+		name string
+		in   UploadBinaryMultipartPartInput
+	}{
+		{name: "nil data", in: UploadBinaryMultipartPartInput{Data: nil}},
+		{
+			name: "wrong part size",
+			in:   UploadBinaryMultipartPartInput{PartNumber: 1, PartSize: 4, Data: bytes.NewReader([]byte("part"))},
+		},
+		{
+			name: "wrong part number",
+			in:   UploadBinaryMultipartPartInput{PartNumber: 3, PartSize: 5, Data: bytes.NewReader([]byte("part"))},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			uc, _, _, multipartRepo, storage, _ := newTestRecordUseCase(t)
+			multipartRepo.upload = MultipartUpload{
+				EncryptedSize: 10,
+				PartSize:      5,
+				Status:        MultipartUploadStatusUploading,
+			}
+
+			// Act
+			_, err := uc.UploadBinaryMultipartPart(context.Background(), tt.in)
+
+			// Assert
+			require.ErrorIs(t, err, ErrMultipartUploadPartInvalid)
+			assert.Empty(t, storage.putPartObjectKey)
+			assert.Empty(t, multipartRepo.upserted)
+		})
+	}
+}
+
+// TestRecordUseCase_UploadBinaryMultipartPart_FailWithInactiveUpload проверяет запрет загрузки части в завершенную
+// multipart-загрузку.
+func TestRecordUseCase_UploadBinaryMultipartPart_FailWithInactiveUpload(t *testing.T) {
+	// Arrange
+	uc, _, _, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	multipartRepo.upload = MultipartUpload{Status: MultipartUploadStatusCompleted}
+
+	// Act
+	_, err := uc.UploadBinaryMultipartPart(context.Background(), UploadBinaryMultipartPartInput{
+		PartNumber: 1,
+		PartSize:   5,
+		Data:       bytes.NewReader([]byte("part")),
+	})
+
+	// Assert
+	require.ErrorIs(t, err, ErrMultipartUploadNotActive)
+	assert.Empty(t, storage.putPartObjectKey)
+}
+
+// TestRecordUseCase_UploadBinaryMultipartPart_FailWithStorageError проверяет ошибку загрузки части в файловое
+// хранилище.
+func TestRecordUseCase_UploadBinaryMultipartPart_FailWithStorageError(t *testing.T) {
+	// Arrange
+	uc, _, _, multipartRepo, _, _ := newTestRecordUseCase(t)
+	multipartRepo.upload = MultipartUpload{
+		EncryptedSize: 5,
+		PartSize:      5,
+		Status:        MultipartUploadStatusUploading,
+	}
+	storage := uc.fileStorage.(*fileStorageStub)
+	storage.putPartErr = errTest
+
+	// Act
+	_, err := uc.UploadBinaryMultipartPart(context.Background(), UploadBinaryMultipartPartInput{
+		PartNumber: 1,
+		PartSize:   5,
+		Data:       bytes.NewReader([]byte("part")),
+	})
+
+	// Assert
+	require.ErrorIs(t, err, errTest)
+	assert.Empty(t, multipartRepo.upserted)
+}
+
 // TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinary проверяет подготовку multipart-замены файла.
 func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinary(t *testing.T) {
 	// Arrange
@@ -484,6 +608,80 @@ func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t 
 	require.Len(t, recordFileRepo.updates, 1)
 	assert.Equal(t, fileID, recordFileRepo.updates[0].fileID)
 	assert.Equal(t, model.UploadStatusFailed, recordFileRepo.updates[0].status)
+}
+
+// TestRecordUseCase_AbortBinaryMultipartUpload проверяет отмену активной multipart-загрузки в файловом хранилище и БД.
+func TestRecordUseCase_AbortBinaryMultipartUpload(t *testing.T) {
+	// Arrange
+	uc, _, recordFileRepo, multipartRepo, storage, tx := newTestRecordUseCase(t)
+	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000040")
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000041")
+	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000042")
+	multipartRepo.upload = MultipartUpload{
+		ID:              uploadID,
+		UserID:          userID,
+		FileID:          fileID,
+		ObjectKey:       "object-key",
+		StorageUploadID: "storage-upload-id",
+		Status:          MultipartUploadStatusUploading,
+	}
+
+	// Act
+	out, err := uc.AbortBinaryMultipartUpload(context.Background(), AbortBinaryMultipartUploadInput{
+		UserID:   userID,
+		UploadID: uploadID,
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, uploadID, out.UploadID)
+	assert.Equal(t, model.UploadStatusFailed, out.UploadStatus)
+	assert.Equal(t, 1, storage.abortMultipartCallCnt)
+	assert.Equal(t, "object-key", storage.abortMultipartKey)
+	assert.Equal(t, "storage-upload-id", storage.abortStorageUploadID)
+	assert.Equal(t, 1, tx.calls)
+	assert.Equal(t, []MultipartUploadStatus{MultipartUploadStatusAborted}, multipartRepo.statuses)
+	require.Len(t, recordFileRepo.updates, 1)
+	assert.Equal(t, fileID, recordFileRepo.updates[0].fileID)
+	assert.Equal(t, model.UploadStatusFailed, recordFileRepo.updates[0].status)
+}
+
+// TestRecordUseCase_AbortBinaryMultipartUpload_Completed проверяет запрет отмены уже завершенной multipart-загрузки.
+func TestRecordUseCase_AbortBinaryMultipartUpload_Completed(t *testing.T) {
+	// Arrange
+	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	multipartRepo.upload = MultipartUpload{Status: MultipartUploadStatusCompleted}
+
+	// Act
+	_, err := uc.AbortBinaryMultipartUpload(context.Background(), AbortBinaryMultipartUploadInput{})
+
+	// Assert
+	require.ErrorIs(t, err, ErrMultipartUploadNotActive)
+	assert.Zero(t, storage.abortMultipartCallCnt)
+	assert.Empty(t, multipartRepo.statuses)
+	assert.Empty(t, recordFileRepo.updates)
+}
+
+// TestRecordUseCase_AbortBinaryMultipartUpload_FailWithStorageError проверяет ошибку отмены multipart-загрузки в
+// файловом хранилище.
+func TestRecordUseCase_AbortBinaryMultipartUpload_FailWithStorageError(t *testing.T) {
+	// Arrange
+	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	storage.abortMultipartErr = errTest
+	multipartRepo.upload = MultipartUpload{
+		ObjectKey:       "object-key",
+		StorageUploadID: "storage-upload-id",
+		Status:          MultipartUploadStatusUploading,
+	}
+
+	// Act
+	_, err := uc.AbortBinaryMultipartUpload(context.Background(), AbortBinaryMultipartUploadInput{})
+
+	// Assert
+	require.ErrorIs(t, err, errTest)
+	assert.Equal(t, 1, storage.abortMultipartCallCnt)
+	assert.Empty(t, multipartRepo.statuses)
+	assert.Empty(t, recordFileRepo.updates)
 }
 
 // TestRecordUseCase_DeleteRecord проверяет мягкое удаление приватной записи.

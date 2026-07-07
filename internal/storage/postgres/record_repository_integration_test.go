@@ -505,6 +505,120 @@ func TestRecordFileRepository_UpdateUploadStatus_NotFound(t *testing.T) {
 	assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
 }
 
+// TestMultipartUploadRepository_CreateGetPartsAndUpdateStatus проверяет жизненный цикл состояния multipart-загрузки.
+func TestMultipartUploadRepository_CreateGetPartsAndUpdateStatus(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	fileRepo, err := NewRecordFileRepository(db)
+	require.NoError(t, err)
+	multipartRepo, err := NewMultipartUploadRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "multipart-upload-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeBinary, "multipart-загрузка", fixedTestTime())
+	file := newTestRecordFile(t, record.ID, fixedTestTime())
+	upload := usecase.MultipartUpload{
+		ID:              uuid.MustParse("018f6b7c-0000-7000-8000-200000000001"),
+		UserID:          user.ID,
+		RecordID:        record.ID,
+		RecordVersion:   record.Version,
+		FileID:          file.ID,
+		ObjectKey:       "users/user/records/record/files/file/payload",
+		StorageUploadID: "storage-upload-id",
+		EncryptedSize:   15,
+		PartSize:        5,
+		Status:          usecase.MultipartUploadStatusUploading,
+		CreatedAt:       fixedTestTime(),
+		UpdatedAt:       fixedTestTime(),
+	}
+	firstPart := usecase.MultipartUploadPart{
+		UploadID:   upload.ID,
+		PartNumber: 2,
+		Size:       5,
+		ETag:       "etag-2",
+		CreatedAt:  fixedTestTime().Add(time.Minute),
+	}
+	secondPart := usecase.MultipartUploadPart{
+		UploadID:   upload.ID,
+		PartNumber: 1,
+		Size:       5,
+		ETag:       "etag-1",
+		CreatedAt:  fixedTestTime().Add(2 * time.Minute),
+	}
+	completedAt := fixedTestTime().Add(3 * time.Minute)
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, recordRepo.Create(ctx, record))
+	require.NoError(t, fileRepo.Create(ctx, file))
+
+	// Act
+	err = multipartRepo.Create(ctx, upload)
+
+	// Assert
+	require.NoError(t, err)
+	got, err := multipartRepo.GetByIDAndUserID(ctx, upload.ID, user.ID)
+	require.NoError(t, err)
+	assertMultipartUploadEqual(t, upload, got)
+
+	require.NoError(t, multipartRepo.UpsertPart(ctx, firstPart))
+	require.NoError(t, multipartRepo.UpsertPart(ctx, secondPart))
+
+	parts, err := multipartRepo.ListParts(ctx, upload.ID)
+	require.NoError(t, err)
+	require.Len(t, parts, 2)
+	assertMultipartUploadPartEqual(t, secondPart, parts[0])
+	assertMultipartUploadPartEqual(t, firstPart, parts[1])
+
+	firstPart.Size = 4
+	firstPart.ETag = "etag-2-retry"
+	firstPart.CreatedAt = fixedTestTime().Add(4 * time.Minute)
+	require.NoError(t, multipartRepo.UpsertPart(ctx, firstPart))
+
+	parts, err = multipartRepo.ListParts(ctx, upload.ID)
+	require.NoError(t, err)
+	require.Len(t, parts, 2)
+	assertMultipartUploadPartEqual(t, firstPart, parts[1])
+
+	err = multipartRepo.UpdateStatus(ctx, upload.ID, usecase.MultipartUploadStatusCompleted, completedAt, &completedAt)
+	require.NoError(t, err)
+	got, err = multipartRepo.GetByIDAndUserID(ctx, upload.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, usecase.MultipartUploadStatusCompleted, got.Status)
+	assert.True(t, got.UpdatedAt.Equal(completedAt))
+	require.NotNil(t, got.CompletedAt)
+	assert.True(t, got.CompletedAt.Equal(completedAt))
+}
+
+// TestMultipartUploadRepository_NotFound проверяет ошибки поиска и обновления отсутствующей multipart-загрузки.
+func TestMultipartUploadRepository_NotFound(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	multipartRepo, err := NewMultipartUploadRepository(db)
+	require.NoError(t, err)
+	missingUploadID := uuid.MustParse("018f6b7c-0000-7000-8000-200000000002")
+
+	// Act
+	_, getErr := multipartRepo.GetByIDAndUserID(ctx, missingUploadID, uuid.New())
+	updateErr := multipartRepo.UpdateStatus(
+		ctx,
+		missingUploadID,
+		usecase.MultipartUploadStatusAborted,
+		fixedTestTime(),
+		nil,
+	)
+
+	// Assert
+	require.Error(t, getErr)
+	assert.True(t, errors.Is(getErr, usecase.ErrMultipartUploadNotFound))
+	require.Error(t, updateErr)
+	assert.True(t, errors.Is(updateErr, usecase.ErrMultipartUploadNotFound))
+}
+
 func newTestRecord(
 	t *testing.T,
 	userID uuid.UUID,
@@ -579,4 +693,32 @@ func assertRecordFileEqual(t *testing.T, expected, actual model.RecordFile) {
 	assert.Equal(t, expected.UploadStatus, actual.UploadStatus)
 	assert.True(t, actual.CreatedAt.Equal(expected.CreatedAt))
 	assert.True(t, actual.UpdatedAt.Equal(expected.UpdatedAt))
+}
+
+func assertMultipartUploadEqual(t *testing.T, expected, actual usecase.MultipartUpload) {
+	t.Helper()
+
+	assert.Equal(t, expected.ID, actual.ID)
+	assert.Equal(t, expected.UserID, actual.UserID)
+	assert.Equal(t, expected.RecordID, actual.RecordID)
+	assert.Equal(t, expected.RecordVersion, actual.RecordVersion)
+	assert.Equal(t, expected.FileID, actual.FileID)
+	assert.Equal(t, expected.ObjectKey, actual.ObjectKey)
+	assert.Equal(t, expected.StorageUploadID, actual.StorageUploadID)
+	assert.Equal(t, expected.EncryptedSize, actual.EncryptedSize)
+	assert.Equal(t, expected.PartSize, actual.PartSize)
+	assert.Equal(t, expected.Status, actual.Status)
+	assert.True(t, actual.CreatedAt.Equal(expected.CreatedAt))
+	assert.True(t, actual.UpdatedAt.Equal(expected.UpdatedAt))
+	assert.Equal(t, expected.CompletedAt, actual.CompletedAt)
+}
+
+func assertMultipartUploadPartEqual(t *testing.T, expected, actual usecase.MultipartUploadPart) {
+	t.Helper()
+
+	assert.Equal(t, expected.UploadID, actual.UploadID)
+	assert.Equal(t, expected.PartNumber, actual.PartNumber)
+	assert.Equal(t, expected.Size, actual.Size)
+	assert.Equal(t, expected.ETag, actual.ETag)
+	assert.True(t, actual.CreatedAt.Equal(expected.CreatedAt))
 }

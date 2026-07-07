@@ -776,6 +776,82 @@ func TestRecordsService_DownloadFile_FailWithUnauthenticated(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
+// TestRecordsService_GetBinaryMultipartUploadStatus_OK проверяет получение статуса multipart-загрузки и уже загруженных
+// частей.
+func TestRecordsService_GetBinaryMultipartUploadStatus_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	uploadID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	uc := &recordsUseCaseStub{
+		getMultipartStatusOutput: usecase.GetBinaryMultipartUploadStatusOutput{
+			UploadID:      uploadID,
+			RecordID:      recordID,
+			Version:       2,
+			EncryptedSize: 10,
+			PartSize:      5,
+			UploadStatus:  model.UploadStatusUploading,
+			UploadedParts: []usecase.MultipartUploadPartOutput{
+				{PartNumber: 1, Size: 5, ETag: "etag-1"},
+			},
+		},
+	}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), userID)
+	req := pb.GetBinaryMultipartUploadStatusRequest_builder{UploadId: new(uploadID.String())}.Build()
+
+	// Act
+	resp, err := recordsService.GetBinaryMultipartUploadStatus(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, userID, uc.getMultipartStatusInput.UserID)
+	assert.Equal(t, uploadID, uc.getMultipartStatusInput.UploadID)
+	assert.Equal(t, uploadID.String(), resp.GetUploadId())
+	assert.Equal(t, recordID.String(), resp.GetRecordId())
+	assert.Equal(t, int64(2), resp.GetVersion())
+	assert.Equal(t, int64(10), resp.GetEncryptedSize())
+	assert.Equal(t, int64(5), resp.GetPartSize())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_UPLOADING, resp.GetUploadStatus())
+	require.Len(t, resp.GetUploadedParts(), 1)
+	assert.Equal(t, int32(1), resp.GetUploadedParts()[0].GetPartNumber())
+	assert.Equal(t, int64(5), resp.GetUploadedParts()[0].GetSize())
+	assert.Equal(t, "etag-1", resp.GetUploadedParts()[0].GetEtag())
+}
+
+// TestRecordsService_GetBinaryMultipartUploadStatus_FailWithInvalidArgument проверяет валидацию запроса статуса
+// multipart-загрузки.
+func TestRecordsService_GetBinaryMultipartUploadStatus_FailWithInvalidArgument(t *testing.T) {
+	tests := []struct {
+		name string
+		req  *pb.GetBinaryMultipartUploadStatusRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty upload id", req: pb.GetBinaryMultipartUploadStatusRequest_builder{UploadId: new("")}.Build()},
+		{
+			name: "invalid upload id",
+			req:  pb.GetBinaryMultipartUploadStatusRequest_builder{UploadId: new("not-a-uuid")}.Build(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+
+			// Act
+			_, err = recordsService.GetBinaryMultipartUploadStatus(ctx, tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
 // TestRecordsService_CompleteBinaryMultipartUpload_OK проверяет завершение multipart-загрузки с передачей контрольной
 // суммы зашифрованного файла в сценарий.
 func TestRecordsService_CompleteBinaryMultipartUpload_OK(t *testing.T) {
@@ -883,6 +959,65 @@ func TestRecordsService_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, codes.DataLoss, status.Code(err))
+}
+
+// TestRecordsService_AbortBinaryMultipartUpload_OK проверяет отмену multipart-загрузки через gRPC-обработчик.
+func TestRecordsService_AbortBinaryMultipartUpload_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	uploadID := uuid.Must(uuid.NewV7())
+	uc := &recordsUseCaseStub{
+		abortMultipartOutput: usecase.AbortBinaryMultipartUploadOutput{
+			UploadID:     uploadID,
+			UploadStatus: model.UploadStatusFailed,
+		},
+	}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), userID)
+	req := pb.AbortBinaryMultipartUploadRequest_builder{UploadId: new(uploadID.String())}.Build()
+
+	// Act
+	resp, err := recordsService.AbortBinaryMultipartUpload(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, userID, uc.abortMultipartInput.UserID)
+	assert.Equal(t, uploadID, uc.abortMultipartInput.UploadID)
+	assert.Equal(t, uploadID.String(), resp.GetUploadId())
+	assert.Equal(t, pb.UploadStatus_UPLOAD_STATUS_FAILED, resp.GetUploadStatus())
+}
+
+// TestRecordsService_AbortBinaryMultipartUpload_FailWithInvalidArgument проверяет валидацию запроса отмены
+// multipart-загрузки.
+func TestRecordsService_AbortBinaryMultipartUpload_FailWithInvalidArgument(t *testing.T) {
+	tests := []struct {
+		name string
+		req  *pb.AbortBinaryMultipartUploadRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty upload id", req: pb.AbortBinaryMultipartUploadRequest_builder{UploadId: new("")}.Build()},
+		{
+			name: "invalid upload id",
+			req:  pb.AbortBinaryMultipartUploadRequest_builder{UploadId: new("not-a-uuid")}.Build(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+
+			// Act
+			_, err = recordsService.AbortBinaryMultipartUpload(ctx, tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
 }
 
 // TestRecordsService_DownloadFile_FailWithInvalidArgument проверяет валидацию запроса на скачивание файла.
