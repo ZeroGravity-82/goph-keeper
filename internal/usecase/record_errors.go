@@ -18,6 +18,10 @@ var ErrRecordFileIsNotUploaded = errors.New("record file is not uploaded")
 // ErrMultipartUploadIncomplete возвращается, когда multipart-загрузку пытаются завершить без всех частей файла.
 var ErrMultipartUploadIncomplete = errors.New("multipart upload is incomplete")
 
+// ErrMultipartUploadChecksumMismatch возвращается, когда собранный зашифрованный файл не совпадает с контрольной
+// суммой, рассчитанной клиентом.
+var ErrMultipartUploadChecksumMismatch = errors.New("multipart upload checksum mismatch")
+
 // ErrMultipartUploadNotActive возвращается, когда сессия multipart-загрузки уже завершена, отменена или помечена
 // неуспешной.
 var ErrMultipartUploadNotActive = errors.New("multipart upload is not active")

@@ -491,12 +491,13 @@ func (b0 Record_builder) Build() *Record {
 }
 
 type RecordFile struct {
-	state                   protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_UploadStatus UploadStatus           `protobuf:"varint,1,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
-	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
-	XXX_presence            [1]uint32
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UploadStatus    UploadStatus           `protobuf:"varint,1,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
+	xxx_hidden_EncryptedSha256 *string                `protobuf:"bytes,2,opt,name=encrypted_sha256,json=encryptedSha256"`
+	XXX_raceDetectHookData     protoimpl.RaceDetectHookData
+	XXX_presence               [1]uint32
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *RecordFile) Reset() {
@@ -533,9 +534,24 @@ func (x *RecordFile) GetUploadStatus() UploadStatus {
 	return UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
+func (x *RecordFile) GetEncryptedSha256() string {
+	if x != nil {
+		if x.xxx_hidden_EncryptedSha256 != nil {
+			return *x.xxx_hidden_EncryptedSha256
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *RecordFile) SetUploadStatus(v UploadStatus) {
 	x.xxx_hidden_UploadStatus = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+}
+
+func (x *RecordFile) SetEncryptedSha256(v string) {
+	x.xxx_hidden_EncryptedSha256 = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
 }
 
 func (x *RecordFile) HasUploadStatus() bool {
@@ -545,15 +561,28 @@ func (x *RecordFile) HasUploadStatus() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
+func (x *RecordFile) HasEncryptedSha256() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
 func (x *RecordFile) ClearUploadStatus() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_UploadStatus = UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
+func (x *RecordFile) ClearEncryptedSha256() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_EncryptedSha256 = nil
+}
+
 type RecordFile_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	UploadStatus *UploadStatus
+	UploadStatus    *UploadStatus
+	EncryptedSha256 *string
 }
 
 func (b0 RecordFile_builder) Build() *RecordFile {
@@ -561,8 +590,12 @@ func (b0 RecordFile_builder) Build() *RecordFile {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.UploadStatus != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
 		x.xxx_hidden_UploadStatus = *b.UploadStatus
+	}
+	if b.EncryptedSha256 != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		x.xxx_hidden_EncryptedSha256 = b.EncryptedSha256
 	}
 	return m0
 }
@@ -3283,12 +3316,13 @@ func (b0 UploadBinaryMultipartPartResponse_builder) Build() *UploadBinaryMultipa
 }
 
 type CompleteBinaryMultipartUploadRequest struct {
-	state                  protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_UploadId    *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
-	XXX_raceDetectHookData protoimpl.RaceDetectHookData
-	XXX_presence           [1]uint32
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UploadId        *string                `protobuf:"bytes,1,opt,name=upload_id,json=uploadId"`
+	xxx_hidden_EncryptedSha256 *string                `protobuf:"bytes,2,opt,name=encrypted_sha256,json=encryptedSha256"`
+	XXX_raceDetectHookData     protoimpl.RaceDetectHookData
+	XXX_presence               [1]uint32
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *CompleteBinaryMultipartUploadRequest) Reset() {
@@ -3326,9 +3360,24 @@ func (x *CompleteBinaryMultipartUploadRequest) GetUploadId() string {
 	return ""
 }
 
+func (x *CompleteBinaryMultipartUploadRequest) GetEncryptedSha256() string {
+	if x != nil {
+		if x.xxx_hidden_EncryptedSha256 != nil {
+			return *x.xxx_hidden_EncryptedSha256
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *CompleteBinaryMultipartUploadRequest) SetUploadId(v string) {
 	x.xxx_hidden_UploadId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 1)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+}
+
+func (x *CompleteBinaryMultipartUploadRequest) SetEncryptedSha256(v string) {
+	x.xxx_hidden_EncryptedSha256 = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
 }
 
 func (x *CompleteBinaryMultipartUploadRequest) HasUploadId() bool {
@@ -3338,15 +3387,28 @@ func (x *CompleteBinaryMultipartUploadRequest) HasUploadId() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
+func (x *CompleteBinaryMultipartUploadRequest) HasEncryptedSha256() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
 func (x *CompleteBinaryMultipartUploadRequest) ClearUploadId() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_UploadId = nil
 }
 
+func (x *CompleteBinaryMultipartUploadRequest) ClearEncryptedSha256() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_EncryptedSha256 = nil
+}
+
 type CompleteBinaryMultipartUploadRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	UploadId *string
+	UploadId        *string
+	EncryptedSha256 *string
 }
 
 func (b0 CompleteBinaryMultipartUploadRequest_builder) Build() *CompleteBinaryMultipartUploadRequest {
@@ -3354,21 +3416,26 @@ func (b0 CompleteBinaryMultipartUploadRequest_builder) Build() *CompleteBinaryMu
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.UploadId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 1)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
 		x.xxx_hidden_UploadId = b.UploadId
+	}
+	if b.EncryptedSha256 != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		x.xxx_hidden_EncryptedSha256 = b.EncryptedSha256
 	}
 	return m0
 }
 
 type CompleteBinaryMultipartUploadResponse struct {
-	state                   protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_RecordId     *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
-	xxx_hidden_Version      int64                  `protobuf:"varint,2,opt,name=version"`
-	xxx_hidden_UploadStatus UploadStatus           `protobuf:"varint,3,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
-	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
-	XXX_presence            [1]uint32
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_RecordId        *string                `protobuf:"bytes,1,opt,name=record_id,json=recordId"`
+	xxx_hidden_Version         int64                  `protobuf:"varint,2,opt,name=version"`
+	xxx_hidden_UploadStatus    UploadStatus           `protobuf:"varint,3,opt,name=upload_status,json=uploadStatus,enum=gophkeeper.v1.UploadStatus"`
+	xxx_hidden_EncryptedSha256 *string                `protobuf:"bytes,4,opt,name=encrypted_sha256,json=encryptedSha256"`
+	XXX_raceDetectHookData     protoimpl.RaceDetectHookData
+	XXX_presence               [1]uint32
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *CompleteBinaryMultipartUploadResponse) Reset() {
@@ -3422,19 +3489,34 @@ func (x *CompleteBinaryMultipartUploadResponse) GetUploadStatus() UploadStatus {
 	return UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
+func (x *CompleteBinaryMultipartUploadResponse) GetEncryptedSha256() string {
+	if x != nil {
+		if x.xxx_hidden_EncryptedSha256 != nil {
+			return *x.xxx_hidden_EncryptedSha256
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *CompleteBinaryMultipartUploadResponse) SetRecordId(v string) {
 	x.xxx_hidden_RecordId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 4)
 }
 
 func (x *CompleteBinaryMultipartUploadResponse) SetVersion(v int64) {
 	x.xxx_hidden_Version = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 4)
 }
 
 func (x *CompleteBinaryMultipartUploadResponse) SetUploadStatus(v UploadStatus) {
 	x.xxx_hidden_UploadStatus = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 4)
+}
+
+func (x *CompleteBinaryMultipartUploadResponse) SetEncryptedSha256(v string) {
+	x.xxx_hidden_EncryptedSha256 = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
 }
 
 func (x *CompleteBinaryMultipartUploadResponse) HasRecordId() bool {
@@ -3458,6 +3540,13 @@ func (x *CompleteBinaryMultipartUploadResponse) HasUploadStatus() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
+func (x *CompleteBinaryMultipartUploadResponse) HasEncryptedSha256() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
 func (x *CompleteBinaryMultipartUploadResponse) ClearRecordId() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_RecordId = nil
@@ -3473,12 +3562,18 @@ func (x *CompleteBinaryMultipartUploadResponse) ClearUploadStatus() {
 	x.xxx_hidden_UploadStatus = UploadStatus_UPLOAD_STATUS_UNSPECIFIED
 }
 
+func (x *CompleteBinaryMultipartUploadResponse) ClearEncryptedSha256() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_EncryptedSha256 = nil
+}
+
 type CompleteBinaryMultipartUploadResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	RecordId     *string
-	Version      *int64
-	UploadStatus *UploadStatus
+	RecordId        *string
+	Version         *int64
+	UploadStatus    *UploadStatus
+	EncryptedSha256 *string
 }
 
 func (b0 CompleteBinaryMultipartUploadResponse_builder) Build() *CompleteBinaryMultipartUploadResponse {
@@ -3486,16 +3581,20 @@ func (b0 CompleteBinaryMultipartUploadResponse_builder) Build() *CompleteBinaryM
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.RecordId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 4)
 		x.xxx_hidden_RecordId = b.RecordId
 	}
 	if b.Version != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 4)
 		x.xxx_hidden_Version = *b.Version
 	}
 	if b.UploadStatus != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 4)
 		x.xxx_hidden_UploadStatus = *b.UploadStatus
+	}
+	if b.EncryptedSha256 != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
+		x.xxx_hidden_EncryptedSha256 = b.EncryptedSha256
 	}
 	return m0
 }
@@ -3864,10 +3963,11 @@ const file_api_records_proto_rawDesc = "" +
 	"\n" +
 	"deleted_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAt\x12-\n" +
-	"\x04file\x18\v \x01(\v2\x19.gophkeeper.v1.RecordFileR\x04file\"N\n" +
+	"\x04file\x18\v \x01(\v2\x19.gophkeeper.v1.RecordFileR\x04file\"y\n" +
 	"\n" +
 	"RecordFile\x12@\n" +
-	"\rupload_status\x18\x01 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"\xb9\x02\n" +
+	"\rupload_status\x18\x01 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\x12)\n" +
+	"\x10encrypted_sha256\x18\x02 \x01(\tR\x0fencryptedSha256\"\xb9\x02\n" +
 	"\x0eRecordListItem\x12\x1b\n" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12-\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x19.gophkeeper.v1.RecordTypeR\x04type\x12\x14\n" +
@@ -3950,13 +4050,15 @@ const file_api_records_proto_rawDesc = "" +
 	"\tpart_size\x18\x03 \x01(\x03R\bpartSize\"x\n" +
 	"!UploadBinaryMultipartPartResponse\x12\x1b\n" +
 	"\tupload_id\x18\x01 \x01(\tR\buploadId\x126\n" +
-	"\x04part\x18\x02 \x01(\v2\".gophkeeper.v1.MultipartUploadPartR\x04part\"C\n" +
+	"\x04part\x18\x02 \x01(\v2\".gophkeeper.v1.MultipartUploadPartR\x04part\"n\n" +
 	"$CompleteBinaryMultipartUploadRequest\x12\x1b\n" +
-	"\tupload_id\x18\x01 \x01(\tR\buploadId\"\xa0\x01\n" +
+	"\tupload_id\x18\x01 \x01(\tR\buploadId\x12)\n" +
+	"\x10encrypted_sha256\x18\x02 \x01(\tR\x0fencryptedSha256\"\xcb\x01\n" +
 	"%CompleteBinaryMultipartUploadResponse\x12\x1b\n" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x12@\n" +
-	"\rupload_status\x18\x03 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\"@\n" +
+	"\rupload_status\x18\x03 \x01(\x0e2\x1b.gophkeeper.v1.UploadStatusR\fuploadStatus\x12)\n" +
+	"\x10encrypted_sha256\x18\x04 \x01(\tR\x0fencryptedSha256\"@\n" +
 	"!AbortBinaryMultipartUploadRequest\x12\x1b\n" +
 	"\tupload_id\x18\x01 \x01(\tR\buploadId\"\x83\x01\n" +
 	"\"AbortBinaryMultipartUploadResponse\x12\x1b\n" +

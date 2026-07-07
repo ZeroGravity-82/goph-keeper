@@ -35,35 +35,38 @@ type RecordWithFile struct {
 	UpdatedAt        time.Time  `db:"updated_at"`
 	DeletedAt        *time.Time `db:"deleted_at"`
 
-	FileID            *uuid.UUID `db:"file_id"`
-	FileRecordID      *uuid.UUID `db:"file_record_id"`
-	FileObjectKey     *string    `db:"file_object_key"`
-	FileEncryptedSize *int64     `db:"file_encrypted_size"`
-	FileUploadStatus  *string    `db:"file_upload_status"`
-	FileCreatedAt     *time.Time `db:"file_created_at"`
-	FileUpdatedAt     *time.Time `db:"file_updated_at"`
+	FileID              *uuid.UUID `db:"file_id"`
+	FileRecordID        *uuid.UUID `db:"file_record_id"`
+	FileObjectKey       *string    `db:"file_object_key"`
+	FileEncryptedSize   *int64     `db:"file_encrypted_size"`
+	FileEncryptedSHA256 *string    `db:"file_encrypted_sha256"`
+	FileUploadStatus    *string    `db:"file_upload_status"`
+	FileCreatedAt       *time.Time `db:"file_created_at"`
+	FileUpdatedAt       *time.Time `db:"file_updated_at"`
 }
 
 // RecordListItem описывает строку выборки списка приватных записей из базы данных.
 type RecordListItem struct {
-	ID           uuid.UUID `db:"id"`
-	Type         string    `db:"type"`
-	Title        string    `db:"title"`
-	Description  string    `db:"description"`
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
-	UploadStatus *string   `db:"upload_status"`
+	ID              uuid.UUID `db:"id"`
+	Type            string    `db:"type"`
+	Title           string    `db:"title"`
+	Description     string    `db:"description"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
+	UploadStatus    *string   `db:"upload_status"`
+	EncryptedSHA256 *string   `db:"encrypted_sha256"`
 }
 
 // RecordFile описывает строку таблицы record_file, представляющую model.RecordFile в базе данных.
 type RecordFile struct {
-	ID            uuid.UUID `db:"id"`
-	RecordID      uuid.UUID `db:"record_id"`
-	ObjectKey     string    `db:"object_key"`
-	EncryptedSize *int64    `db:"encrypted_size"`
-	UploadStatus  string    `db:"upload_status"`
-	CreatedAt     time.Time `db:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
+	ID              uuid.UUID `db:"id"`
+	RecordID        uuid.UUID `db:"record_id"`
+	ObjectKey       string    `db:"object_key"`
+	EncryptedSize   *int64    `db:"encrypted_size"`
+	EncryptedSHA256 *string   `db:"encrypted_sha256"`
+	UploadStatus    string    `db:"upload_status"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 // MultipartUpload описывает строку таблицы record_file_multipart_upload.

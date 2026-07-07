@@ -5,6 +5,8 @@ package service
 import (
 	"bytes"
 	"context"
+	stdsha256 "crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
@@ -147,12 +149,21 @@ func createBinaryRecordMultipart(
 		encryptedFile,
 	)
 	require.NoError(t, recordsService.UploadBinaryMultipartPart(stream))
+	encryptedSHA256 := testEncryptedFileSHA256(encryptedFile)
 	completeResp, err := recordsService.CompleteBinaryMultipartUpload(
 		ctx,
-		pb.CompleteBinaryMultipartUploadRequest_builder{UploadId: new(startResp.GetUploadId())}.Build(),
+		pb.CompleteBinaryMultipartUploadRequest_builder{
+			UploadId:        new(startResp.GetUploadId()),
+			EncryptedSha256: &encryptedSHA256,
+		}.Build(),
 	)
 	require.NoError(t, err)
 	return completeResp
+}
+
+func testEncryptedFileSHA256(encryptedFile []byte) string {
+	sum := stdsha256.Sum256(encryptedFile)
+	return hex.EncodeToString(sum[:])
 }
 
 func getStoredRecord(t *testing.T, ctx context.Context, db *sqlx.DB, recordID uuid.UUID) dto.Record {
@@ -241,7 +252,7 @@ func TestRecordsService_CreateBinaryMultipart_Integration(t *testing.T) {
 
 	var storedFile dto.RecordFile
 	err = db.GetContext(ctx, &storedFile, `
-SELECT id, record_id, object_key, encrypted_size, upload_status, created_at, updated_at
+SELECT id, record_id, object_key, encrypted_size, encrypted_sha256, upload_status, created_at, updated_at
 FROM record_file
 WHERE record_id = $1
 	`, recordID)
@@ -252,10 +263,13 @@ WHERE record_id = $1
 	assert.Equal(t, expectedObjectKey, storedFile.ObjectKey)
 	require.NotNil(t, storedFile.EncryptedSize)
 	assert.Equal(t, int64(len(encryptedFile)), *storedFile.EncryptedSize)
+	require.NotNil(t, storedFile.EncryptedSHA256)
+	assert.Equal(t, testEncryptedFileSHA256(encryptedFile), *storedFile.EncryptedSHA256)
 	assert.Equal(t, string(model.UploadStatusUploaded), storedFile.UploadStatus)
 }
 
-// TestRecordsService_UploadBinaryMultipartPart_Integration_SizeMismatch проверяет ошибку при несовпадении размера части.
+// TestRecordsService_UploadBinaryMultipartPart_Integration_SizeMismatch проверяет ошибку при несовпадении размера
+// части.
 func TestRecordsService_UploadBinaryMultipartPart_Integration_SizeMismatch(t *testing.T) {
 	// Arrange
 	ctx := context.Background()

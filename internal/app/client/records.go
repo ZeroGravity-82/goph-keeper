@@ -57,6 +57,7 @@ var binaryRecordMutationErrorMessages = map[codes.Code]string{
 	codes.NotFound:           "приватная запись не найдена",
 	codes.Aborted:            "приватная запись была изменена с другого клиента, получите актуальную версию",
 	codes.FailedPrecondition: "файл не может быть загружен в текущем состоянии",
+	codes.DataLoss:           "контрольная сумма зашифрованного файла не совпала",
 	codes.ResourceExhausted:  "размер данных бинарной приватной записи превышает допустимый лимит",
 	codes.DeadlineExceeded:   "истекло время ожидания загрузки файла",
 	codes.Canceled:           "загрузка файла отменена",

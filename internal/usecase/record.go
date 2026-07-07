@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -134,15 +136,17 @@ type UploadBinaryMultipartPartOutput struct {
 
 // CompleteBinaryMultipartUploadInput описывает входные данные сценария завершения multipart-загрузки.
 type CompleteBinaryMultipartUploadInput struct {
-	UserID   uuid.UUID
-	UploadID uuid.UUID
+	UserID          uuid.UUID
+	UploadID        uuid.UUID
+	EncryptedSHA256 string
 }
 
 // CompleteBinaryMultipartUploadOutput описывает результат завершения multipart-загрузки.
 type CompleteBinaryMultipartUploadOutput struct {
-	RecordID     uuid.UUID
-	Version      int64
-	UploadStatus model.UploadStatus
+	RecordID        uuid.UUID
+	Version         int64
+	UploadStatus    model.UploadStatus
+	EncryptedSHA256 string
 }
 
 // AbortBinaryMultipartUploadInput описывает входные данные сценария отмены multipart-загрузки.
@@ -231,6 +235,7 @@ type recordFileRepository interface {
 	Create(ctx context.Context, file model.RecordFile) error
 	Replace(ctx context.Context, file model.RecordFile) error
 	UpdateUploadStatus(ctx context.Context, fileID uuid.UUID, status model.UploadStatus, updatedAt time.Time) error
+	CompleteUpload(ctx context.Context, fileID uuid.UUID, encryptedSHA256 string, updatedAt time.Time) error
 }
 
 // multipartUploadRepository описывает операции с состоянием возобновляемой multipart-загрузки файла.
@@ -562,6 +567,19 @@ func (uc *RecordUseCase) CompleteBinaryMultipartUpload(
 			err,
 		)
 	}
+	actualSHA256, err := uc.encryptedFileSHA256(ctx, upload.ObjectKey)
+	if err != nil {
+		return CompleteBinaryMultipartUploadOutput{}, err
+	}
+	if actualSHA256 != in.EncryptedSHA256 {
+		if markErr := uc.markMultipartUploadFailed(ctx, upload); markErr != nil {
+			return CompleteBinaryMultipartUploadOutput{}, fmt.Errorf(
+				"failed to mark multipart upload as failed after checksum mismatch: %w",
+				markErr,
+			)
+		}
+		return CompleteBinaryMultipartUploadOutput{}, ErrMultipartUploadChecksumMismatch
+	}
 
 	now := time.Now().UTC()
 	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
@@ -574,7 +592,7 @@ func (uc *RecordUseCase) CompleteBinaryMultipartUpload(
 		); err != nil {
 			return err
 		}
-		if err = uc.recordFileRepo.UpdateUploadStatus(ctx, upload.FileID, model.UploadStatusUploaded, now); err != nil {
+		if err = uc.recordFileRepo.CompleteUpload(ctx, upload.FileID, in.EncryptedSHA256, now); err != nil {
 			return err
 		}
 		return nil
@@ -586,9 +604,10 @@ func (uc *RecordUseCase) CompleteBinaryMultipartUpload(
 	}
 
 	return CompleteBinaryMultipartUploadOutput{
-		RecordID:     upload.RecordID,
-		Version:      upload.RecordVersion,
-		UploadStatus: model.UploadStatusUploaded,
+		RecordID:        upload.RecordID,
+		Version:         upload.RecordVersion,
+		UploadStatus:    model.UploadStatusUploaded,
+		EncryptedSHA256: in.EncryptedSHA256,
 	}, nil
 }
 
@@ -731,6 +750,37 @@ func (uc *RecordUseCase) multipartUploadWithParts(
 		return MultipartUpload{}, nil, fmt.Errorf("failed to list multipart upload parts: %w", err)
 	}
 	return upload, parts, nil
+}
+
+// encryptedFileSHA256 рассчитывает SHA-256 зашифрованного файла потоковым чтением из объектного хранилища.
+func (uc *RecordUseCase) encryptedFileSHA256(ctx context.Context, objectKey string) (string, error) {
+	encryptedFile, err := uc.fileStorage.Get(ctx, objectKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to get completed encrypted file for checksum: %w", err)
+	}
+	defer func() {
+		_ = encryptedFile.Close()
+	}()
+
+	hash := sha256.New()
+	if _, err = io.Copy(hash, encryptedFile); err != nil {
+		return "", fmt.Errorf("failed to calculate encrypted file checksum: %w", err)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// markMultipartUploadFailed переводит запись файла в failed, когда объект собран, но не прошел проверку целостности.
+func (uc *RecordUseCase) markMultipartUploadFailed(ctx context.Context, upload MultipartUpload) error {
+	now := time.Now().UTC()
+	return uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		if err := uc.multipartRepo.UpdateStatus(ctx, upload.ID, MultipartUploadStatusAborted, now, nil); err != nil {
+			return err
+		}
+		if err := uc.recordFileRepo.UpdateUploadStatus(ctx, upload.FileID, model.UploadStatusFailed, now); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // expectedMultipartPartSize вычисляет ожидаемый размер части с учетом того, что последняя часть может быть короче.

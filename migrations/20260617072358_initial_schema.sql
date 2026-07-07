@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS record_file (
     record_id      UUID        NOT NULL UNIQUE REFERENCES record(id) ON DELETE RESTRICT,
     object_key     TEXT        NOT NULL,
     encrypted_size BIGINT      NULL,
+    encrypted_sha256 TEXT      NULL,
     upload_status  VARCHAR(16) NOT NULL CHECK (upload_status IN ('uploading', 'uploaded', 'failed')),
     created_at     TIMESTAMPTZ NOT NULL,
     updated_at     TIMESTAMPTZ NOT NULL

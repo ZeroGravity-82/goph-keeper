@@ -327,6 +327,10 @@ func (f *recordsClientFake) CompleteBinaryMultipartUpload(
 	if int64(len(encryptedFile)) != upload.encryptedSize {
 		return nil, status.Error(codes.FailedPrecondition, "multipart upload is incomplete")
 	}
+	encryptedSHA256 := encryptedFileSHA256Bytes(encryptedFile)
+	if encryptedSHA256 != req.GetEncryptedSha256() {
+		return nil, status.Error(codes.DataLoss, "encrypted file checksum mismatch")
+	}
 	f.encryptedFiles[upload.recordID] = encryptedFile
 	record := f.records[upload.recordID]
 	uploadStatus := pb.UploadStatus_UPLOAD_STATUS_UPLOADED
@@ -340,12 +344,16 @@ func (f *recordsClientFake) CompleteBinaryMultipartUpload(
 		Version:          new(record.GetVersion()),
 		CreatedAt:        record.GetCreatedAt(),
 		UpdatedAt:        record.GetUpdatedAt(),
-		File:             pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build(),
+		File: pb.RecordFile_builder{
+			UploadStatus:    &uploadStatus,
+			EncryptedSha256: &encryptedSHA256,
+		}.Build(),
 	}.Build()
 	return pb.CompleteBinaryMultipartUploadResponse_builder{
-		RecordId:     &upload.recordID,
-		Version:      &upload.version,
-		UploadStatus: &uploadStatus,
+		RecordId:        &upload.recordID,
+		Version:         &upload.version,
+		UploadStatus:    &uploadStatus,
+		EncryptedSha256: &encryptedSHA256,
 	}.Build(), nil
 }
 

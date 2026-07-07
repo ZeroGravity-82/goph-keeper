@@ -67,16 +67,18 @@ type UploadStatus string
 
 // RecordFile описывает техническую информацию о зашифрованном файле в объектном хранилище.
 type RecordFile struct {
-	ID            uuid.UUID
-	RecordID      uuid.UUID
-	ObjectKey     string
-	EncryptedSize *int64
-	UploadStatus  UploadStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID              uuid.UUID
+	RecordID        uuid.UUID
+	ObjectKey       string
+	EncryptedSize   *int64
+	EncryptedSHA256 *string
+	UploadStatus    UploadStatus
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // RecordListItemFile описывает краткое представление файла приватной записи для списка.
 type RecordListItemFile struct {
-	UploadStatus UploadStatus
+	UploadStatus    UploadStatus
+	EncryptedSHA256 *string
 }

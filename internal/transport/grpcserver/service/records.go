@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +36,7 @@ const (
 	recordEncryptedPayloadMaxSizeBytes = 1024 * 1024
 	encryptedFileMaxSizeBytes          = 1025 * 1024 * 1024
 	multipartPartMinSizeBytes          = 5 * 1024 * 1024
+	sha256HexSizeChars                 = 64
 )
 
 // recordsUseCase описывает сценарии работы с приватными записями: создание, чтение, обновление, удаление приватных
@@ -189,6 +191,17 @@ func validateMultipartPartSize(encryptedSize int64, partSize int64) error {
 	}
 	if encryptedSize > multipartPartMinSizeBytes && partSize < multipartPartMinSizeBytes {
 		return status.Error(codes.InvalidArgument, "multipart part size is below minimum")
+	}
+	return nil
+}
+
+// validateEncryptedSHA256 проверяет контрольную сумму зашифрованного файла в hex-представлении SHA-256.
+func validateEncryptedSHA256(encryptedSHA256 string) error {
+	if len(encryptedSHA256) != sha256HexSizeChars {
+		return status.Error(codes.InvalidArgument, "encrypted sha256 is invalid")
+	}
+	if _, err := hex.DecodeString(encryptedSHA256); err != nil {
+		return status.Error(codes.InvalidArgument, "encrypted sha256 is invalid")
 	}
 	return nil
 }
@@ -510,19 +523,25 @@ func (s *RecordsService) CompleteBinaryMultipartUpload(
 	if err != nil {
 		return nil, err
 	}
+	encryptedSHA256 := strings.ToLower(req.GetEncryptedSha256())
+	if err = validateEncryptedSHA256(encryptedSHA256); err != nil {
+		return nil, err
+	}
 
 	out, err := s.uc.CompleteBinaryMultipartUpload(ctx, usecase.CompleteBinaryMultipartUploadInput{
-		UserID:   userID,
-		UploadID: uploadID,
+		UserID:          userID,
+		UploadID:        uploadID,
+		EncryptedSHA256: encryptedSHA256,
 	})
 	if err != nil {
 		return nil, s.multipartUploadStatusError("failed to complete binary multipart upload", err)
 	}
 
 	return pb.CompleteBinaryMultipartUploadResponse_builder{
-		RecordId:     new(out.RecordID.String()),
-		Version:      &out.Version,
-		UploadStatus: new(uploadStatusToProto(out.UploadStatus)),
+		RecordId:        new(out.RecordID.String()),
+		Version:         &out.Version,
+		UploadStatus:    new(uploadStatusToProto(out.UploadStatus)),
+		EncryptedSha256: &out.EncryptedSHA256,
 	}.Build(), nil
 }
 
@@ -575,6 +594,9 @@ func (s *RecordsService) multipartUploadStatusError(logMessage string, err error
 	}
 	if errors.Is(err, usecase.ErrMultipartUploadIncomplete) {
 		return status.Error(codes.FailedPrecondition, "multipart upload is incomplete")
+	}
+	if errors.Is(err, usecase.ErrMultipartUploadChecksumMismatch) {
+		return status.Error(codes.DataLoss, "encrypted file checksum mismatch")
 	}
 	if errors.Is(err, usecase.ErrMultipartUploadPartInvalid) ||
 		errors.Is(err, usecase.ErrBinaryEncryptedSizeMismatch) {
@@ -680,7 +702,10 @@ func recordListItemFileToProto(file *model.RecordListItemFile) *pb.RecordFile {
 	if file == nil {
 		return nil
 	}
-	return pb.RecordFile_builder{UploadStatus: new(uploadStatusToProto(file.UploadStatus))}.Build()
+	return pb.RecordFile_builder{
+		UploadStatus:    new(uploadStatusToProto(file.UploadStatus)),
+		EncryptedSha256: file.EncryptedSHA256,
+	}.Build()
 }
 
 // uploadStatusToProto преобразует доменный статус загрузки файла в protobuf-статус.
@@ -766,7 +791,10 @@ func recordFileToProto(file *model.RecordFile) *pb.RecordFile {
 	if file == nil {
 		return nil
 	}
-	return pb.RecordFile_builder{UploadStatus: new(uploadStatusToProto(file.UploadStatus))}.Build()
+	return pb.RecordFile_builder{
+		UploadStatus:    new(uploadStatusToProto(file.UploadStatus)),
+		EncryptedSha256: file.EncryptedSHA256,
+	}.Build()
 }
 
 // UpdateRecord обновляет приватную запись.

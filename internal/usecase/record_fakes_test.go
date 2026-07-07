@@ -19,6 +19,12 @@ type recordFileStatusUpdate struct {
 	updatedAt time.Time
 }
 
+type recordFileCompleteUpdate struct {
+	fileID          uuid.UUID
+	encryptedSHA256 string
+	updatedAt       time.Time
+}
+
 type recordRepositoryStub struct {
 	createErr   error
 	getErr      error
@@ -79,10 +85,12 @@ type recordFileRepositoryStub struct {
 	createErr   error
 	replaceErr  error
 	updateErr   error
+	completeErr error
 	created     []model.RecordFile
 	replaced    []model.RecordFile
 	createdInTx []bool
 	updates     []recordFileStatusUpdate
+	completed   []recordFileCompleteUpdate
 }
 
 func (r *recordFileRepositoryStub) Create(ctx context.Context, file model.RecordFile) error {
@@ -112,6 +120,23 @@ func (r *recordFileRepositoryStub) UpdateUploadStatus(
 		return r.updateErr
 	}
 	r.updates = append(r.updates, recordFileStatusUpdate{fileID: fileID, status: status, updatedAt: updatedAt})
+	return nil
+}
+
+func (r *recordFileRepositoryStub) CompleteUpload(
+	_ context.Context,
+	fileID uuid.UUID,
+	encryptedSHA256 string,
+	updatedAt time.Time,
+) error {
+	if r.completeErr != nil {
+		return r.completeErr
+	}
+	r.completed = append(r.completed, recordFileCompleteUpdate{
+		fileID:          fileID,
+		encryptedSHA256: encryptedSHA256,
+		updatedAt:       updatedAt,
+	})
 	return nil
 }
 

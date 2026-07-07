@@ -3,7 +3,10 @@ package usecase
 import (
 	"bytes"
 	"context"
+	stdsha256 "crypto/sha256"
+	"encoding/hex"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +16,11 @@ import (
 
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
+
+func testEncryptedSHA256(data []byte) string {
+	sum := stdsha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
 
 // TestRecordUseCase_CreateRecord проверяет успешное создание обычной приватной записи.
 func TestRecordUseCase_CreateRecord(t *testing.T) {
@@ -387,6 +395,95 @@ func TestRecordUseCase_UpdateRecord_FailWithRepositoryError(t *testing.T) {
 
 	// Assert
 	require.ErrorIs(t, err, errTest)
+}
+
+// TestRecordUseCase_CompleteBinaryMultipartUpload проверяет завершение multipart-загрузки с проверкой контрольной
+// суммы зашифрованного файла.
+func TestRecordUseCase_CompleteBinaryMultipartUpload(t *testing.T) {
+	// Arrange
+	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000031")
+	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000032")
+	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000033")
+	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000034")
+	encryptedFile := []byte("encrypted-file")
+	encryptedSHA256 := testEncryptedSHA256(encryptedFile)
+	multipartRepo.upload = MultipartUpload{
+		ID:              uploadID,
+		UserID:          userID,
+		RecordID:        recordID,
+		RecordVersion:   2,
+		FileID:          fileID,
+		ObjectKey:       "object-key",
+		StorageUploadID: "storage-upload-id",
+		EncryptedSize:   int64(len(encryptedFile)),
+		PartSize:        int64(len(encryptedFile)),
+		Status:          MultipartUploadStatusUploading,
+	}
+	multipartRepo.parts = []MultipartUploadPart{
+		{UploadID: uploadID, PartNumber: 1, Size: int64(len(encryptedFile)), ETag: "etag"},
+	}
+	storage.getReader = io.NopCloser(bytes.NewReader(encryptedFile))
+
+	// Act
+	out, err := uc.CompleteBinaryMultipartUpload(context.Background(), CompleteBinaryMultipartUploadInput{
+		UserID:          userID,
+		UploadID:        uploadID,
+		EncryptedSHA256: encryptedSHA256,
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, recordID, out.RecordID)
+	assert.Equal(t, int64(2), out.Version)
+	assert.Equal(t, model.UploadStatusUploaded, out.UploadStatus)
+	assert.Equal(t, encryptedSHA256, out.EncryptedSHA256)
+	assert.Equal(t, "object-key", storage.completeMultipartKey)
+	assert.Equal(t, "storage-upload-id", storage.completeStorageID)
+	assert.Equal(t, "object-key", storage.getObjectKey)
+	assert.Equal(t, []MultipartUploadStatus{MultipartUploadStatusCompleted}, multipartRepo.statuses)
+	require.Len(t, recordFileRepo.completed, 1)
+	assert.Equal(t, fileID, recordFileRepo.completed[0].fileID)
+	assert.Equal(t, encryptedSHA256, recordFileRepo.completed[0].encryptedSHA256)
+}
+
+// TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch проверяет, что собранный файл с другой
+// контрольной суммой переводится в неуспешный статус.
+func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t *testing.T) {
+	// Arrange
+	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000035")
+	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000036")
+	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000037")
+	encryptedFile := []byte("encrypted-file")
+	multipartRepo.upload = MultipartUpload{
+		ID:              uploadID,
+		UserID:          userID,
+		FileID:          fileID,
+		ObjectKey:       "object-key",
+		StorageUploadID: "storage-upload-id",
+		EncryptedSize:   int64(len(encryptedFile)),
+		PartSize:        int64(len(encryptedFile)),
+		Status:          MultipartUploadStatusUploading,
+	}
+	multipartRepo.parts = []MultipartUploadPart{
+		{UploadID: uploadID, PartNumber: 1, Size: int64(len(encryptedFile)), ETag: "etag"},
+	}
+	storage.getReader = io.NopCloser(bytes.NewReader(encryptedFile))
+
+	// Act
+	_, err := uc.CompleteBinaryMultipartUpload(context.Background(), CompleteBinaryMultipartUploadInput{
+		UserID:          userID,
+		UploadID:        uploadID,
+		EncryptedSHA256: strings.Repeat("0", 64),
+	})
+
+	// Assert
+	require.ErrorIs(t, err, ErrMultipartUploadChecksumMismatch)
+	assert.Equal(t, []MultipartUploadStatus{MultipartUploadStatusAborted}, multipartRepo.statuses)
+	require.Len(t, recordFileRepo.updates, 1)
+	assert.Equal(t, fileID, recordFileRepo.updates[0].fileID)
+	assert.Equal(t, model.UploadStatusFailed, recordFileRepo.updates[0].status)
 }
 
 // TestRecordUseCase_DeleteRecord проверяет мягкое удаление приватной записи.

@@ -776,6 +776,115 @@ func TestRecordsService_DownloadFile_FailWithUnauthenticated(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
+// TestRecordsService_CompleteBinaryMultipartUpload_OK проверяет завершение multipart-загрузки с передачей контрольной
+// суммы зашифрованного файла в сценарий.
+func TestRecordsService_CompleteBinaryMultipartUpload_OK(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	uploadID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	encryptedSHA256 := strings.Repeat("A", sha256HexSizeChars)
+	normalizedSHA256 := strings.ToLower(encryptedSHA256)
+	uc := &recordsUseCaseStub{
+		completeMultipartOutput: usecase.CompleteBinaryMultipartUploadOutput{
+			RecordID:        recordID,
+			Version:         1,
+			UploadStatus:    model.UploadStatusUploaded,
+			EncryptedSHA256: normalizedSHA256,
+		},
+	}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), userID)
+	req := pb.CompleteBinaryMultipartUploadRequest_builder{
+		UploadId:        new(uploadID.String()),
+		EncryptedSha256: &encryptedSHA256,
+	}.Build()
+
+	// Act
+	resp, err := recordsService.CompleteBinaryMultipartUpload(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, userID, uc.completeMultipartInput.UserID)
+	assert.Equal(t, uploadID, uc.completeMultipartInput.UploadID)
+	assert.Equal(t, normalizedSHA256, uc.completeMultipartInput.EncryptedSHA256)
+	assert.Equal(t, recordID.String(), resp.GetRecordId())
+	assert.Equal(t, normalizedSHA256, resp.GetEncryptedSha256())
+}
+
+// TestRecordsService_CompleteBinaryMultipartUpload_FailWithInvalidArgument проверяет валидацию запроса завершения
+// multipart-загрузки.
+func TestRecordsService_CompleteBinaryMultipartUpload_FailWithInvalidArgument(t *testing.T) {
+	// Arrange
+	uploadID := uuid.Must(uuid.NewV7()).String()
+	tests := []struct {
+		name string
+		req  *pb.CompleteBinaryMultipartUploadRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "empty upload id", req: pb.CompleteBinaryMultipartUploadRequest_builder{
+			UploadId:        new(""),
+			EncryptedSha256: new(strings.Repeat("a", sha256HexSizeChars)),
+		}.Build()},
+		{name: "invalid upload id", req: pb.CompleteBinaryMultipartUploadRequest_builder{
+			UploadId:        new("not-a-uuid"),
+			EncryptedSha256: new(strings.Repeat("a", sha256HexSizeChars)),
+		}.Build()},
+		{name: "empty sha256", req: pb.CompleteBinaryMultipartUploadRequest_builder{
+			UploadId:        &uploadID,
+			EncryptedSha256: new(""),
+		}.Build()},
+		{name: "short sha256", req: pb.CompleteBinaryMultipartUploadRequest_builder{
+			UploadId:        &uploadID,
+			EncryptedSha256: new(strings.Repeat("a", sha256HexSizeChars-1)),
+		}.Build()},
+		{name: "non hex sha256", req: pb.CompleteBinaryMultipartUploadRequest_builder{
+			UploadId:        &uploadID,
+			EncryptedSha256: new(strings.Repeat("z", sha256HexSizeChars)),
+		}.Build()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			require.NoError(t, err)
+			ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+
+			// Act
+			_, err = recordsService.CompleteBinaryMultipartUpload(ctx, tt.req)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
+// TestRecordsService_CompleteBinaryMultipartUpload_FailWithChecksumMismatch проверяет маппинг ошибки контрольной суммы
+// в код ошибки DataLoss.
+func TestRecordsService_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t *testing.T) {
+	// Arrange
+	uc := &recordsUseCaseStub{completeMultipartErr: usecase.ErrMultipartUploadChecksumMismatch}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
+	uploadID := uuid.Must(uuid.NewV7()).String()
+	encryptedSHA256 := strings.Repeat("a", sha256HexSizeChars)
+	req := pb.CompleteBinaryMultipartUploadRequest_builder{
+		UploadId:        &uploadID,
+		EncryptedSha256: &encryptedSHA256,
+	}.Build()
+
+	// Act
+	_, err = recordsService.CompleteBinaryMultipartUpload(ctx, req)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.DataLoss, status.Code(err))
+}
+
 // TestRecordsService_DownloadFile_FailWithInvalidArgument проверяет валидацию запроса на скачивание файла.
 func TestRecordsService_DownloadFile_FailWithInvalidArgument(t *testing.T) {
 	// Arrange

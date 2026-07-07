@@ -81,6 +81,7 @@ SELECT
     rf.record_id AS file_record_id,
     rf.object_key AS file_object_key,
     rf.encrypted_size AS file_encrypted_size,
+    rf.encrypted_sha256 AS file_encrypted_sha256,
     rf.upload_status AS file_upload_status,
     rf.created_at AS file_created_at,
     rf.updated_at AS file_updated_at
@@ -103,7 +104,7 @@ WHERE r.id = $1 AND r.app_user_id = $2 AND r.deleted_at IS NULL
 // ListByUserID возвращает список приватных записей.
 func (r *RecordRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]model.RecordListItem, error) {
 	const q = `
-SELECT r.id, r.type, r.title, r.description, r.created_at, r.updated_at, rf.upload_status
+SELECT r.id, r.type, r.title, r.description, r.created_at, r.updated_at, rf.upload_status, rf.encrypted_sha256
 FROM record r
 LEFT JOIN record_file rf ON rf.record_id = r.id
 WHERE r.app_user_id = $1 AND r.deleted_at IS NULL
@@ -288,7 +289,10 @@ func recordListItemFromDTO(row dto.RecordListItem) model.RecordListItem {
 		UpdatedAt:   row.UpdatedAt,
 	}
 	if row.UploadStatus != nil {
-		item.File = &model.RecordListItemFile{UploadStatus: model.UploadStatus(*row.UploadStatus)}
+		item.File = &model.RecordListItemFile{
+			UploadStatus:    model.UploadStatus(*row.UploadStatus),
+			EncryptedSHA256: row.EncryptedSHA256,
+		}
 	}
 	return item
 }
@@ -309,13 +313,14 @@ func recordWithFileFromDTO(row dto.RecordWithFile) model.Record {
 	}
 	if row.FileID != nil {
 		record.File = &model.RecordFile{
-			ID:            *row.FileID,
-			RecordID:      *row.FileRecordID,
-			ObjectKey:     *row.FileObjectKey,
-			EncryptedSize: row.FileEncryptedSize,
-			UploadStatus:  model.UploadStatus(*row.FileUploadStatus),
-			CreatedAt:     *row.FileCreatedAt,
-			UpdatedAt:     *row.FileUpdatedAt,
+			ID:              *row.FileID,
+			RecordID:        *row.FileRecordID,
+			ObjectKey:       *row.FileObjectKey,
+			EncryptedSize:   row.FileEncryptedSize,
+			EncryptedSHA256: row.FileEncryptedSHA256,
+			UploadStatus:    model.UploadStatus(*row.FileUploadStatus),
+			CreatedAt:       *row.FileCreatedAt,
+			UpdatedAt:       *row.FileUpdatedAt,
 		}
 	}
 	return record
@@ -337,8 +342,10 @@ func NewRecordFileRepository(db *sqlx.DB) (*RecordFileRepository, error) {
 // Create сохраняет техническую информацию о файле приватной записи.
 func (r *RecordFileRepository) Create(ctx context.Context, file model.RecordFile) error {
 	const q = `
-INSERT INTO record_file (id, record_id, object_key, encrypted_size, upload_status, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO record_file (
+    id, record_id, object_key, encrypted_size, encrypted_sha256, upload_status, created_at, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 	exec := executorFromContext(ctx, r.db)
 	_, err := exec.ExecContext(
@@ -348,6 +355,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
 		file.RecordID,
 		file.ObjectKey,
 		file.EncryptedSize,
+		file.EncryptedSHA256,
 		string(file.UploadStatus),
 		file.CreatedAt,
 		file.UpdatedAt,
@@ -366,9 +374,10 @@ SET
     id = $1,
     object_key = $2,
     encrypted_size = $3,
-    upload_status = $4,
-    updated_at = $5
-WHERE record_id = $6
+    encrypted_sha256 = $4,
+    upload_status = $5,
+    updated_at = $6
+WHERE record_id = $7
 `
 	exec := executorFromContext(ctx, r.db)
 	result, err := exec.ExecContext(
@@ -377,6 +386,7 @@ WHERE record_id = $6
 		file.ID,
 		file.ObjectKey,
 		file.EncryptedSize,
+		file.EncryptedSHA256,
 		string(file.UploadStatus),
 		file.UpdatedAt,
 		file.RecordID,
@@ -410,6 +420,33 @@ WHERE id = $3
 	result, err := exec.ExecContext(ctx, q, string(status), updatedAt, fileID)
 	if err != nil {
 		return fmt.Errorf("failed to update record file upload status: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read affected rows count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return usecase.ErrRecordNotFound
+	}
+	return nil
+}
+
+// CompleteUpload переводит файл приватной записи в uploaded и сохраняет контрольную сумму зашифрованного файла.
+func (r *RecordFileRepository) CompleteUpload(
+	ctx context.Context,
+	fileID uuid.UUID,
+	encryptedSHA256 string,
+	updatedAt time.Time,
+) error {
+	const q = `
+UPDATE record_file
+SET upload_status = $1, encrypted_sha256 = $2, updated_at = $3
+WHERE id = $4
+`
+	exec := executorFromContext(ctx, r.db)
+	result, err := exec.ExecContext(ctx, q, string(model.UploadStatusUploaded), encryptedSHA256, updatedAt, fileID)
+	if err != nil {
+		return fmt.Errorf("failed to complete record file upload: %w", err)
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
