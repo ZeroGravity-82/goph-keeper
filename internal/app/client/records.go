@@ -31,12 +31,13 @@ type DeleteRecordOutput struct {
 
 // RecordListItem содержит краткую информацию о приватной записи.
 type RecordListItem struct {
-	RecordID    string
-	Type        string
-	Title       string
-	Description string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	RecordID     string
+	Type         string
+	Title        string
+	Description  string
+	UploadStatus model.UploadStatus
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // recordMutationErrorMessages содержит пользовательские сообщения для создания и обновления обычных приватных записей.
@@ -72,6 +73,8 @@ type rawRecord struct {
 
 // ListRecords возвращает список приватных записей пользователя.
 func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
+	a.abortPendingBinaryMultipartUploads(ctx)
+
 	var resp *pb.ListRecordsResponse
 	err := a.withAccessTokenRefreshRetry(ctx, func(ctx context.Context) error {
 		var err error
@@ -87,15 +90,24 @@ func (a *App) ListRecords(ctx context.Context) ([]RecordListItem, error) {
 	items := make([]RecordListItem, 0, len(resp.GetItems()))
 	for _, item := range resp.GetItems() {
 		items = append(items, RecordListItem{
-			RecordID:    item.GetRecordId(),
-			Type:        recordTypeString(item.GetType()),
-			Title:       item.GetTitle(),
-			Description: item.GetDescription(),
-			CreatedAt:   timestampAsTime(item.GetCreatedAt()),
-			UpdatedAt:   timestampAsTime(item.GetUpdatedAt()),
+			RecordID:     item.GetRecordId(),
+			Type:         recordTypeString(item.GetType()),
+			Title:        item.GetTitle(),
+			Description:  item.GetDescription(),
+			UploadStatus: uploadStatusFromRecordListItem(item),
+			CreatedAt:    timestampAsTime(item.GetCreatedAt()),
+			UpdatedAt:    timestampAsTime(item.GetUpdatedAt()),
 		})
 	}
 	return items, nil
+}
+
+// uploadStatusFromRecordListItem возвращает статус загрузки файла из краткого представления бинарной записи.
+func uploadStatusFromRecordListItem(item *pb.RecordListItem) model.UploadStatus {
+	if item.GetFile() == nil {
+		return ""
+	}
+	return uploadStatusFromProto(item.GetFile().GetUploadStatus())
 }
 
 func (a *App) getRawRecord(ctx context.Context, recordID string) (rawRecord, error) {

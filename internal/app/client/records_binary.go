@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,6 +19,16 @@ import (
 const (
 	binaryPlainFilePartSizeBytes int64 = 5 * 1024 * 1024
 	binaryUploadChunkSizeBytes         = 512 * 1024
+	binaryAbortTimeout                 = 5 * time.Second
+)
+
+const (
+	// UploadStatusUploading обозначает, что загрузка файла находится в процессе.
+	UploadStatusUploading = model.UploadStatusUploading
+	// UploadStatusUploaded обозначает, что загрузка файла завершилась успешно.
+	UploadStatusUploaded = model.UploadStatusUploaded
+	// UploadStatusFailed обозначает, что загрузка файла завершилась неудачей.
+	UploadStatusFailed = model.UploadStatusFailed
 )
 
 // Бинарный файл шифруется на клиенте не целиком, а частями. Каждая исходная часть получает собственные служебные данные
@@ -63,13 +74,14 @@ type UpdateBinaryMetadataInput struct {
 
 // BinaryRecord содержит расшифрованное описание бинарной приватной записи без содержимого файла.
 type BinaryRecord struct {
-	RecordID    string
-	Version     int64
-	Title       string
-	Description string
-	Filename    string
-	ContentType string
-	Size        int64
+	RecordID     string
+	Version      int64
+	Title        string
+	Description  string
+	Filename     string
+	ContentType  string
+	Size         int64
+	UploadStatus model.UploadStatus
 }
 
 // BinaryFile содержит расшифрованный файл бинарной приватной записи.
@@ -313,10 +325,16 @@ func (a *App) createOrReplaceBinaryMultipart(
 		uploaded,
 		in.OnProgress,
 	); err != nil {
+		a.abortOrRememberBinaryMultipartUpload(ctx, startResp.GetUploadId())
 		return binaryMultipartUploadOutput{}, err
 	}
 
-	return a.completeBinaryMultipartUpload(ctx, startResp.GetUploadId())
+	out, err := a.completeBinaryMultipartUpload(ctx, startResp.GetUploadId())
+	if err != nil {
+		a.abortOrRememberBinaryMultipartUpload(ctx, startResp.GetUploadId())
+		return binaryMultipartUploadOutput{}, err
+	}
+	return out, nil
 }
 
 // chooseBinaryMultipartPartSize выбирает размер зашифрованной части: весь файл для маленькой загрузки или один
@@ -555,6 +573,58 @@ func (a *App) completeBinaryMultipartUpload(
 	}
 }
 
+// abortBinaryMultipartUpload отменяет незавершенную multipart-загрузку и переводит файл на сервере в failed.
+func (a *App) abortBinaryMultipartUpload(ctx context.Context, uploadID string) error {
+	abortCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), binaryAbortTimeout)
+	defer cancel()
+
+	return a.withAccessTokenRefresh(abortCtx, func(ctx context.Context) error {
+		_, err := a.records.AbortBinaryMultipartUpload(ctx, pb.AbortBinaryMultipartUploadRequest_builder{
+			UploadId: &uploadID,
+		}.Build())
+		return err
+	})
+}
+
+// abortOrRememberBinaryMultipartUpload пытается отменить загрузку сразу, а при временной ошибке запоминает ее для
+// следующего обращения к серверу.
+func (a *App) abortOrRememberBinaryMultipartUpload(ctx context.Context, uploadID string) {
+	if uploadID == "" {
+		return
+	}
+	if err := a.abortBinaryMultipartUpload(ctx, uploadID); err != nil && !isFinalBinaryMultipartAbortError(err) {
+		a.rememberPendingBinaryMultipartAbort(uploadID)
+	}
+}
+
+// abortPendingBinaryMultipartUploads повторяет отложенные отмены multipart-загрузок перед получением свежего списка.
+func (a *App) abortPendingBinaryMultipartUploads(ctx context.Context) {
+	for uploadID := range a.pendingAbortUploadIDs {
+		err := a.abortBinaryMultipartUpload(ctx, uploadID)
+		if err == nil || isFinalBinaryMultipartAbortError(err) {
+			delete(a.pendingAbortUploadIDs, uploadID)
+		}
+	}
+}
+
+// rememberPendingBinaryMultipartAbort запоминает upload_id загрузки, которую не удалось отменить сразу.
+func (a *App) rememberPendingBinaryMultipartAbort(uploadID string) {
+	if a.pendingAbortUploadIDs == nil {
+		a.pendingAbortUploadIDs = make(map[string]struct{})
+	}
+	a.pendingAbortUploadIDs[uploadID] = struct{}{}
+}
+
+// isFinalBinaryMultipartAbortError проверяет ошибки, после которых повторять abort уже не нужно.
+func isFinalBinaryMultipartAbortError(err error) bool {
+	switch status.Code(err) {
+	case codes.NotFound, codes.FailedPrecondition:
+		return true
+	default:
+		return false
+	}
+}
+
 // GetBinary получает бинарную приватную запись без скачивания файла и расшифровывает клиентские данные с описанием
 // файла.
 func (a *App) GetBinary(ctx context.Context, recordID string) (BinaryRecord, error) {
@@ -586,6 +656,9 @@ func (a *App) GetBinary(ctx context.Context, recordID string) (BinaryRecord, err
 	if record.GetType() != pb.RecordType_RECORD_TYPE_BINARY {
 		return BinaryRecord{}, fmt.Errorf("приватная запись %s не является бинарной", recordID)
 	}
+	if record.GetFile() == nil {
+		return BinaryRecord{}, errors.New("сервер вернул бинарную приватную запись без данных файла")
+	}
 
 	payload, err := crypto.DecryptRecordData[model.BinaryPayload](
 		a.masterKey,
@@ -607,7 +680,24 @@ func (a *App) GetBinary(ctx context.Context, recordID string) (BinaryRecord, err
 		Filename:    payload.Filename,
 		ContentType: payload.ContentType,
 		Size:        payload.Size,
+		UploadStatus: uploadStatusFromProto(
+			record.GetFile().GetUploadStatus(),
+		),
 	}, nil
+}
+
+// uploadStatusFromProto преобразует protobuf-статус загрузки файла в клиентский доменный статус.
+func uploadStatusFromProto(status pb.UploadStatus) model.UploadStatus {
+	switch status {
+	case pb.UploadStatus_UPLOAD_STATUS_UPLOADING:
+		return model.UploadStatusUploading
+	case pb.UploadStatus_UPLOAD_STATUS_UPLOADED:
+		return model.UploadStatusUploaded
+	case pb.UploadStatus_UPLOAD_STATUS_FAILED:
+		return model.UploadStatusFailed
+	default:
+		return ""
+	}
 }
 
 // DownloadBinaryFile получает метаданные записи, скачивает зашифрованный файл, расшифровывает его на клиенте и

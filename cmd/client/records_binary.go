@@ -147,6 +147,7 @@ func replaceSelectedBinaryFile(
 		OnProgress:      progress.update,
 	})
 	if err != nil {
+		refreshRecordsAfterBinaryFailure(ctx, app, state)
 		return err
 	}
 	record.Title = title
@@ -154,6 +155,7 @@ func replaceSelectedBinaryFile(
 	record.Filename = filename
 	record.ContentType = contentType
 	record.Size = fileSize
+	record.UploadStatus = clientApp.UploadStatusUploaded
 	record.Version = updated.Version
 	state.storeBinary(record)
 	progress.finish()

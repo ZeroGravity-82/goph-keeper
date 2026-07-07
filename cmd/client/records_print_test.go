@@ -69,6 +69,29 @@ func Test_printRecordsTable_AlignsColumns(t *testing.T) {
 	)
 }
 
+// Test_printRecordsTable_PrintsUploadStatus проверяет вывод статуса загрузки файла для бинарных записей.
+func Test_printRecordsTable_PrintsUploadStatus(t *testing.T) {
+	// Arrange
+	out := bytes.NewBuffer(nil)
+	items := []clientApp.RecordListItem{
+		{Type: "text", Title: "Заметка", Description: "Краткий текст"},
+		{
+			Type:         "binary",
+			Title:        "Видео",
+			Description:  "Большой файл",
+			UploadStatus: clientApp.UploadStatusUploading,
+		},
+	}
+
+	// Act
+	printRecordsTable(out, items)
+
+	// Assert
+	assert.Contains(t, out.String(), "Статус файла\n")
+	assert.Contains(t, out.String(), "1  text    Заметка   Краткий текст  -\n")
+	assert.Contains(t, out.String(), "2  binary  Видео     Большой файл   uploading\n")
+}
+
 // Test_printCardRecord_FormatsCardNumber проверяет, что номер карты выводится группами по четыре цифры.
 func Test_printCardRecord_FormatsCardNumber(t *testing.T) {
 	// Arrange
@@ -134,11 +157,12 @@ func Test_printBinaryRecord(t *testing.T) {
 	// Arrange
 	out := bytes.NewBuffer(nil)
 	record := clientApp.BinaryRecord{
-		Title:       "Паспорт",
-		Description: "Скан",
-		Filename:    "passport.pdf",
-		ContentType: "application/pdf",
-		Size:        42,
+		Title:        "Паспорт",
+		Description:  "Скан",
+		Filename:     "passport.pdf",
+		ContentType:  "application/pdf",
+		Size:         42,
+		UploadStatus: clientApp.UploadStatusUploaded,
 	}
 
 	// Act
@@ -148,6 +172,7 @@ func Test_printBinaryRecord(t *testing.T) {
 	assert.Contains(t, out.String(), "* тип: binary\n")
 	assert.Contains(t, out.String(), "* исходное имя: passport.pdf\n")
 	assert.Contains(t, out.String(), "* размер: 42 байт\n")
+	assert.Contains(t, out.String(), "* статус загрузки: uploaded\n")
 }
 
 // Test_formatCardNumber_ReturnsOriginalForInvalidNumber проверяет, что некорректный номер не форматируется.

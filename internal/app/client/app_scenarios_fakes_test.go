@@ -119,6 +119,9 @@ type recordsClientFake struct {
 	multipartUploads map[string]*multipartUploadFake
 	listCalls        int
 	listUnauthOnce   bool
+	uploadPartErr    error
+	abortErr         error
+	abortCalls       int
 }
 
 func newRecordsClientFake() *recordsClientFake {
@@ -274,6 +277,9 @@ func (f *recordsClientFake) UploadBinaryMultipartPart(
 		return nil
 	}
 	stream.closeAndRecv = func() (*pb.UploadBinaryMultipartPartResponse, error) {
+		if f.uploadPartErr != nil {
+			return nil, f.uploadPartErr
+		}
 		if partMetadata == nil {
 			return nil, status.Error(codes.InvalidArgument, "metadata is required")
 		}
@@ -344,11 +350,37 @@ func (f *recordsClientFake) CompleteBinaryMultipartUpload(
 }
 
 func (f *recordsClientFake) AbortBinaryMultipartUpload(
-	context.Context,
-	*pb.AbortBinaryMultipartUploadRequest,
-	...grpc.CallOption,
+	_ context.Context,
+	req *pb.AbortBinaryMultipartUploadRequest,
+	_ ...grpc.CallOption,
 ) (*pb.AbortBinaryMultipartUploadResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "multipart upload is not implemented in fake")
+	f.abortCalls++
+	if f.abortErr != nil {
+		return nil, f.abortErr
+	}
+	upload, ok := f.multipartUploads[req.GetUploadId()]
+	if !ok {
+		return nil, status.Error(codes.NotFound, "multipart upload not found")
+	}
+	record := f.records[upload.recordID]
+	uploadStatus := pb.UploadStatus_UPLOAD_STATUS_FAILED
+	f.records[upload.recordID] = pb.Record_builder{
+		RecordId:         new(record.GetRecordId()),
+		Type:             new(record.GetType()),
+		Title:            new(record.GetTitle()),
+		Description:      new(record.GetDescription()),
+		EncryptedDek:     record.GetEncryptedDek(),
+		EncryptedPayload: record.GetEncryptedPayload(),
+		Version:          new(record.GetVersion()),
+		CreatedAt:        record.GetCreatedAt(),
+		UpdatedAt:        fixedUpdatedRecordTimestamp(),
+		File:             pb.RecordFile_builder{UploadStatus: &uploadStatus}.Build(),
+	}.Build()
+	delete(f.multipartUploads, req.GetUploadId())
+	return pb.AbortBinaryMultipartUploadResponse_builder{
+		UploadId:     new(req.GetUploadId()),
+		UploadStatus: &uploadStatus,
+	}.Build(), nil
 }
 
 func multipartUploadFakeParts(upload *multipartUploadFake) []*pb.MultipartUploadPart {
@@ -395,6 +427,7 @@ func (f *recordsClientFake) ListRecords(
 			Description: new(record.GetDescription()),
 			CreatedAt:   record.GetCreatedAt(),
 			UpdatedAt:   record.GetUpdatedAt(),
+			File:        record.GetFile(),
 		}.Build())
 	}
 	return pb.ListRecordsResponse_builder{Items: items}.Build(), nil

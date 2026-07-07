@@ -95,6 +95,7 @@ func runRecordsMenu(
 			if err := createBinary(ctx, app, reader, out); err != nil {
 				handleConnectionError(state, out, err)
 				printActionError(out, err)
+				refreshRecordsAfterBinaryFailure(ctx, app, state)
 				break
 			}
 			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
@@ -186,6 +187,14 @@ func refreshRecordsMenu(ctx context.Context, app *clientApp.App, state *recordsM
 	}
 	state.exitReadonly(out)
 	return nil
+}
+
+// refreshRecordsAfterBinaryFailure тихо обновляет список после неуспешной файловой загрузки.
+func refreshRecordsAfterBinaryFailure(ctx context.Context, app *clientApp.App, state *recordsMenuState) {
+	if app == nil || state == nil {
+		return
+	}
+	_ = state.refresh(ctx, app)
 }
 
 // handleConnectionError переводит меню в режим чтения при ошибке связи с сервером.

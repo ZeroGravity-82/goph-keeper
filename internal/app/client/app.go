@@ -18,6 +18,8 @@ type App struct {
 	session   AuthSession
 	masterKey string
 	loggedIn  bool
+
+	pendingAbortUploadIDs map[string]struct{}
 }
 
 // New создает CLI-приложение и подключается к gRPC-серверу по TLS.

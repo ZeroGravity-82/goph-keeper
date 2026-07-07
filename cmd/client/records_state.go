@@ -133,10 +133,11 @@ func (s *recordsMenuState) storeCard(record clientApp.CardRecord) {
 // storeBinary сохраняет бинарную запись и ее краткое представление в кеше.
 func (s *recordsMenuState) storeBinary(record clientApp.BinaryRecord) {
 	item := clientApp.RecordListItem{
-		RecordID:    record.RecordID,
-		Type:        "binary",
-		Title:       record.Title,
-		Description: record.Description,
+		RecordID:     record.RecordID,
+		Type:         "binary",
+		Title:        record.Title,
+		Description:  record.Description,
+		UploadStatus: record.UploadStatus,
 	}
 	s.storeItem(item)
 	entry := s.cache[record.RecordID]
@@ -151,6 +152,7 @@ func (s *recordsMenuState) storeItem(item clientApp.RecordListItem) {
 			s.items[i].Type = item.Type
 			s.items[i].Title = item.Title
 			s.items[i].Description = item.Description
+			s.items[i].UploadStatus = item.UploadStatus
 			return
 		}
 	}

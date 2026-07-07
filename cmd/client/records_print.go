@@ -16,12 +16,46 @@ func printRecordsTable(out io.Writer, items []clientApp.RecordListItem) {
 		return
 	}
 	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "#\tТип\tНазвание\tОписание")
-	fmt.Fprintln(table, "-\t---\t--------\t--------")
-	for i, item := range items {
-		fmt.Fprintf(table, "%d\t%s\t%s\t%s\n", i+1, item.Type, item.Title, item.Description)
+	if hasUploadStatus(items) {
+		fmt.Fprintln(table, "#\tТип\tНазвание\tОписание\tСтатус файла")
+		fmt.Fprintln(table, "-\t---\t--------\t--------\t------------")
+		for i, item := range items {
+			fmt.Fprintf(
+				table,
+				"%d\t%s\t%s\t%s\t%s\n",
+				i+1,
+				item.Type,
+				item.Title,
+				item.Description,
+				uploadStatusForTable(item),
+			)
+		}
+	} else {
+		fmt.Fprintln(table, "#\tТип\tНазвание\tОписание")
+		fmt.Fprintln(table, "-\t---\t--------\t--------")
+		for i, item := range items {
+			fmt.Fprintf(table, "%d\t%s\t%s\t%s\n", i+1, item.Type, item.Title, item.Description)
+		}
 	}
 	_ = table.Flush()
+}
+
+// hasUploadStatus проверяет, нужно ли выводить колонку статуса файла в списке записей.
+func hasUploadStatus(items []clientApp.RecordListItem) bool {
+	for _, item := range items {
+		if item.UploadStatus != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// uploadStatusForTable возвращает статус загрузки файла для таблицы или прочерк для записей без файла.
+func uploadStatusForTable(item clientApp.RecordListItem) string {
+	if item.UploadStatus == "" {
+		return "-"
+	}
+	return string(item.UploadStatus)
 }
 
 // printCredentialRecord печатает расшифрованную запись с учетными данными.
@@ -60,6 +94,7 @@ func printBinaryRecord(out io.Writer, record clientApp.BinaryRecord) {
 	fmt.Fprintf(out, "* исходное имя: %s\n", record.Filename)
 	fmt.Fprintf(out, "* MIME-тип: %s\n", record.ContentType)
 	fmt.Fprintf(out, "* размер: %d байт\n", record.Size)
+	fmt.Fprintf(out, "* статус загрузки: %s\n", record.UploadStatus)
 }
 
 // formatCardNumber форматирует номер карты группами по четыре цифры.

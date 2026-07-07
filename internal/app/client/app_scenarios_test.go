@@ -490,6 +490,21 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	assert.Equal(t, int64(1), created.Version)
 
 	// Act
+	items, err := app.ListRecords(ctx)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, UploadStatusUploaded, items[0].UploadStatus)
+
+	// Act
+	binaryRecord, err := app.GetBinary(ctx, created.RecordID)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, UploadStatusUploaded, binaryRecord.UploadStatus)
+
+	// Act
 	downloaded, err := app.DownloadBinaryFile(ctx, created.RecordID)
 
 	// Assert
@@ -581,4 +596,40 @@ func TestApp_BinaryRecordLifecycle_StreamsLargeFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(len(file)), downloaded.DeclaredSize)
 	assert.Equal(t, file, downloaded.Data)
+}
+
+// TestApp_CreateBinary_RetriesAbortAfterPartError проверяет, что клиент повторяет отмену неуспешной загрузки файла и
+// переводит бинарную запись в статус failed.
+func TestApp_CreateBinary_RetriesAbortAfterPartError(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	app := newStartedTestApp(t)
+	recordsClient := app.records.(*recordsClientFake)
+	recordsClient.uploadPartErr = status.Error(codes.InvalidArgument, "part is invalid")
+	recordsClient.abortErr = status.Error(codes.Unavailable, "server is unavailable")
+
+	// Act
+	_, err := app.CreateBinary(ctx, CreateBinaryInput{
+		Title:       "Архив",
+		Description: "Большой файл",
+		Filename:    "archive.bin",
+		ContentType: "application/octet-stream",
+		File:        bytes.NewReader([]byte("broken upload")),
+		FileSize:    int64(len("broken upload")),
+	})
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, 1, recordsClient.abortCalls)
+
+	recordsClient.abortErr = nil
+
+	// Act
+	items, listErr := app.ListRecords(ctx)
+
+	// Assert
+	require.NoError(t, listErr)
+	require.Len(t, items, 1)
+	assert.Equal(t, 2, recordsClient.abortCalls)
+	assert.Equal(t, UploadStatusFailed, items[0].UploadStatus)
 }
