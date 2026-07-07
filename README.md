@@ -521,6 +521,10 @@ GOOS=windows GOARCH=amd64 go build -o ./bin/gophkeeper-client-windows-amd64.exe 
 
 ![Работа с приватными записями в CLI-клиенте](docs/assets/cli-records.gif)
 
+Загрузка файла бинарной приватной записи:
+
+![Загрузка файла в CLI-клиенте](docs/assets/cli-upload.gif)
+
 Переход в режим чтения при потере связи с сервером:
 
 ![Readonly-режим CLI-клиента](docs/assets/cli-readonly.gif)
