@@ -6,12 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"os"
 	"path/filepath"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 )
+
+const minBinaryUploadProgressSizeBytes int64 = 1024 * 1024
 
 // downloadSelectedBinaryFile скачивает файл выбранной бинарной записи в указанную директорию.
 func downloadSelectedBinaryFile(
@@ -130,6 +133,8 @@ func replaceSelectedBinaryFile(
 
 	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
+	progress := newBinaryUploadProgressPrinter(out)
+	defer progress.finish()
 	updated, err := app.UpdateBinary(callCtx, clientApp.UpdateBinaryInput{
 		RecordID:        record.RecordID,
 		ExpectedVersion: record.Version,
@@ -139,6 +144,7 @@ func replaceSelectedBinaryFile(
 		ContentType:     contentType,
 		File:            file,
 		FileSize:        fileSize,
+		OnProgress:      progress.update,
 	})
 	if err != nil {
 		return err
@@ -150,6 +156,7 @@ func replaceSelectedBinaryFile(
 	record.Size = fileSize
 	record.Version = updated.Version
 	state.storeBinary(record)
+	progress.finish()
 	fmt.Fprintf(out, "заменен файл бинарной приватной записи: %s\n", record.Title)
 	return nil
 }
@@ -201,6 +208,8 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 
 	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
+	progress := newBinaryUploadProgressPrinter(out)
+	defer progress.finish()
 	_, err = app.CreateBinary(callCtx, clientApp.CreateBinaryInput{
 		Title:       title,
 		Description: description,
@@ -208,10 +217,57 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 		ContentType: contentType,
 		File:        file,
 		FileSize:    fileSize,
+		OnProgress:  progress.update,
 	})
 	if err != nil {
 		return err
 	}
+	progress.finish()
 	fmt.Fprintln(out, "создана файловая приватная запись")
 	return nil
+}
+
+// binaryUploadProgressPrinter печатает прогресс загрузки бинарного файла в терминал.
+type binaryUploadProgressPrinter struct {
+	out     io.Writer
+	printed bool
+}
+
+// newBinaryUploadProgressPrinter создает принтер прогресса загрузки файла в одну обновляемую строку.
+func newBinaryUploadProgressPrinter(out io.Writer) *binaryUploadProgressPrinter {
+	return &binaryUploadProgressPrinter{out: out}
+}
+
+// update печатает текущий прогресс загрузки исходного файла.
+func (p *binaryUploadProgressPrinter) update(progress clientApp.BinaryUploadProgress) {
+	if progress.TotalBytes < minBinaryUploadProgressSizeBytes {
+		return
+	}
+	uploadedBytes := min(max(progress.UploadedBytes, 0), progress.TotalBytes)
+	percent := float64(uploadedBytes) * 100 / float64(progress.TotalBytes)
+	fmt.Fprintf(
+		p.out,
+		"\rЗагрузка файла: %s из %s, %.1f%%",
+		formatMiB(uploadedBytes),
+		formatMiB(progress.TotalBytes),
+		percent,
+	)
+	p.printed = true
+}
+
+// finish переводит вывод на новую строку после прогресса, чтобы итоговое сообщение не прилипало к нему.
+func (p *binaryUploadProgressPrinter) finish() {
+	if p.printed {
+		fmt.Fprintln(p.out)
+		p.printed = false
+	}
+}
+
+// formatMiB форматирует размер в МиБ для строки прогресса загрузки.
+func formatMiB(size int64) string {
+	mebibytes := float64(size) / 1024 / 1024
+	if mebibytes == math.Trunc(mebibytes) {
+		return fmt.Sprintf("%.0f МиБ", mebibytes)
+	}
+	return fmt.Sprintf("%.1f МиБ", mebibytes)
 }

@@ -550,6 +550,7 @@ func TestApp_BinaryRecordLifecycle_StreamsLargeFile(t *testing.T) {
 	ctx := context.Background()
 	app := newStartedTestApp(t)
 	file := bytes.Repeat([]byte("x"), int(binaryPlainFilePartSizeBytes)+1)
+	var progress []BinaryUploadProgress
 
 	// Act
 	created, err := app.CreateBinary(ctx, CreateBinaryInput{
@@ -559,10 +560,19 @@ func TestApp_BinaryRecordLifecycle_StreamsLargeFile(t *testing.T) {
 		ContentType: "application/octet-stream",
 		File:        bytes.NewReader(file),
 		FileSize:    int64(len(file)),
+		OnProgress: func(p BinaryUploadProgress) {
+			progress = append(progress, p)
+		},
 	})
 
 	// Assert
 	require.NoError(t, err)
+	require.NotEmpty(t, progress)
+	assert.Equal(t, BinaryUploadProgress{UploadedBytes: 0, TotalBytes: int64(len(file))}, progress[0])
+	assert.Equal(t, BinaryUploadProgress{
+		UploadedBytes: int64(len(file)),
+		TotalBytes:    int64(len(file)),
+	}, progress[len(progress)-1])
 
 	// Act
 	downloaded, err := app.DownloadBinaryFile(ctx, created.RecordID)

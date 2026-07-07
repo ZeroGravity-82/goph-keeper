@@ -29,7 +29,7 @@ func validateRecordMetadataSize(title string, description string) error {
 
 func validateTextRecordPayloadSize(text string) error {
 	if len([]byte(text)) > textRecordTextMaxSizeBytes {
-		return fmt.Errorf("текст записи не должен превышать %d кБ", textRecordTextMaxSizeBytes/1024)
+		return fmt.Errorf("текст записи не должен превышать %d КиБ", textRecordTextMaxSizeBytes/1024)
 	}
 	return nil
 }
@@ -66,7 +66,7 @@ func validateBinaryFileSize(size int64) error {
 		return fmt.Errorf("размер файла некорректен")
 	}
 	if size > plainBinaryRecordFileMaxSizeBytes {
-		return fmt.Errorf("размер файла не должен превышать %d МБ", plainBinaryRecordFileMaxSizeBytes/1024/1024)
+		return fmt.Errorf("размер файла не должен превышать %d МиБ", plainBinaryRecordFileMaxSizeBytes/1024/1024)
 	}
 	return nil
 }

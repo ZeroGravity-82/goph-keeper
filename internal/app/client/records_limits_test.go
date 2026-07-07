@@ -51,7 +51,7 @@ func Test_validateTextRecordPayloadSize_FailsWithLargeText(t *testing.T) {
 	err := validateTextRecordPayloadSize(strings.Repeat("a", textRecordTextMaxSizeBytes+1))
 
 	// Assert
-	assert.EqualError(t, err, "текст записи не должен превышать 256 кБ")
+	assert.EqualError(t, err, "текст записи не должен превышать 256 КиБ")
 }
 
 // Test_validateCredentialPayloadSize_FailsWithLongPassword проверяет клиентский лимит пароля в payload.
@@ -78,5 +78,5 @@ func Test_validateBinaryFileSize_FailsWithLargeFile(t *testing.T) {
 	err := validateBinaryFileSize(plainBinaryRecordFileMaxSizeBytes + 1)
 
 	// Assert
-	assert.EqualError(t, err, "размер файла не должен превышать 1024 МБ")
+	assert.EqualError(t, err, "размер файла не должен превышать 1024 МиБ")
 }

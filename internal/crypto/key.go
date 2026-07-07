@@ -21,7 +21,7 @@ const (
 	// argon2IDTime задает число проходов Argon2id.
 	argon2IDTime = 3
 
-	// argon2IDMemory задает объем памяти Argon2id в кБ.
+	// argon2IDMemory задает объем памяти Argon2id в КиБ.
 	argon2IDMemory = 64 * 1024
 
 	// argon2IDParallelism задает число параллельных потоков Argon2id.

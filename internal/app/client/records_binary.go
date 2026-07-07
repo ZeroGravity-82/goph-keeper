@@ -31,6 +31,7 @@ type CreateBinaryInput struct {
 	ContentType string
 	File        io.Reader
 	FileSize    int64
+	OnProgress  func(BinaryUploadProgress)
 }
 
 // UpdateBinaryInput содержит данные для обновления бинарной приватной записи.
@@ -43,6 +44,13 @@ type UpdateBinaryInput struct {
 	ContentType     string
 	File            io.Reader
 	FileSize        int64
+	OnProgress      func(BinaryUploadProgress)
+}
+
+// BinaryUploadProgress описывает прогресс загрузки исходного файла до шифрования.
+type BinaryUploadProgress struct {
+	UploadedBytes int64
+	TotalBytes    int64
 }
 
 // UpdateBinaryMetadataInput содержит данные для обновления открытых метаданных бинарной приватной записи.
@@ -121,6 +129,7 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 		FileSize:         in.FileSize,
 		Encryption:       encryption,
 		EncryptedSize:    encryptedSize,
+		OnProgress:       in.OnProgress,
 	})
 	if err != nil {
 		return CreateRecordOutput{}, rpcError(
@@ -229,6 +238,7 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 		FileSize:         in.FileSize,
 		Encryption:       encryption,
 		EncryptedSize:    encryptedSize,
+		OnProgress:       in.OnProgress,
 	})
 	if err != nil {
 		return UpdateRecordOutput{}, rpcError(
@@ -254,6 +264,7 @@ type binaryMultipartUploadInput struct {
 	FileSize         int64
 	Encryption       crypto.BinaryRecordEncryption
 	EncryptedSize    int64
+	OnProgress       func(BinaryUploadProgress)
 }
 
 // binaryMultipartUploadOutput содержит идентификатор и версию записи после завершения multipart-загрузки.
@@ -300,6 +311,7 @@ func (a *App) createOrReplaceBinaryMultipart(
 		in.FileSize,
 		in.Encryption,
 		uploaded,
+		in.OnProgress,
 	); err != nil {
 		return binaryMultipartUploadOutput{}, err
 	}
@@ -336,8 +348,11 @@ func (a *App) uploadBinaryMultipartParts(
 	fileSize int64,
 	encryption crypto.BinaryRecordEncryption,
 	uploaded map[int32]int64,
+	onProgress func(BinaryUploadProgress),
 ) error {
 	partCount := int32((fileSize + binaryPlainFilePartSizeBytes - 1) / binaryPlainFilePartSizeBytes)
+	var uploadedBytes int64
+	notifyBinaryUploadProgress(onProgress, uploadedBytes, fileSize)
 	for partNumber := int32(1); partNumber <= partCount; partNumber++ {
 		plainPartSize := expectedPlainFilePartSize(fileSize, partNumber)
 		encryptedPartSize := plainPartSize + crypto.EncryptedBlobOverhead()
@@ -352,6 +367,8 @@ func (a *App) uploadBinaryMultipartParts(
 			if err := discardPlainFilePart(file, plainPartSize); err != nil {
 				return err
 			}
+			uploadedBytes += plainPartSize
+			notifyBinaryUploadProgress(onProgress, uploadedBytes, fileSize)
 			continue
 		}
 		plainPart, err := readPlainFilePart(file, plainPartSize)
@@ -368,14 +385,29 @@ func (a *App) uploadBinaryMultipartParts(
 			if statusErr == nil {
 				uploaded = uploadedMultipartParts(statusResp.GetUploadedParts())
 				if uploaded[partNumber] == int64(len(part)) {
+					uploadedBytes += plainPartSize
+					notifyBinaryUploadProgress(onProgress, uploadedBytes, fileSize)
 					continue
 				}
 			}
 			return err
 		}
 		uploaded[partNumber] = int64(len(part))
+		uploadedBytes += plainPartSize
+		notifyBinaryUploadProgress(onProgress, uploadedBytes, fileSize)
 	}
 	return nil
+}
+
+// notifyBinaryUploadProgress сообщает вызывающему коду прогресс загрузки, если callback был передан.
+func notifyBinaryUploadProgress(onProgress func(BinaryUploadProgress), uploadedBytes int64, totalBytes int64) {
+	if onProgress == nil {
+		return
+	}
+	if uploadedBytes > totalBytes {
+		uploadedBytes = totalBytes
+	}
+	onProgress(BinaryUploadProgress{UploadedBytes: uploadedBytes, TotalBytes: totalBytes})
 }
 
 // expectedPlainFilePartSize возвращает ожидаемый размер исходной части файла по номеру части с учетом возможной
