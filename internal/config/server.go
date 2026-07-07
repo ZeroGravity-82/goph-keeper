@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/pflag"
 )
@@ -16,6 +17,8 @@ const (
 	defaultTLSCertPath       = "certs/server.crt"
 	defaultTLSKeyPath        = "certs/server.key"
 	defaultFileStorageUseSSL = false
+	defaultAccessTokenTTL    = 15 * time.Minute
+	defaultRefreshTokenTTL   = 30 * 24 * time.Hour
 )
 
 // Logging описывает настройки логирования сервиса.
@@ -62,17 +65,23 @@ type FileStorage struct {
 //
 // JWTSecret - секрет для подписи JWT.
 //
+// AccessTokenTTL - время жизни access-токена.
+//
+// RefreshTokenTTL - время жизни refresh-токена.
+//
 // FileStorage - настройки S3-совместимого хранилища файлов.
 //
 // Logging - настройки логирования сервиса.
 type ServerConfig struct {
-	GRPCServerAddr string      `koanf:"grpc_address"`
-	TLSCertPath    string      `koanf:"tls_cert"`
-	TLSKeyPath     string      `koanf:"tls_key"`
-	DatabaseURI    string      `koanf:"database_uri"`
-	JWTSecret      string      `koanf:"jwt_secret"`
-	FileStorage    FileStorage `koanf:"file_storage"`
-	Logging        Logging     `koanf:"logging"`
+	GRPCServerAddr  string        `koanf:"grpc_address"`
+	TLSCertPath     string        `koanf:"tls_cert"`
+	TLSKeyPath      string        `koanf:"tls_key"`
+	DatabaseURI     string        `koanf:"database_uri"`
+	JWTSecret       string        `koanf:"jwt_secret"`
+	AccessTokenTTL  time.Duration `koanf:"access_token_ttl"`
+	RefreshTokenTTL time.Duration `koanf:"refresh_token_ttl"`
+	FileStorage     FileStorage   `koanf:"file_storage"`
+	Logging         Logging       `koanf:"logging"`
 }
 
 // LoadServer читает конфигурацию сервера с учетом приоритета "дефолтное значение < значение из конфигурационного
@@ -100,6 +109,8 @@ func parseFlags(args []string) (*pflag.FlagSet, string, error) {
 	flags.String("tls-key", "", "TLS private key path for gRPC server")
 	flags.String("database-uri", "", "database connection URI")
 	flags.String("jwt-secret", "", "JWT signing secret")
+	flags.Duration("access-token-ttl", 0, "access token TTL")
+	flags.Duration("refresh-token-ttl", 0, "refresh token TTL")
 	flags.String("file-storage.endpoint", "", "S3-compatible file storage address")
 	flags.String("file-storage.access-key", "", "S3-compatible file storage access key")
 	flags.String("file-storage.secret-key", "", "S3-compatible file storage secret key")
@@ -145,6 +156,8 @@ func serverDefaults() map[string]any {
 		configKey("grpc_address"):            defaultGRPCServerAddr,
 		configKey("tls_cert"):                defaultTLSCertPath,
 		configKey("tls_key"):                 defaultTLSKeyPath,
+		configKey("access_token_ttl"):        defaultAccessTokenTTL,
+		configKey("refresh_token_ttl"):       defaultRefreshTokenTTL,
 		configKey("file_storage", "use_ssl"): defaultFileStorageUseSSL,
 	}
 }
@@ -155,6 +168,12 @@ func validateServerConfig(cfg ServerConfig) error {
 	}
 	if cfg.JWTSecret == "" {
 		return errors.New("JWT secret is required")
+	}
+	if cfg.AccessTokenTTL <= 0 {
+		return errors.New("access token TTL must be positive")
+	}
+	if cfg.RefreshTokenTTL <= 0 {
+		return errors.New("refresh token TTL must be positive")
 	}
 	if cfg.FileStorage.Endpoint == "" {
 		return errors.New("file storage endpoint is required")

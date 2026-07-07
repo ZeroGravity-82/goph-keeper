@@ -23,12 +23,6 @@ import (
 	"zerogravity-82/goph-keeper/internal/usecase"
 )
 
-const (
-	// TODO вынести TTL access/refresh-токенов в конфиг сервера.
-	accessTokenTTL  = 15 * time.Minute
-	refreshTokenTTL = 30 * 24 * time.Hour
-)
-
 // App инициализирует зависимости сервиса.
 type App struct {
 	db      *sqlx.DB
@@ -52,7 +46,7 @@ func New(cfg config.ServerConfig, logger *slog.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to load tls certificate: %w", err)
 	}
-	tokenManager, err := auth.NewTokenManager(cfg.JWTSecret, accessTokenTTL)
+	tokenManager, err := auth.NewTokenManager(cfg.JWTSecret, cfg.AccessTokenTTL)
 	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to create token manager: %w", err)
@@ -62,7 +56,7 @@ func New(cfg config.ServerConfig, logger *slog.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to create user repository: %w", err)
 	}
-	authUC, err := buildAuthUseCase(db, tokenManager, userRepo)
+	authUC, err := buildAuthUseCase(db, tokenManager, userRepo, cfg.RefreshTokenTTL)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -130,6 +124,7 @@ func buildAuthUseCase(
 	db *sqlx.DB,
 	tokenManager *auth.TokenManager,
 	userRepo *postgres.UserRepository,
+	refreshTokenTTL time.Duration,
 ) (*usecase.AuthUseCase, error) {
 	recordRepo, err := postgres.NewRecordRepository(db)
 	if err != nil {

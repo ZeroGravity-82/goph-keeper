@@ -73,11 +73,13 @@ func integrationServerConfig(t *testing.T) config.ServerConfig {
 
 	repoRoot := filepath.Clean(filepath.Join("..", "..", ".."))
 	return config.ServerConfig{
-		GRPCServerAddr: "127.0.0.1:0",
-		TLSCertPath:    filepath.Join(repoRoot, "certs", "server.crt"),
-		TLSKeyPath:     filepath.Join(repoRoot, "certs", "server.key"),
-		DatabaseURI:    databaseURI,
-		JWTSecret:      "test-jwt-secret",
+		GRPCServerAddr:  "127.0.0.1:0",
+		TLSCertPath:     filepath.Join(repoRoot, "certs", "server.crt"),
+		TLSKeyPath:      filepath.Join(repoRoot, "certs", "server.key"),
+		DatabaseURI:     databaseURI,
+		JWTSecret:       "test-jwt-secret",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 30 * 24 * time.Hour,
 		FileStorage: config.FileStorage{
 			Endpoint:  fileStorageEndpoint,
 			AccessKey: fileStorageAccessKey,

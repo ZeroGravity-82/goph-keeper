@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -154,6 +155,8 @@ func TestLoadServer_LoadsDefaults(t *testing.T) {
 	assert.Equal(t, "localhost:3201", cfg.GRPCServerAddr)
 	assert.Equal(t, "certs/server.crt", cfg.TLSCertPath)
 	assert.Equal(t, "certs/server.key", cfg.TLSKeyPath)
+	assert.Equal(t, 15*time.Minute, cfg.AccessTokenTTL)
+	assert.Equal(t, 30*24*time.Hour, cfg.RefreshTokenTTL)
 	assert.Equal(t, "localhost:9000", cfg.FileStorage.Endpoint)
 	assert.Equal(t, "access", cfg.FileStorage.AccessKey)
 	assert.Equal(t, "secret", cfg.FileStorage.SecretKey)
@@ -206,6 +209,8 @@ jwt_secret: file-secret
 grpc_address: localhost:3202
 tls_cert: certs/file-server.crt
 tls_key: certs/file-server.key
+access_token_ttl: 20m
+refresh_token_ttl: 720h
 file_storage:
   endpoint: localhost:9000
   access_key: file-access
@@ -225,6 +230,8 @@ logging:
 		"--grpc-address", "127.0.0.1:3203",
 		"--tls-cert", "certs/flag-server.crt",
 		"--tls-key", "certs/flag-server.key",
+		"--access-token-ttl", "30m",
+		"--refresh-token-ttl", "840h",
 		"--file-storage.endpoint", "localhost:9001",
 		"--file-storage.access-key", "flag-access",
 		"--file-storage.secret-key", "flag-object-secret",
@@ -237,6 +244,7 @@ logging:
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "env-secret")
 	t.Setenv("GOPHKEEPER_GRPC_ADDRESS", "127.0.0.1:3204")
 	t.Setenv("GOPHKEEPER_TLS_CERT", "certs/env-server.crt")
+	t.Setenv("GOPHKEEPER_ACCESS_TOKEN_TTL", "45m")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9002")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "env-bucket")
 	t.Setenv("GOPHKEEPER_LOGGING_LEVEL", "error")
@@ -251,6 +259,8 @@ logging:
 	assert.Equal(t, "127.0.0.1:3204", cfg.GRPCServerAddr)
 	assert.Equal(t, "certs/env-server.crt", cfg.TLSCertPath)
 	assert.Equal(t, "certs/flag-server.key", cfg.TLSKeyPath)
+	assert.Equal(t, 45*time.Minute, cfg.AccessTokenTTL)
+	assert.Equal(t, 840*time.Hour, cfg.RefreshTokenTTL)
 	assert.Equal(t, "localhost:9002", cfg.FileStorage.Endpoint)
 	assert.Equal(t, "flag-access", cfg.FileStorage.AccessKey)
 	assert.Equal(t, "flag-object-secret", cfg.FileStorage.SecretKey)
@@ -259,6 +269,58 @@ logging:
 	assert.Equal(t, "json", cfg.Logging.Format)
 	assert.Equal(t, "error", cfg.Logging.Level)
 	assert.True(t, cfg.Logging.AddSource)
+}
+
+// TestLoadServer_RejectsInvalidTokenTTL проверяет ошибку при неположительном времени жизни токенов.
+func TestLoadServer_RejectsInvalidTokenTTL(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantErrMsg string
+	}{
+		{
+			name:       "zero access token ttl",
+			args:       []string{"--access-token-ttl", "0s"},
+			wantErrMsg: "access token TTL must be positive",
+		},
+		{
+			name:       "negative access token ttl",
+			args:       []string{"--access-token-ttl", "-1s"},
+			wantErrMsg: "access token TTL must be positive",
+		},
+		{
+			name:       "zero refresh token ttl",
+			args:       []string{"--refresh-token-ttl", "0s"},
+			wantErrMsg: "refresh token TTL must be positive",
+		},
+		{
+			name:       "negative refresh token ttl",
+			args:       []string{"--refresh-token-ttl", "-1s"},
+			wantErrMsg: "refresh token TTL must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			args := append([]string{"server"}, tt.args...)
+			setArgs(t, args...)
+			unsetConfigEnv(t)
+			t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
+			t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
+			t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+
+			// Act
+			_, err := LoadServer()
+
+			// Assert
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErrMsg)
+		})
+	}
 }
 
 // TestLoadServer_EmptyEnvironmentValueOverridesLowerPrioritySources проверяет, что пустая переменная окружения не
@@ -300,6 +362,8 @@ func unsetConfigEnv(t *testing.T) {
 		"GOPHKEEPER_TLS_CERT",
 		"GOPHKEEPER_TLS_KEY",
 		"GOPHKEEPER_CA_CERT",
+		"GOPHKEEPER_ACCESS_TOKEN_TTL",
+		"GOPHKEEPER_REFRESH_TOKEN_TTL",
 		"GOPHKEEPER_FILE_STORAGE_ENDPOINT",
 		"GOPHKEEPER_FILE_STORAGE_ACCESS_KEY",
 		"GOPHKEEPER_FILE_STORAGE_SECRET_KEY",
