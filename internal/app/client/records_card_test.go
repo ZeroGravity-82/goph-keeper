@@ -1,6 +1,7 @@
 package client
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -59,6 +60,16 @@ func Test_validateAndNormalizeCard_InvalidHolderName(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, "имя владельца карты должно содержать только латинские буквы и пробелы", err.Error())
+}
+
+// Test_validateAndNormalizeCard_LongHolderName проверяет лимит длины имени владельца карты.
+func Test_validateAndNormalizeCard_LongHolderName(t *testing.T) {
+	// Act
+	_, err := validateAndNormalizeCard("4111111111111111", strings.Repeat("A", cardHolderNameMaxChars+1), "12/30", "123")
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "имя владельца карты не должно превышать 32 символа", err.Error())
 }
 
 // Test_validateAndNormalizeCard_InvalidExpiration проверяет строгий формат срока действия карты.

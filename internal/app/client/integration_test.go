@@ -892,6 +892,65 @@ func TestApp_CardRecordRoundTrip(t *testing.T) {
 	assert.Equal(t, "456", got.CVC)
 }
 
+// TestApp_CreateCard_ValidationErrors проверяет клиентские ошибки полей банковской карты до обращения к серверу.
+func TestApp_CreateCard_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		in   CreateCardInput
+		want string
+	}{
+		{
+			name: "invalid number",
+			in: CreateCardInput{
+				Title:      "Карта",
+				Number:     "4111111111111112",
+				HolderName: "IVAN IVANOV",
+				ExpiresAt:  "12/30",
+				CVC:        "123",
+			},
+			want: "неверный номер карты",
+		},
+		{
+			name: "invalid expiration",
+			in: CreateCardInput{
+				Title:      "Карта",
+				Number:     "4111111111111111",
+				HolderName: "IVAN IVANOV",
+				ExpiresAt:  "13/30",
+				CVC:        "123",
+			},
+			want: "срок действия карты должен быть в формате ММ/ГГ",
+		},
+		{
+			name: "invalid cvc",
+			in: CreateCardInput{
+				Title:      "Карта",
+				Number:     "4111111111111111",
+				HolderName: "IVAN IVANOV",
+				ExpiresAt:  "12/30",
+				CVC:        "1234",
+			},
+			want: "CVC должен содержать ровно 3 цифры",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			app := newStartedTestApp(t)
+			recordsClient := app.records.(*recordsClientFake)
+
+			// Act
+			_, err := app.CreateCard(context.Background(), tt.in)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, tt.want, err.Error())
+			assert.Empty(t, recordsClient.records)
+		})
+	}
+}
+
 // TestApp_BinaryRecordLifecycle проверяет полный клиентский путь для бинарной приватной записи - создание, скачивание,
 // обновление открытых метаданных, замену файла и повторное скачивание - через фейковый RecordsClient.
 func TestApp_BinaryRecordLifecycle(t *testing.T) {

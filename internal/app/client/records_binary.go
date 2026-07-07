@@ -14,8 +14,6 @@ import (
 	"zerogravity-82/goph-keeper/internal/pb"
 )
 
-const maxPlainBinaryFileSize = 100 * 1024 * 1024
-
 // CreateBinaryInput содержит данные для создания бинарной приватной записи.
 type CreateBinaryInput struct {
 	Title       string
@@ -72,8 +70,14 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 	if len(in.File) == 0 {
 		return CreateRecordOutput{}, errors.New("файл не должен быть пустым")
 	}
-	if len(in.File) > maxPlainBinaryFileSize {
-		return CreateRecordOutput{}, fmt.Errorf("размер файла превышает лимит %d байт", maxPlainBinaryFileSize)
+	if err := validateBinaryFileSize(in.File); err != nil {
+		return CreateRecordOutput{}, err
+	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
+		return CreateRecordOutput{}, err
+	}
+	if err := validateBinaryPayloadSize(in.Filename, in.ContentType); err != nil {
+		return CreateRecordOutput{}, err
 	}
 
 	encrypted, err := crypto.EncryptBinaryRecordData(
@@ -122,16 +126,7 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 		return CreateRecordOutput{}, rpcError(
 			err,
 			"не удалось создать бинарную приватную запись",
-			map[codes.Code]string{
-				codes.Unauthenticated:    "сессия недействительна, войдите снова",
-				codes.InvalidArgument:    "некорректные данные бинарной приватной записи",
-				codes.FailedPrecondition: "файл не может быть загружен в текущем состоянии",
-				codes.ResourceExhausted:  "размер файла превышает допустимый лимит",
-				codes.DeadlineExceeded:   "истекло время ожидания загрузки файла",
-				codes.Canceled:           "загрузка файла отменена",
-				codes.Unavailable:        "сервер временно недоступен",
-				codes.PermissionDenied:   "доступ запрещен",
-			},
+			binaryRecordMutationErrorMessages,
 		)
 	}
 
@@ -141,6 +136,9 @@ func (a *App) CreateBinary(ctx context.Context, in CreateBinaryInput) (CreateRec
 // UpdateBinaryMetadata обновляет открытые метаданные бинарной приватной записи без замены файла.
 func (a *App) UpdateBinaryMetadata(ctx context.Context, in UpdateBinaryMetadataInput) (UpdateRecordOutput, error) {
 	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
 		return UpdateRecordOutput{}, err
 	}
 
@@ -188,8 +186,14 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 	if len(in.File) == 0 {
 		return UpdateRecordOutput{}, errors.New("файл не должен быть пустым")
 	}
-	if len(in.File) > maxPlainBinaryFileSize {
-		return UpdateRecordOutput{}, fmt.Errorf("размер файла превышает лимит %d байт", maxPlainBinaryFileSize)
+	if err := validateBinaryFileSize(in.File); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateBinaryPayloadSize(in.Filename, in.ContentType); err != nil {
+		return UpdateRecordOutput{}, err
 	}
 
 	encrypted, err := crypto.EncryptBinaryRecordData(
@@ -240,18 +244,7 @@ func (a *App) UpdateBinary(ctx context.Context, in UpdateBinaryInput) (UpdateRec
 		return UpdateRecordOutput{}, rpcError(
 			err,
 			"не удалось заменить файл бинарной приватной записи",
-			map[codes.Code]string{
-				codes.Unauthenticated:    "сессия недействительна, войдите снова",
-				codes.InvalidArgument:    "некорректные данные бинарной приватной записи",
-				codes.NotFound:           "приватная запись не найдена",
-				codes.Aborted:            "приватная запись была изменена с другого клиента, получите актуальную версию",
-				codes.FailedPrecondition: "файл не может быть загружен в текущем состоянии",
-				codes.ResourceExhausted:  "размер файла превышает допустимый лимит",
-				codes.DeadlineExceeded:   "истекло время ожидания загрузки файла",
-				codes.Canceled:           "загрузка файла отменена",
-				codes.Unavailable:        "сервер временно недоступен",
-				codes.PermissionDenied:   "доступ запрещен",
-			},
+			binaryRecordMutationErrorMessages,
 		)
 	}
 

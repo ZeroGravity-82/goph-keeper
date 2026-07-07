@@ -12,15 +12,7 @@ import (
 	"zerogravity-82/goph-keeper/internal/domain/model"
 )
 
-const (
-	initialRecordVersion int64 = 1
-	maxEncryptedFileSize       = 200 * 1024 * 1024
-)
-
-// MaxEncryptedFileSize возвращает максимальный размер зашифрованного файла для MVP-сценария.
-func MaxEncryptedFileSize() int {
-	return maxEncryptedFileSize
-}
+const initialRecordVersion int64 = 1
 
 // CreateRecordInput описывает входные данные сценария создания приватной записи.
 type CreateRecordInput struct {
@@ -231,13 +223,6 @@ func (uc *RecordUseCase) CreateBinaryRecord(
 	ctx context.Context,
 	in CreateBinaryRecordInput,
 ) (CreateBinaryRecordOutput, error) {
-	if in.UploadMode != model.UploadModeSinglePart {
-		return CreateBinaryRecordOutput{}, ErrUploadModeNotSupported
-	}
-	if in.EncryptedSize <= 0 || in.EncryptedSize > maxEncryptedFileSize {
-		return CreateBinaryRecordOutput{}, ErrInvalidBinaryEncryptedSize
-	}
-
 	recordID, err := uuid.NewV7()
 	if err != nil {
 		return CreateBinaryRecordOutput{}, fmt.Errorf("failed to generate ID for record: %w", err)
@@ -333,13 +318,6 @@ func (uc *RecordUseCase) UpdateBinaryRecord(
 	ctx context.Context,
 	in UpdateBinaryRecordInput,
 ) (UpdateBinaryRecordOutput, error) {
-	if in.UploadMode != model.UploadModeSinglePart {
-		return UpdateBinaryRecordOutput{}, ErrUploadModeNotSupported
-	}
-	if in.EncryptedSize <= 0 || in.EncryptedSize > maxEncryptedFileSize {
-		return UpdateBinaryRecordOutput{}, ErrInvalidBinaryEncryptedSize
-	}
-
 	currentRecord, err := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
 	if err != nil {
 		if errors.Is(err, ErrRecordNotFound) {

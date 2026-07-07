@@ -283,51 +283,6 @@ func TestRecordUseCase_CreateBinaryRecord(t *testing.T) {
 	assert.Equal(t, model.UploadStatusUploaded, recordFileRepo.updates[0].status)
 }
 
-// TestRecordUseCase_CreateBinaryRecord_FailWithInvalidInput проверяет ошибки валидации входных данных.
-func TestRecordUseCase_CreateBinaryRecord_FailWithInvalidInput(t *testing.T) {
-	tests := []struct {
-		name string
-		in   CreateBinaryRecordInput
-		err  error
-	}{
-		{
-			name: "unsupported upload mode",
-			in:   CreateBinaryRecordInput{EncryptedSize: 1, UploadMode: model.UploadModeMultiPart},
-			err:  ErrUploadModeNotSupported,
-		},
-		{
-			name: "zero encrypted size",
-			in:   CreateBinaryRecordInput{EncryptedSize: 0, UploadMode: model.UploadModeSinglePart},
-			err:  ErrInvalidBinaryEncryptedSize,
-		},
-		{
-			name: "too large encrypted size",
-			in: CreateBinaryRecordInput{
-				EncryptedSize: int64(MaxEncryptedFileSize()) + 1,
-				UploadMode:    model.UploadModeSinglePart,
-			},
-			err: ErrInvalidBinaryEncryptedSize,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			uc, recordRepo, recordFileRepo, storage, tx := newTestRecordUseCase(t)
-
-			// Act
-			_, err := uc.CreateBinaryRecord(context.Background(), tt.in)
-
-			// Assert
-			require.ErrorIs(t, err, tt.err)
-			assert.Zero(t, tx.calls)
-			assert.Empty(t, recordRepo.created)
-			assert.Empty(t, recordFileRepo.created)
-			assert.Empty(t, storage.putData)
-		})
-	}
-}
-
 // TestRecordUseCase_CreateBinaryRecord_FailWithCreateRecordError проверяет ошибку сохранения record.
 func TestRecordUseCase_CreateBinaryRecord_FailWithCreateRecordError(t *testing.T) {
 	// Arrange
@@ -490,51 +445,6 @@ func TestRecordUseCase_UpdateBinaryRecord(t *testing.T) {
 	assert.Equal(t, int64(len(fileData)), storage.putSize)
 	require.Len(t, recordFileRepo.updates, 1)
 	assert.Equal(t, model.UploadStatusUploaded, recordFileRepo.updates[0].status)
-}
-
-// TestRecordUseCase_UpdateBinaryRecord_FailWithInvalidInput проверяет ошибки валидации входных данных.
-func TestRecordUseCase_UpdateBinaryRecord_FailWithInvalidInput(t *testing.T) {
-	tests := []struct {
-		name string
-		in   UpdateBinaryRecordInput
-		err  error
-	}{
-		{
-			name: "unsupported upload mode",
-			in:   UpdateBinaryRecordInput{EncryptedSize: 1, UploadMode: model.UploadModeMultiPart},
-			err:  ErrUploadModeNotSupported,
-		},
-		{
-			name: "zero encrypted size",
-			in:   UpdateBinaryRecordInput{EncryptedSize: 0, UploadMode: model.UploadModeSinglePart},
-			err:  ErrInvalidBinaryEncryptedSize,
-		},
-		{
-			name: "too large encrypted size",
-			in: UpdateBinaryRecordInput{
-				EncryptedSize: int64(MaxEncryptedFileSize()) + 1,
-				UploadMode:    model.UploadModeSinglePart,
-			},
-			err: ErrInvalidBinaryEncryptedSize,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			uc, recordRepo, recordFileRepo, storage, tx := newTestRecordUseCase(t)
-
-			// Act
-			_, err := uc.UpdateBinaryRecord(context.Background(), tt.in)
-
-			// Assert
-			require.ErrorIs(t, err, tt.err)
-			assert.Zero(t, tx.calls)
-			assert.Empty(t, recordRepo.updated)
-			assert.Empty(t, recordFileRepo.replaced)
-			assert.Empty(t, storage.putData)
-		})
-	}
 }
 
 // TestRecordUseCase_UpdateBinaryRecord_FailWithInvalidRecordState проверяет ошибки состояния приватной записи.

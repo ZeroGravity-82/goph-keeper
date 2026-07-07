@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,6 +163,38 @@ func TestRecordsService_CreateRecord_OK(t *testing.T) {
 	assert.Equal(t, []byte("encrypted-payload"), uc.createRecordInput.EncryptedPayload)
 }
 
+// TestRecordsService_CreateRecord_OKWithMaxSizeData проверяет, что граничные размеры данных проходят валидацию
+// gRPC-запроса.
+func TestRecordsService_CreateRecord_OKWithMaxSizeData(t *testing.T) {
+	// Arrange
+	userID := uuid.Must(uuid.NewV7())
+	recordID := uuid.Must(uuid.NewV7())
+	uc := &recordsUseCaseStub{createRecordOutput: usecase.CreateRecordOutput{RecordID: recordID, Version: 1}}
+	recordsService, err := NewRecordsService(uc, logging.NopLogger())
+	require.NoError(t, err)
+	recordType := pb.RecordType_RECORD_TYPE_TEXT
+	title := strings.Repeat("я", recordTitleMaxChars)
+	description := strings.Repeat("ю", recordDescriptionMaxChars)
+	req := pb.CreateRecordRequest_builder{
+		Type:             &recordType,
+		Title:            &title,
+		Description:      &description,
+		EncryptedDek:     make([]byte, recordEncryptedDEKMaxBytes),
+		EncryptedPayload: make([]byte, recordEncryptedPayloadMaxBytes),
+	}.Build()
+	ctx := authcontext.WithUserID(context.Background(), userID)
+
+	// Act
+	_, err = recordsService.CreateRecord(ctx, req)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, title, uc.createRecordInput.Title)
+	assert.Equal(t, description, uc.createRecordInput.Description)
+	assert.Len(t, uc.createRecordInput.EncryptedDEK, recordEncryptedDEKMaxBytes)
+	assert.Len(t, uc.createRecordInput.EncryptedPayload, recordEncryptedPayloadMaxBytes)
+}
+
 // TestRecordsService_CreateRecord_FailWithUnauthenticated проверяет ошибку при отсутствии идентификатора пользователя
 // в контексте.
 func TestRecordsService_CreateRecord_FailWithUnauthenticated(t *testing.T) {
@@ -189,26 +222,86 @@ func TestRecordsService_CreateRecord_FailWithInvalidArgument(t *testing.T) {
 	// Arrange
 	textType := pb.RecordType_RECORD_TYPE_TEXT
 	tests := []struct {
-		name string
-		req  *pb.CreateRecordRequest
+		name        string
+		req         *pb.CreateRecordRequest
+		wantMessage string
 	}{
-		{name: "nil request", req: nil},
+		{name: "nil request", req: nil, wantMessage: "request is required"},
 		{name: "unspecified type", req: newCreateRecordRequest(
 			pb.RecordType_RECORD_TYPE_UNSPECIFIED,
 			"title",
 			[]byte("dek"),
 			[]byte("payload")),
+			wantMessage: "record type is invalid",
 		},
-		{name: "empty title", req: newCreateRecordRequest(textType, "", []byte("dek"), []byte("payload"))},
-		{name: "blank title", req: newCreateRecordRequest(textType, "   ", []byte("dek"), []byte("payload"))},
-		{name: "empty encrypted dek", req: newCreateRecordRequest(textType, "title", nil, []byte("payload"))},
-		{name: "empty encrypted payload", req: newCreateRecordRequest(textType, "title", []byte("dek"), nil)},
+		{
+			name:        "empty title",
+			req:         newCreateRecordRequest(textType, "", []byte("dek"), []byte("payload")),
+			wantMessage: "title is required",
+		},
+		{
+			name:        "blank title",
+			req:         newCreateRecordRequest(textType, "   ", []byte("dek"), []byte("payload")),
+			wantMessage: "title is required",
+		},
+		{
+			name:        "empty encrypted dek",
+			req:         newCreateRecordRequest(textType, "title", nil, []byte("payload")),
+			wantMessage: "encrypted dek is required",
+		},
+		{
+			name:        "empty encrypted payload",
+			req:         newCreateRecordRequest(textType, "title", []byte("dek"), nil),
+			wantMessage: "encrypted payload is required",
+		},
+		{
+			name: "long title",
+			req: newCreateRecordRequest(
+				textType,
+				strings.Repeat("a", recordTitleMaxChars+1),
+				[]byte("dek"),
+				[]byte("payload"),
+			),
+			wantMessage: "title exceeds size limit",
+		},
+		{
+			name: "long description",
+			req: newCreateRecordRequestWithDescription(
+				textType,
+				"title",
+				strings.Repeat("a", recordDescriptionMaxChars+1),
+				[]byte("dek"),
+				[]byte("payload"),
+			),
+			wantMessage: "description exceeds size limit",
+		},
+		{
+			name: "large encrypted dek",
+			req: newCreateRecordRequest(
+				textType,
+				"title",
+				make([]byte, recordEncryptedDEKMaxBytes+1),
+				[]byte("payload"),
+			),
+			wantMessage: "encrypted dek exceeds size limit",
+		},
+		{
+			name: "large encrypted payload",
+			req: newCreateRecordRequest(
+				textType,
+				"title",
+				[]byte("dek"),
+				make([]byte, recordEncryptedPayloadMaxBytes+1),
+			),
+			wantMessage: "encrypted payload exceeds size limit",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			recordsService, err := NewRecordsService(&recordsUseCaseStub{}, logging.NopLogger())
+			uc := &recordsUseCaseStub{}
+			recordsService, err := NewRecordsService(uc, logging.NopLogger())
 			require.NoError(t, err)
 			ctx := authcontext.WithUserID(context.Background(), uuid.Must(uuid.NewV7()))
 
@@ -218,6 +311,8 @@ func TestRecordsService_CreateRecord_FailWithInvalidArgument(t *testing.T) {
 			// Assert
 			require.Error(t, err)
 			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+			assert.Equal(t, tt.wantMessage, status.Convert(err).Message())
+			assert.Empty(t, uc.createRecordInput)
 		})
 	}
 }
@@ -228,9 +323,20 @@ func newCreateRecordRequest(
 	encryptedDEK []byte,
 	encryptedPayload []byte,
 ) *pb.CreateRecordRequest {
+	return newCreateRecordRequestWithDescription(recordType, title, "", encryptedDEK, encryptedPayload)
+}
+
+func newCreateRecordRequestWithDescription(
+	recordType pb.RecordType,
+	title string,
+	description string,
+	encryptedDEK []byte,
+	encryptedPayload []byte,
+) *pb.CreateRecordRequest {
 	return pb.CreateRecordRequest_builder{
 		Type:             &recordType,
 		Title:            &title,
+		Description:      &description,
 		EncryptedDek:     encryptedDEK,
 		EncryptedPayload: encryptedPayload,
 	}.Build()
@@ -315,12 +421,14 @@ func TestRecordsService_CreateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 	// Arrange
 	userID := uuid.Must(uuid.NewV7())
 	tests := []struct {
-		name   string
-		stream *createBinaryRecordTestStream
+		name     string
+		stream   *createBinaryRecordTestStream
+		wantCode codes.Code
 	}{
 		{
-			name:   "empty stream",
-			stream: newCreateBinaryRecordTestStream(authcontext.WithUserID(context.Background(), userID), nil),
+			name:     "empty stream",
+			stream:   newCreateBinaryRecordTestStream(authcontext.WithUserID(context.Background(), userID), nil),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "first message is chunk",
@@ -328,6 +436,7 @@ func TestRecordsService_CreateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 				authcontext.WithUserID(context.Background(), userID),
 				pb.CreateBinaryRecordRequest_builder{Chunk: []byte("chunk")}.Build(),
 			),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "blank title",
@@ -336,6 +445,38 @@ func TestRecordsService_CreateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 				newCreateBinaryRecordMetadata("   ", 1),
 				[]byte("a"),
 			),
+			wantCode: codes.InvalidArgument,
+		},
+		{
+			name: "zero encrypted size",
+			stream: newCreateBinaryRecordTestStream(
+				authcontext.WithUserID(context.Background(), userID),
+				newCreateBinaryRecordMetadata("binary title", 0),
+				[]byte("a"),
+			),
+			wantCode: codes.InvalidArgument,
+		},
+		{
+			name: "too large encrypted size",
+			stream: newCreateBinaryRecordTestStream(
+				authcontext.WithUserID(context.Background(), userID),
+				newCreateBinaryRecordMetadata("binary title", encryptedFileMaxBytes+1),
+				[]byte("a"),
+			),
+			wantCode: codes.ResourceExhausted,
+		},
+		{
+			name: "unsupported upload mode",
+			stream: newCreateBinaryRecordTestStream(
+				authcontext.WithUserID(context.Background(), userID),
+				newCreateBinaryRecordMetadataWithUploadMode(
+					"binary title",
+					1,
+					pb.UploadMode_UPLOAD_MODE_MULTIPART,
+				),
+				[]byte("a"),
+			),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "unexpected metadata after first message",
@@ -348,6 +489,7 @@ func TestRecordsService_CreateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 					Metadata: newCreateBinaryRecordMetadata("binary title", 1),
 				}.Build(),
 			),
+			wantCode: codes.InvalidArgument,
 		},
 	}
 
@@ -362,7 +504,7 @@ func TestRecordsService_CreateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 
 			// Assert
 			require.Error(t, err)
-			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+			assert.Equal(t, tt.wantCode, status.Code(err))
 		})
 	}
 }
@@ -454,12 +596,14 @@ func TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 	userID := uuid.Must(uuid.NewV7())
 	recordID := uuid.Must(uuid.NewV7())
 	tests := []struct {
-		name   string
-		stream *updateBinaryRecordTestStream
+		name     string
+		stream   *updateBinaryRecordTestStream
+		wantCode codes.Code
 	}{
 		{
-			name:   "empty stream",
-			stream: newUpdateBinaryRecordTestStream(authcontext.WithUserID(context.Background(), userID), nil),
+			name:     "empty stream",
+			stream:   newUpdateBinaryRecordTestStream(authcontext.WithUserID(context.Background(), userID), nil),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "first message is chunk",
@@ -467,6 +611,7 @@ func TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 				authcontext.WithUserID(context.Background(), userID),
 				pb.UpdateBinaryRecordRequest_builder{Chunk: []byte("chunk")}.Build(),
 			),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "invalid record id",
@@ -475,6 +620,7 @@ func TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 				newUpdateBinaryRecordMetadata("not-uuid", "title", 1, 1),
 				[]byte("a"),
 			),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "invalid expected version",
@@ -483,6 +629,40 @@ func TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 				newUpdateBinaryRecordMetadata(recordID.String(), "title", 1, 0),
 				[]byte("a"),
 			),
+			wantCode: codes.InvalidArgument,
+		},
+		{
+			name: "zero encrypted size",
+			stream: newUpdateBinaryRecordTestStream(
+				authcontext.WithUserID(context.Background(), userID),
+				newUpdateBinaryRecordMetadata(recordID.String(), "title", 0, 1),
+				[]byte("a"),
+			),
+			wantCode: codes.InvalidArgument,
+		},
+		{
+			name: "too large encrypted size",
+			stream: newUpdateBinaryRecordTestStream(
+				authcontext.WithUserID(context.Background(), userID),
+				newUpdateBinaryRecordMetadata(recordID.String(), "title", encryptedFileMaxBytes+1, 1),
+				[]byte("a"),
+			),
+			wantCode: codes.ResourceExhausted,
+		},
+		{
+			name: "unsupported upload mode",
+			stream: newUpdateBinaryRecordTestStream(
+				authcontext.WithUserID(context.Background(), userID),
+				newUpdateBinaryRecordMetadataWithUploadMode(
+					recordID.String(),
+					"title",
+					1,
+					1,
+					pb.UploadMode_UPLOAD_MODE_MULTIPART,
+				),
+				[]byte("a"),
+			),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "unexpected metadata after first message",
@@ -495,6 +675,7 @@ func TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 					Metadata: newUpdateBinaryRecordMetadata(recordID.String(), "title", 1, 1),
 				}.Build(),
 			),
+			wantCode: codes.InvalidArgument,
 		},
 	}
 
@@ -509,7 +690,7 @@ func TestRecordsService_UpdateBinaryRecord_FailWithInvalidArgument(t *testing.T)
 
 			// Assert
 			require.Error(t, err)
-			assert.Equal(t, codes.InvalidArgument, status.Code(err))
+			assert.Equal(t, tt.wantCode, status.Code(err))
 		})
 	}
 }
@@ -817,12 +998,18 @@ func TestRecordsService_UpdateRecord_FailWithInvalidArgument(t *testing.T) {
 	}{
 		{name: "nil request", req: nil},
 		{name: "empty record id", req: newUpdateRecordRequest("", "title", []byte("dek"), []byte("payload"), 1)},
-		{name: "invalid record id", req: newUpdateRecordRequest("not-a-uuid", "title", []byte("dek"), []byte("payload"), 1)},
+		{
+			name: "invalid record id",
+			req:  newUpdateRecordRequest("not-a-uuid", "title", []byte("dek"), []byte("payload"), 1),
+		},
 		{name: "empty title", req: newUpdateRecordRequest(recordID, "", []byte("dek"), []byte("payload"), 1)},
 		{name: "blank title", req: newUpdateRecordRequest(recordID, "   ", []byte("dek"), []byte("payload"), 1)},
 		{name: "empty encrypted dek", req: newUpdateRecordRequest(recordID, "title", nil, []byte("payload"), 1)},
 		{name: "empty encrypted payload", req: newUpdateRecordRequest(recordID, "title", []byte("dek"), nil, 1)},
-		{name: "zero expected version", req: newUpdateRecordRequest(recordID, "title", []byte("dek"), []byte("payload"), 0)},
+		{
+			name: "zero expected version",
+			req:  newUpdateRecordRequest(recordID, "title", []byte("dek"), []byte("payload"), 0),
+		},
 	}
 
 	for _, tt := range tests {
@@ -1178,7 +1365,14 @@ func newCreateBinaryRecordTestStreamWithRequests(
 }
 
 func newCreateBinaryRecordMetadata(title string, encryptedSize int64) *pb.CreateBinaryRecordMetadata {
-	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
+	return newCreateBinaryRecordMetadataWithUploadMode(title, encryptedSize, pb.UploadMode_UPLOAD_MODE_SINGLE_PART)
+}
+
+func newCreateBinaryRecordMetadataWithUploadMode(
+	title string,
+	encryptedSize int64,
+	uploadMode pb.UploadMode,
+) *pb.CreateBinaryRecordMetadata {
 	return pb.CreateBinaryRecordMetadata_builder{
 		Title:            &title,
 		Description:      new("description"),
@@ -1259,7 +1453,22 @@ func newUpdateBinaryRecordMetadata(
 	encryptedSize int64,
 	expectedVersion int64,
 ) *pb.UpdateBinaryRecordMetadata {
-	uploadMode := pb.UploadMode_UPLOAD_MODE_SINGLE_PART
+	return newUpdateBinaryRecordMetadataWithUploadMode(
+		recordID,
+		title,
+		encryptedSize,
+		expectedVersion,
+		pb.UploadMode_UPLOAD_MODE_SINGLE_PART,
+	)
+}
+
+func newUpdateBinaryRecordMetadataWithUploadMode(
+	recordID string,
+	title string,
+	encryptedSize int64,
+	expectedVersion int64,
+	uploadMode pb.UploadMode,
+) *pb.UpdateBinaryRecordMetadata {
 	return pb.UpdateBinaryRecordMetadata_builder{
 		RecordId:         &recordID,
 		Title:            &title,

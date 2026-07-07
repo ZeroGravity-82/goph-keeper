@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,6 +36,11 @@ func TestHashPassword(t *testing.T) {
 		{
 			name:      "can hash non-empty password",
 			password:  "qwerty",
+			wantError: false,
+		},
+		{
+			name:      "can hash long password",
+			password:  strings.Repeat("a", 256),
 			wantError: false,
 		},
 	}

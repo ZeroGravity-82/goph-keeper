@@ -52,6 +52,9 @@ func (a *App) CreateCard(ctx context.Context, in CreateCardInput) (CreateRecordO
 	if err := a.requireSession(); err != nil {
 		return CreateRecordOutput{}, err
 	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
+		return CreateRecordOutput{}, err
+	}
 	normalizedCard, err := validateAndNormalizeCard(in.Number, in.HolderName, in.ExpiresAt, in.CVC)
 	if err != nil {
 		return CreateRecordOutput{}, err
@@ -84,10 +87,7 @@ func (a *App) CreateCard(ctx context.Context, in CreateCardInput) (CreateRecordO
 		return CreateRecordOutput{}, rpcError(
 			err,
 			"не удалось создать приватную запись банковской карты",
-			map[codes.Code]string{
-				codes.Unauthenticated: "сессия недействительна, войдите снова",
-				codes.InvalidArgument: "некорректные данные приватной записи",
-			},
+			recordMutationErrorMessages,
 		)
 	}
 
@@ -97,6 +97,9 @@ func (a *App) CreateCard(ctx context.Context, in CreateCardInput) (CreateRecordO
 // UpdateCard шифрует обновленный payload на клиенте и обновляет приватную запись с данными банковской карты.
 func (a *App) UpdateCard(ctx context.Context, in UpdateCardInput) (UpdateRecordOutput, error) {
 	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
 		return UpdateRecordOutput{}, err
 	}
 	normalizedCard, err := validateAndNormalizeCard(in.Number, in.HolderName, in.ExpiresAt, in.CVC)
@@ -244,6 +247,9 @@ func NormalizeCardNumber(number string) (string, error) {
 // NormalizeCardHolderName проверяет имя владельца банковской карты и возвращает его в верхнем регистре.
 func NormalizeCardHolderName(holderName string) (string, error) {
 	holderName = strings.ToUpper(strings.TrimSpace(holderName))
+	if err := validateCardHolderNameSize(holderName); err != nil {
+		return "", err
+	}
 	if holderName == "" || !isLatinLettersAndSpaces(holderName) {
 		return "", errors.New("имя владельца карты должно содержать только латинские буквы и пробелы")
 	}

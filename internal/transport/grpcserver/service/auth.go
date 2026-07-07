@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -14,6 +15,13 @@ import (
 	"zerogravity-82/goph-keeper/internal/pb"
 	"zerogravity-82/goph-keeper/internal/transport/grpcserver/authcontext"
 	"zerogravity-82/goph-keeper/internal/usecase"
+)
+
+const (
+	userLoginMaxChars         = 128
+	userPasswordMaxChars      = 256
+	masterKeySaltBytes        = 16
+	masterKeyVerifierMaxBytes = 128
 )
 
 // authUseCase описывает сценарии сервиса аутентификации: регистрация, вход в аккаунт, обновление пары токенов, выход
@@ -78,8 +86,14 @@ func registerInputFromRequest(req *pb.RegisterRequest) (usecase.RegisterInput, e
 	if len(req.GetMasterKeySalt()) == 0 {
 		return usecase.RegisterInput{}, status.Error(codes.InvalidArgument, "master key salt is required")
 	}
+	if err := validateMasterKeySaltSize(req.GetMasterKeySalt()); err != nil {
+		return usecase.RegisterInput{}, err
+	}
 	if len(req.GetMasterKeyVerifier()) == 0 {
 		return usecase.RegisterInput{}, status.Error(codes.InvalidArgument, "master key verifier is required")
+	}
+	if err := validateMasterKeyVerifierSize(req.GetMasterKeyVerifier()); err != nil {
+		return usecase.RegisterInput{}, err
 	}
 	return usecase.RegisterInput{
 		Login:             req.GetLogin(),
@@ -89,13 +103,35 @@ func registerInputFromRequest(req *pb.RegisterRequest) (usecase.RegisterInput, e
 	}, nil
 }
 
-// validateCredentials проверяет обязательные учетные данные пользователя.
+// validateCredentials проверяет обязательность и длину учетных данных пользователя.
 func validateCredentials(login, password string) error {
 	if strings.TrimSpace(login) == "" {
 		return status.Error(codes.InvalidArgument, "login is required")
 	}
 	if password == "" {
 		return status.Error(codes.InvalidArgument, "password is required")
+	}
+	if utf8.RuneCountInString(login) > userLoginMaxChars {
+		return status.Error(codes.InvalidArgument, "login exceeds size limit")
+	}
+	if utf8.RuneCountInString(password) > userPasswordMaxChars {
+		return status.Error(codes.InvalidArgument, "password exceeds size limit")
+	}
+	return nil
+}
+
+// validateMasterKeySaltSize проверяет размер соли мастер-ключа из gRPC-запроса.
+func validateMasterKeySaltSize(salt []byte) error {
+	if len(salt) != masterKeySaltBytes {
+		return status.Error(codes.InvalidArgument, "master key salt has invalid length")
+	}
+	return nil
+}
+
+// validateMasterKeyVerifierSize проверяет размер зашифрованного верификатора мастер-ключа из gRPC-запроса.
+func validateMasterKeyVerifierSize(verifier []byte) error {
+	if len(verifier) > masterKeyVerifierMaxBytes {
+		return status.Error(codes.InvalidArgument, "master key verifier exceeds size limit")
 	}
 	return nil
 }
@@ -263,8 +299,14 @@ func changeMasterKeyInputFromRequest(
 	if len(req.GetMasterKeySalt()) == 0 {
 		return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "master key salt is required")
 	}
+	if err := validateMasterKeySaltSize(req.GetMasterKeySalt()); err != nil {
+		return usecase.ChangeMasterKeyInput{}, err
+	}
 	if len(req.GetMasterKeyVerifier()) == 0 {
 		return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "master key verifier is required")
+	}
+	if err := validateMasterKeyVerifierSize(req.GetMasterKeyVerifier()); err != nil {
+		return usecase.ChangeMasterKeyInput{}, err
 	}
 
 	records := make([]usecase.ReencryptedRecordDEK, 0, len(req.GetRecords()))
@@ -281,6 +323,12 @@ func changeMasterKeyInputFromRequest(
 		}
 		if len(item.GetEncryptedDek()) == 0 {
 			return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "record encrypted DEK is required")
+		}
+		if len(item.GetEncryptedDek()) > recordEncryptedDEKMaxBytes {
+			return usecase.ChangeMasterKeyInput{}, status.Error(
+				codes.InvalidArgument,
+				"record encrypted DEK exceeds size limit",
+			)
 		}
 		records = append(records, usecase.ReencryptedRecordDEK{
 			RecordID:        recordID,

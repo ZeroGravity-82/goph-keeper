@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,6 +19,144 @@ type authClientStub struct {
 	refreshReq  *pb.RefreshRequest
 	refreshResp *pb.RefreshResponse
 	refreshErr  error
+}
+
+// TestApp_Register_FailsWithLongCredentials проверяет клиентские лимиты логина и пароля при регистрации.
+func TestApp_Register_FailsWithLongCredentials(t *testing.T) {
+	tests := []struct {
+		name     string
+		login    string
+		password string
+		want     string
+	}{
+		{
+			name:     "long login",
+			login:    strings.Repeat("a", userLoginMaxChars+1),
+			password: "password",
+			want:     "логин не должен превышать 128 символов",
+		},
+		{
+			name:     "long password",
+			login:    "user",
+			password: strings.Repeat("a", userPasswordMaxChars+1),
+			want:     "пароль не должен превышать 256 символов",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			app := &App{auth: &authClientStub{}}
+
+			// Act
+			_, err := app.Register(context.Background(), tt.login, tt.password, "master-key")
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, tt.want, err.Error())
+		})
+	}
+}
+
+// TestApp_Login_FailsWithLongCredentials проверяет клиентские лимиты логина и пароля при входе в аккаунт.
+func TestApp_Login_FailsWithLongCredentials(t *testing.T) {
+	tests := []struct {
+		name     string
+		login    string
+		password string
+		want     string
+	}{
+		{
+			name:     "long login",
+			login:    strings.Repeat("a", userLoginMaxChars+1),
+			password: "password",
+			want:     "логин не должен превышать 128 символов",
+		},
+		{
+			name:     "long password",
+			login:    "user",
+			password: strings.Repeat("a", userPasswordMaxChars+1),
+			want:     "пароль не должен превышать 256 символов",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			app := &App{auth: &authClientStub{}}
+
+			// Act
+			_, err := app.Login(context.Background(), tt.login, tt.password)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, tt.want, err.Error())
+		})
+	}
+}
+
+// TestApp_Register_FailsWithLongMasterKey проверяет клиентский лимит длины мастер-ключа при регистрации.
+func TestApp_Register_FailsWithLongMasterKey(t *testing.T) {
+	// Arrange
+	authClient := &authClientStub{}
+	app := &App{auth: authClient}
+
+	// Act
+	_, err := app.Register(context.Background(), "user", "password", strings.Repeat("a", masterKeyMaxChars+1))
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "мастер-ключ не должен превышать 256 символов", err.Error())
+}
+
+// TestApp_StartSession_FailsWithLongMasterKey проверяет клиентский лимит длины мастер-ключа при открытии сессии.
+func TestApp_StartSession_FailsWithLongMasterKey(t *testing.T) {
+	// Arrange
+	app := newStartedTestApp(t)
+
+	// Act
+	err := app.StartSession(app.session, strings.Repeat("a", masterKeyMaxChars+1))
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "мастер-ключ не должен превышать 256 символов", err.Error())
+}
+
+// TestApp_ChangeMasterKey_FailsWithLongMasterKeys проверяет клиентский лимит длины текущего и нового мастер-ключа.
+func TestApp_ChangeMasterKey_FailsWithLongMasterKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		new     string
+		want    string
+	}{
+		{
+			name:    "long current master key",
+			current: strings.Repeat("a", masterKeyMaxChars+1),
+			new:     "new-master-key",
+			want:    "текущий мастер-ключ не должен превышать 256 символов",
+		},
+		{
+			name:    "long new master key",
+			current: "master-key",
+			new:     strings.Repeat("a", masterKeyMaxChars+1),
+			want:    "новый мастер-ключ не должен превышать 256 символов",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			app := newStartedTestApp(t)
+
+			// Act
+			err := app.ChangeMasterKey(context.Background(), tt.current, tt.new)
+
+			// Assert
+			require.Error(t, err)
+			assert.Equal(t, tt.want, err.Error())
+		})
+	}
 }
 
 func (s *authClientStub) Register(

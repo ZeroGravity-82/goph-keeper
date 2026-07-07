@@ -45,6 +45,12 @@ func (a *App) CreateCredential(ctx context.Context, in CreateCredentialInput) (C
 	if err := a.requireSession(); err != nil {
 		return CreateRecordOutput{}, err
 	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
+		return CreateRecordOutput{}, err
+	}
+	if err := validateCredentialPayloadSize(in.CredentialLogin, in.CredentialPassword); err != nil {
+		return CreateRecordOutput{}, err
+	}
 
 	encrypted, err := crypto.EncryptRecordData(a.masterKey, a.session.MasterKeySalt, model.CredentialPayload{
 		Login:    in.CredentialLogin,
@@ -71,10 +77,7 @@ func (a *App) CreateCredential(ctx context.Context, in CreateCredentialInput) (C
 		return CreateRecordOutput{}, rpcError(
 			err,
 			"не удалось создать приватную запись с учетными данными",
-			map[codes.Code]string{
-				codes.Unauthenticated: "сессия недействительна, войдите снова",
-				codes.InvalidArgument: "некорректные данные приватной записи",
-			},
+			recordMutationErrorMessages,
 		)
 	}
 
@@ -84,6 +87,12 @@ func (a *App) CreateCredential(ctx context.Context, in CreateCredentialInput) (C
 // UpdateCredential шифрует обновленный payload на клиенте и обновляет приватную запись с учетными данными.
 func (a *App) UpdateCredential(ctx context.Context, in UpdateCredentialInput) (UpdateRecordOutput, error) {
 	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateCredentialPayloadSize(in.CredentialLogin, in.CredentialPassword); err != nil {
 		return UpdateRecordOutput{}, err
 	}
 

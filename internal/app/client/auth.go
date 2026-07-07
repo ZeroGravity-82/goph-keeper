@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -12,6 +13,12 @@ import (
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
 	"zerogravity-82/goph-keeper/internal/transport/grpcclient"
+)
+
+const (
+	userLoginMaxChars    = 128
+	userPasswordMaxChars = 256
+	masterKeyMaxChars    = 256
 )
 
 // AuthSession содержит токены, пользовательскую соль и верификатор мастер-ключа, полученные после аутентификации.
@@ -24,6 +31,12 @@ type AuthSession struct {
 
 // Register регистрирует пользователя на сервере.
 func (a *App) Register(ctx context.Context, login, password, masterKey string) (AuthSession, error) {
+	if err := validateUserCredentialsSize(login, password); err != nil {
+		return AuthSession{}, err
+	}
+	if err := validateMasterKeySize(masterKey, "мастер-ключ"); err != nil {
+		return AuthSession{}, err
+	}
 	salt, err := crypto.GenerateMasterKeySalt()
 	if err != nil {
 		return AuthSession{}, fmt.Errorf("не удалось сгенерировать соль мастер-ключа: %w", err)
@@ -55,6 +68,9 @@ func (a *App) Register(ctx context.Context, login, password, masterKey string) (
 
 // Login аутентифицирует пользователя на сервере.
 func (a *App) Login(ctx context.Context, login, password string) (AuthSession, error) {
+	if err := validateUserCredentialsSize(login, password); err != nil {
+		return AuthSession{}, err
+	}
 	resp, err := a.auth.Login(ctx, pb.LoginRequest_builder{
 		Login:    &login,
 		Password: &password,
@@ -87,6 +103,9 @@ func (a *App) StartSession(session AuthSession, masterKey string) error {
 	if masterKey == "" {
 		return errors.New("мастер-ключ обязателен")
 	}
+	if err := validateMasterKeySize(masterKey, "мастер-ключ"); err != nil {
+		return err
+	}
 	if err := crypto.VerifyMasterKey(
 		masterKey,
 		session.MasterKeySalt,
@@ -114,6 +133,12 @@ func (a *App) ChangeMasterKey(ctx context.Context, currentMasterKey string, newM
 	}
 	if newMasterKey == "" {
 		return errors.New("новый мастер-ключ обязателен")
+	}
+	if err := validateMasterKeySize(currentMasterKey, "текущий мастер-ключ"); err != nil {
+		return err
+	}
+	if err := validateMasterKeySize(newMasterKey, "новый мастер-ключ"); err != nil {
+		return err
 	}
 	if currentMasterKey == newMasterKey {
 		return errors.New("новый мастер-ключ должен отличаться от текущего")
@@ -192,6 +217,23 @@ func (a *App) ChangeMasterKey(ctx context.Context, currentMasterKey string, newM
 	session.MasterKeyVerifier = newVerifier.Data
 	a.session = session
 	a.masterKey = newMasterKey
+	return nil
+}
+
+func validateMasterKeySize(masterKey string, label string) error {
+	if utf8.RuneCountInString(masterKey) > masterKeyMaxChars {
+		return fmt.Errorf("%s не должен превышать %d символов", label, masterKeyMaxChars)
+	}
+	return nil
+}
+
+func validateUserCredentialsSize(login string, password string) error {
+	if utf8.RuneCountInString(login) > userLoginMaxChars {
+		return fmt.Errorf("логин не должен превышать %d символов", userLoginMaxChars)
+	}
+	if utf8.RuneCountInString(password) > userPasswordMaxChars {
+		return fmt.Errorf("пароль не должен превышать %d символов", userPasswordMaxChars)
+	}
 	return nil
 }
 

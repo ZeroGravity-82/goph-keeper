@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -106,8 +107,23 @@ func TestAuthService_Register_FailWithInvalidArgument(t *testing.T) {
 		{name: "empty login", req: registerRequest("", "password")},
 		{name: "blank login", req: registerRequest("   ", "password")},
 		{name: "empty password", req: registerRequest("user", "")},
+		{name: "long login", req: registerRequest(strings.Repeat("a", userLoginMaxChars+1), "password")},
+		{name: "long password", req: registerRequest("user", strings.Repeat("a", userPasswordMaxChars+1))},
 		{name: "empty salt", req: registerRequestWithMasterKeyData("user", "password", nil, []byte("verifier"))},
-		{name: "empty verifier", req: registerRequestWithMasterKeyData("user", "password", []byte("1234567890abcdef"), nil)},
+		{name: "invalid salt length", req: registerRequestWithMasterKeyData("user", "password", []byte("short"), []byte("verifier"))},
+		{
+			name: "empty verifier",
+			req:  registerRequestWithMasterKeyData("user", "password", []byte("1234567890abcdef"), nil),
+		},
+		{
+			name: "large verifier",
+			req: registerRequestWithMasterKeyData(
+				"user",
+				"password",
+				[]byte("1234567890abcdef"),
+				make([]byte, masterKeyVerifierMaxBytes+1),
+			),
+		},
 	}
 
 	for _, tt := range tests {
@@ -215,6 +231,20 @@ func TestAuthService_Login_FailWithInvalidArgument(t *testing.T) {
 		{name: "empty login", req: pb.LoginRequest_builder{Login: new(""), Password: new("password")}.Build()},
 		{name: "blank login", req: pb.LoginRequest_builder{Login: new("   "), Password: new("password")}.Build()},
 		{name: "empty password", req: pb.LoginRequest_builder{Login: new("user"), Password: new("")}.Build()},
+		{
+			name: "long login",
+			req: pb.LoginRequest_builder{
+				Login:    new(strings.Repeat("a", userLoginMaxChars+1)),
+				Password: new("password"),
+			}.Build(),
+		},
+		{
+			name: "long password",
+			req: pb.LoginRequest_builder{
+				Login:    new("user"),
+				Password: new(strings.Repeat("a", userPasswordMaxChars+1)),
+			}.Build(),
+		},
 	}
 
 	for _, tt := range tests {
@@ -477,7 +507,16 @@ func TestAuthService_ChangeMasterKey_FailWithInvalidArgument(t *testing.T) {
 	}{
 		{name: "nil request", req: nil},
 		{name: "empty salt", req: changeMasterKeyRequest(nil, []byte("verifier"))},
+		{name: "invalid salt length", req: changeMasterKeyRequest([]byte("short"), []byte("verifier"))},
 		{name: "empty verifier", req: changeMasterKeyRequest([]byte("abcdef1234567890"), nil)},
+		{
+			name: "large verifier",
+			req:  changeMasterKeyRequest([]byte("abcdef1234567890"), make([]byte, masterKeyVerifierMaxBytes+1)),
+		},
+		{
+			name: "large record encrypted DEK",
+			req:  changeMasterKeyRequestWithRecord(make([]byte, recordEncryptedDEKMaxBytes+1)),
+		},
 	}
 
 	for _, tt := range tests {
@@ -520,5 +559,21 @@ func changeMasterKeyRequest(salt []byte, verifier []byte) *pb.ChangeMasterKeyReq
 	return pb.ChangeMasterKeyRequest_builder{
 		MasterKeySalt:     salt,
 		MasterKeyVerifier: verifier,
+	}.Build()
+}
+
+func changeMasterKeyRequestWithRecord(encryptedDEK []byte) *pb.ChangeMasterKeyRequest {
+	recordID := "018f6b7c-0000-7000-8000-200000000012"
+	expectedVersion := int64(1)
+	return pb.ChangeMasterKeyRequest_builder{
+		MasterKeySalt:     []byte("abcdef1234567890"),
+		MasterKeyVerifier: []byte("verifier"),
+		Records: []*pb.ReencryptedRecordDEK{
+			pb.ReencryptedRecordDEK_builder{
+				RecordId:        &recordID,
+				ExpectedVersion: &expectedVersion,
+				EncryptedDek:    encryptedDEK,
+			}.Build(),
+		},
 	}.Build()
 }

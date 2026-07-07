@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -26,7 +27,14 @@ var (
 	errReadBinaryRecordStream    = errors.New("failed to read binary record stream")
 )
 
-const downloadChunkSize = 64 * 1024
+const (
+	downloadChunkSize              = 64 * 1024
+	recordTitleMaxChars            = 128
+	recordDescriptionMaxChars      = 1024
+	recordEncryptedDEKMaxBytes     = 128
+	recordEncryptedPayloadMaxBytes = 1024 * 1024
+	encryptedFileMaxBytes          = 200 * 1024 * 1024
+)
 
 // recordsUseCase описывает сценарии работы с приватными записями: создание, чтение, обновление, удаление приватных
 // записей и работу с бинарными файлами.
@@ -106,6 +114,14 @@ func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordReque
 	if len(req.GetEncryptedPayload()) == 0 {
 		return usecase.CreateRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
 	}
+	if err := validateRecordDataSize(
+		req.GetTitle(),
+		req.GetDescription(),
+		req.GetEncryptedDek(),
+		req.GetEncryptedPayload(),
+	); err != nil {
+		return usecase.CreateRecordInput{}, err
+	}
 
 	return usecase.CreateRecordInput{
 		UserID:           userID,
@@ -115,6 +131,34 @@ func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordReque
 		EncryptedDEK:     req.GetEncryptedDek(),
 		EncryptedPayload: req.GetEncryptedPayload(),
 	}, nil
+}
+
+// validateRecordDataSize проверяет размер открытых метаданных и зашифрованных данных из gRPC-запроса.
+func validateRecordDataSize(title string, description string, encryptedDEK []byte, encryptedPayload []byte) error {
+	if utf8.RuneCountInString(title) > recordTitleMaxChars {
+		return status.Error(codes.InvalidArgument, "title exceeds size limit")
+	}
+	if utf8.RuneCountInString(description) > recordDescriptionMaxChars {
+		return status.Error(codes.InvalidArgument, "description exceeds size limit")
+	}
+	if len(encryptedDEK) > recordEncryptedDEKMaxBytes {
+		return status.Error(codes.InvalidArgument, "encrypted dek exceeds size limit")
+	}
+	if len(encryptedPayload) > recordEncryptedPayloadMaxBytes {
+		return status.Error(codes.InvalidArgument, "encrypted payload exceeds size limit")
+	}
+	return nil
+}
+
+// validateBinaryEncryptedSize проверяет заявленный размер зашифрованного файла из метаданных gRPC-стрима.
+func validateBinaryEncryptedSize(encryptedSize int64) error {
+	if encryptedSize <= 0 {
+		return status.Error(codes.InvalidArgument, "encrypted size is invalid")
+	}
+	if encryptedSize > encryptedFileMaxBytes {
+		return status.Error(codes.ResourceExhausted, "encrypted file exceeds size limit")
+	}
+	return nil
 }
 
 // recordTypeFromProto преобразует protobuf-тип приватной записи в ее доменный тип.
@@ -162,9 +206,7 @@ func (s *RecordsService) CreateBinaryRecord(stream pb.Records_CreateBinaryRecord
 		}
 	}
 	if usecaseErr != nil {
-		if errors.Is(usecaseErr, usecase.ErrInvalidBinaryEncryptedSize) ||
-			errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
-			errors.Is(usecaseErr, usecase.ErrUploadModeNotSupported) {
+		if errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) {
 			return status.Error(codes.InvalidArgument, usecaseErr.Error())
 		}
 		s.logger.Error("failed to create binary record", slog.Any("err", usecaseErr))
@@ -251,6 +293,17 @@ func createBinaryRecordInputFromMetadata(
 	if len(metadata.GetEncryptedPayload()) == 0 {
 		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
 	}
+	if err := validateRecordDataSize(
+		metadata.GetTitle(),
+		metadata.GetDescription(),
+		metadata.GetEncryptedDek(),
+		metadata.GetEncryptedPayload(),
+	); err != nil {
+		return usecase.CreateBinaryRecordInput{}, err
+	}
+	if err := validateBinaryEncryptedSize(metadata.GetEncryptedSize()); err != nil {
+		return usecase.CreateBinaryRecordInput{}, err
+	}
 	uploadMode, ok := uploadModeFromProto(metadata.GetUploadMode())
 	if !ok {
 		return usecase.CreateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "upload mode is invalid")
@@ -266,13 +319,11 @@ func createBinaryRecordInputFromMetadata(
 	}, nil
 }
 
-// uploadModeFromProto преобразует protobuf-режим загрузки файла в доменный режим загрузки.
+// uploadModeFromProto преобразует поддерживаемый protobuf-режим загрузки файла в доменный режим загрузки.
 func uploadModeFromProto(uploadMode pb.UploadMode) (model.UploadMode, bool) {
 	switch uploadMode {
 	case pb.UploadMode_UPLOAD_MODE_SINGLE_PART:
 		return model.UploadModeSinglePart, true
-	case pb.UploadMode_UPLOAD_MODE_MULTIPART:
-		return model.UploadModeMultiPart, true
 	default:
 		return "", false
 	}
@@ -307,7 +358,7 @@ func receiveBinaryRecordChunks(
 
 		chunk := req.GetChunk()
 		receivedSize += int64(len(chunk))
-		if receivedSize > int64(usecase.MaxEncryptedFileSize()) || receivedSize > expectedSize {
+		if receivedSize > expectedSize {
 			_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
 			return usecase.ErrBinaryEncryptedSizeMismatch
 		}
@@ -360,9 +411,7 @@ func (s *RecordsService) UpdateBinaryRecord(stream pb.Records_UpdateBinaryRecord
 			return status.Error(codes.Aborted, "record version conflict")
 		}
 		if errors.Is(usecaseErr, usecase.ErrRecordIsNotBinary) ||
-			errors.Is(usecaseErr, usecase.ErrInvalidBinaryEncryptedSize) ||
-			errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) ||
-			errors.Is(usecaseErr, usecase.ErrUploadModeNotSupported) {
+			errors.Is(usecaseErr, usecase.ErrBinaryEncryptedSizeMismatch) {
 			return status.Error(codes.InvalidArgument, usecaseErr.Error())
 		}
 		s.logger.Error("failed to update binary record", slog.Any("err", usecaseErr))
@@ -447,6 +496,17 @@ func updateBinaryRecordInputFromMetadata(
 	if len(metadata.GetEncryptedPayload()) == 0 {
 		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
 	}
+	if err := validateRecordDataSize(
+		metadata.GetTitle(),
+		metadata.GetDescription(),
+		metadata.GetEncryptedDek(),
+		metadata.GetEncryptedPayload(),
+	); err != nil {
+		return usecase.UpdateBinaryRecordInput{}, err
+	}
+	if err := validateBinaryEncryptedSize(metadata.GetEncryptedSize()); err != nil {
+		return usecase.UpdateBinaryRecordInput{}, err
+	}
 	uploadMode, ok := uploadModeFromProto(metadata.GetUploadMode())
 	if !ok {
 		return usecase.UpdateBinaryRecordInput{}, status.Error(codes.InvalidArgument, "upload mode is invalid")
@@ -495,7 +555,7 @@ func receiveUpdatedBinaryRecordChunks(
 
 		chunk := req.GetChunk()
 		receivedSize += int64(len(chunk))
-		if receivedSize > int64(usecase.MaxEncryptedFileSize()) || receivedSize > expectedSize {
+		if receivedSize > expectedSize {
 			_ = fileWriter.CloseWithError(usecase.ErrBinaryEncryptedSizeMismatch)
 			return usecase.ErrBinaryEncryptedSizeMismatch
 		}
@@ -731,6 +791,14 @@ func updateRecordInputFromRequest(ctx context.Context, req *pb.UpdateRecordReque
 	}
 	if len(req.GetEncryptedPayload()) == 0 {
 		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "encrypted payload is required")
+	}
+	if err := validateRecordDataSize(
+		req.GetTitle(),
+		req.GetDescription(),
+		req.GetEncryptedDek(),
+		req.GetEncryptedPayload(),
+	); err != nil {
+		return usecase.UpdateRecordInput{}, err
 	}
 	if req.GetExpectedVersion() <= 0 {
 		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "expected version is invalid")

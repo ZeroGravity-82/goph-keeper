@@ -39,6 +39,30 @@ type RecordListItem struct {
 	UpdatedAt   time.Time
 }
 
+// recordMutationErrorMessages содержит пользовательские сообщения для создания и обновления обычных приватных записей.
+var recordMutationErrorMessages = map[codes.Code]string{
+	codes.Unauthenticated:   "сессия недействительна, войдите снова",
+	codes.InvalidArgument:   "некорректные данные приватной записи",
+	codes.NotFound:          "приватная запись не найдена",
+	codes.Aborted:           "приватная запись была изменена с другого клиента, получите актуальную версию",
+	codes.ResourceExhausted: "размер данных приватной записи превышает допустимый лимит",
+}
+
+// binaryRecordMutationErrorMessages содержит пользовательские сообщения для создания и замены бинарных приватных
+// записей.
+var binaryRecordMutationErrorMessages = map[codes.Code]string{
+	codes.Unauthenticated:    "сессия недействительна, войдите снова",
+	codes.InvalidArgument:    "некорректные данные бинарной приватной записи",
+	codes.NotFound:           "приватная запись не найдена",
+	codes.Aborted:            "приватная запись была изменена с другого клиента, получите актуальную версию",
+	codes.FailedPrecondition: "файл не может быть загружен в текущем состоянии",
+	codes.ResourceExhausted:  "размер данных бинарной приватной записи превышает допустимый лимит",
+	codes.DeadlineExceeded:   "истекло время ожидания загрузки файла",
+	codes.Canceled:           "загрузка файла отменена",
+	codes.Unavailable:        "сервер временно недоступен",
+	codes.PermissionDenied:   "доступ запрещен",
+}
+
 // rawRecord содержит минимальный набор полей приватной записи, нужный для переупаковки DEK при смене мастер-ключа.
 type rawRecord struct {
 	RecordID     string
@@ -127,6 +151,10 @@ func (a *App) updateRecord(
 	encryptedPayload []byte,
 	expectedVersion int64,
 ) (UpdateRecordOutput, error) {
+	if err := validateRecordMetadataSize(title, description); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+
 	var resp *pb.UpdateRecordResponse
 	err := a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
 		var err error
@@ -144,12 +172,7 @@ func (a *App) updateRecord(
 		return UpdateRecordOutput{}, rpcError(
 			err,
 			"не удалось обновить приватную запись",
-			map[codes.Code]string{
-				codes.Unauthenticated: "сессия недействительна, войдите снова",
-				codes.InvalidArgument: "некорректные данные приватной записи",
-				codes.NotFound:        "приватная запись не найдена",
-				codes.Aborted:         "приватная запись была изменена с другого клиента, получите актуальную версию",
-			},
+			recordMutationErrorMessages,
 		)
 	}
 

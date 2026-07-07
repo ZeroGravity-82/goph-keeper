@@ -42,6 +42,12 @@ func (a *App) CreateText(ctx context.Context, in CreateTextInput) (CreateRecordO
 	if err := a.requireSession(); err != nil {
 		return CreateRecordOutput{}, err
 	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
+		return CreateRecordOutput{}, err
+	}
+	if err := validateTextRecordPayloadSize(in.Text); err != nil {
+		return CreateRecordOutput{}, err
+	}
 
 	encrypted, err := crypto.EncryptRecordData(a.masterKey, a.session.MasterKeySalt, model.TextPayload{
 		Text: in.Text,
@@ -67,10 +73,7 @@ func (a *App) CreateText(ctx context.Context, in CreateTextInput) (CreateRecordO
 		return CreateRecordOutput{}, rpcError(
 			err,
 			"не удалось создать текстовую приватную запись",
-			map[codes.Code]string{
-				codes.Unauthenticated: "сессия недействительна, войдите снова",
-				codes.InvalidArgument: "некорректные данные приватной записи",
-			},
+			recordMutationErrorMessages,
 		)
 	}
 
@@ -80,6 +83,12 @@ func (a *App) CreateText(ctx context.Context, in CreateTextInput) (CreateRecordO
 // UpdateText шифрует обновленный payload на клиенте и обновляет текстовую приватную запись.
 func (a *App) UpdateText(ctx context.Context, in UpdateTextInput) (UpdateRecordOutput, error) {
 	if err := a.requireSession(); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateRecordMetadataSize(in.Title, in.Description); err != nil {
+		return UpdateRecordOutput{}, err
+	}
+	if err := validateTextRecordPayloadSize(in.Text); err != nil {
 		return UpdateRecordOutput{}, err
 	}
 
