@@ -536,11 +536,11 @@ func TestRecordUseCase_UpdateRecord_FailWithRepositoryError(t *testing.T) {
 	require.ErrorIs(t, err, errTest)
 }
 
-// TestRecordUseCase_CompleteBinaryMultipartUpload проверяет завершение multipart-загрузки с проверкой контрольной
-// суммы зашифрованного файла.
+// TestRecordUseCase_CompleteBinaryMultipartUpload проверяет завершение текущей multipart-загрузки с проверкой
+// контрольной суммы зашифрованного файла под guard-блокировкой пользователя.
 func TestRecordUseCase_CompleteBinaryMultipartUpload(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, tx, _ := newTestRecordUseCase(t)
+	uc, recordRepo, recordFileRepo, multipartRepo, storage, _, guard := newTestRecordUseCase(t)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000031")
 	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000032")
 	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000033")
@@ -558,6 +558,12 @@ func TestRecordUseCase_CompleteBinaryMultipartUpload(t *testing.T) {
 		EncryptedSize:   int64(len(encryptedFile)),
 		PartSize:        int64(len(encryptedFile)),
 		Status:          MultipartUploadStatusUploading,
+	}
+	recordRepo.record = model.Record{
+		ID:      recordID,
+		UserID:  userID,
+		Version: 2,
+		File:    &model.RecordFile{ID: fileID},
 	}
 	multipartRepo.parts = []MultipartUploadPart{
 		{UploadID: uploadID, PartNumber: 1, Size: int64(len(encryptedFile)), ETag: "etag"},
@@ -584,28 +590,87 @@ func TestRecordUseCase_CompleteBinaryMultipartUpload(t *testing.T) {
 	require.Len(t, recordFileRepo.completed, 1)
 	assert.Equal(t, fileID, recordFileRepo.completed[0].fileID)
 	assert.Equal(t, encryptedSHA256, recordFileRepo.completed[0].encryptedSHA256)
-	assert.Equal(t, 1, tx.calls)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
 	assert.True(t, multipartRepo.updatedInTx[0])
 }
 
-// TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch проверяет, что собранный файл с другой
-// контрольной суммой переводится в неуспешный статус.
-func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t *testing.T) {
+// TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithStaleUpload проверяет, что старая multipart-загрузка не может
+// завершить файл после обновления записи другой загрузкой.
+func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithStaleUpload(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, tx, _ := newTestRecordUseCase(t)
-	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000035")
-	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000036")
-	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000037")
+	uc, recordRepo, recordFileRepo, multipartRepo, storage, _, guard := newTestRecordUseCase(t)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000043")
+	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000044")
+	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000045")
+	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000046")
 	encryptedFile := []byte("encrypted-file")
 	multipartRepo.upload = MultipartUpload{
 		ID:              uploadID,
 		UserID:          userID,
+		RecordID:        recordID,
+		RecordVersion:   2,
 		FileID:          fileID,
 		ObjectKey:       "object-key",
 		StorageUploadID: "storage-upload-id",
 		EncryptedSize:   int64(len(encryptedFile)),
 		PartSize:        int64(len(encryptedFile)),
 		Status:          MultipartUploadStatusUploading,
+	}
+	recordRepo.record = model.Record{
+		ID:      recordID,
+		UserID:  userID,
+		Version: 3,
+		File:    &model.RecordFile{ID: fileID},
+	}
+	multipartRepo.parts = []MultipartUploadPart{
+		{UploadID: uploadID, PartNumber: 1, Size: int64(len(encryptedFile)), ETag: "etag"},
+	}
+
+	// Act
+	_, err := uc.CompleteBinaryMultipartUpload(context.Background(), CompleteBinaryMultipartUploadInput{
+		UserID:          userID,
+		UploadID:        uploadID,
+		EncryptedSHA256: testEncryptedSHA256(encryptedFile),
+	})
+
+	// Assert
+	require.ErrorIs(t, err, ErrRecordVersionConflict)
+	assert.Equal(t, 1, guard.calls)
+	assert.Empty(t, storage.completeMultipartKey)
+	assert.Empty(t, storage.getObjectKey)
+	assert.Empty(t, multipartRepo.statuses)
+	assert.Empty(t, recordFileRepo.completed)
+}
+
+// TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch проверяет, что собранный файл с другой
+// контрольной суммой переводится в неуспешный статус.
+func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t *testing.T) {
+	// Arrange
+	uc, recordRepo, recordFileRepo, multipartRepo, storage, _, guard := newTestRecordUseCase(t)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000035")
+	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000036")
+	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000038")
+	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000037")
+	encryptedFile := []byte("encrypted-file")
+	multipartRepo.upload = MultipartUpload{
+		ID:              uploadID,
+		UserID:          userID,
+		RecordID:        recordID,
+		RecordVersion:   2,
+		FileID:          fileID,
+		ObjectKey:       "object-key",
+		StorageUploadID: "storage-upload-id",
+		EncryptedSize:   int64(len(encryptedFile)),
+		PartSize:        int64(len(encryptedFile)),
+		Status:          MultipartUploadStatusUploading,
+	}
+	recordRepo.record = model.Record{
+		ID:      recordID,
+		UserID:  userID,
+		Version: 2,
+		File:    &model.RecordFile{ID: fileID},
 	}
 	multipartRepo.parts = []MultipartUploadPart{
 		{UploadID: uploadID, PartNumber: 1, Size: int64(len(encryptedFile)), ETag: "etag"},
@@ -625,24 +690,36 @@ func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t 
 	require.Len(t, recordFileRepo.updates, 1)
 	assert.Equal(t, fileID, recordFileRepo.updates[0].fileID)
 	assert.Equal(t, model.UploadStatusFailed, recordFileRepo.updates[0].status)
-	assert.Equal(t, 1, tx.calls)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
 	assert.True(t, multipartRepo.updatedInTx[0])
 }
 
-// TestRecordUseCase_AbortBinaryMultipartUpload проверяет отмену активной multipart-загрузки в файловом хранилище и БД.
+// TestRecordUseCase_AbortBinaryMultipartUpload проверяет отмену текущей multipart-загрузки в файловом хранилище и БД под
+// guard-блокировкой пользователя.
 func TestRecordUseCase_AbortBinaryMultipartUpload(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, tx, _ := newTestRecordUseCase(t)
+	uc, recordRepo, recordFileRepo, multipartRepo, storage, _, guard := newTestRecordUseCase(t)
 	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000040")
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000041")
+	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000047")
 	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000042")
 	multipartRepo.upload = MultipartUpload{
 		ID:              uploadID,
 		UserID:          userID,
+		RecordID:        recordID,
+		RecordVersion:   2,
 		FileID:          fileID,
 		ObjectKey:       "object-key",
 		StorageUploadID: "storage-upload-id",
 		Status:          MultipartUploadStatusUploading,
+	}
+	recordRepo.record = model.Record{
+		ID:      recordID,
+		UserID:  userID,
+		Version: 2,
+		File:    &model.RecordFile{ID: fileID},
 	}
 
 	// Act
@@ -658,12 +735,57 @@ func TestRecordUseCase_AbortBinaryMultipartUpload(t *testing.T) {
 	assert.Equal(t, 1, storage.abortMultipartCallCnt)
 	assert.Equal(t, "object-key", storage.abortMultipartKey)
 	assert.Equal(t, "storage-upload-id", storage.abortStorageUploadID)
-	assert.Equal(t, 1, tx.calls)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
 	assert.True(t, multipartRepo.updatedInTx[0])
 	assert.Equal(t, []MultipartUploadStatus{MultipartUploadStatusAborted}, multipartRepo.statuses)
 	require.Len(t, recordFileRepo.updates, 1)
 	assert.Equal(t, fileID, recordFileRepo.updates[0].fileID)
 	assert.Equal(t, model.UploadStatusFailed, recordFileRepo.updates[0].status)
+}
+
+// TestRecordUseCase_AbortBinaryMultipartUpload_StaleUpload проверяет, что отмена старой multipart-загрузки не переводит
+// текущий файл записи в failed.
+func TestRecordUseCase_AbortBinaryMultipartUpload_StaleUpload(t *testing.T) {
+	// Arrange
+	uc, recordRepo, recordFileRepo, multipartRepo, storage, _, guard := newTestRecordUseCase(t)
+	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000048")
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000049")
+	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000050")
+	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000051")
+	multipartRepo.upload = MultipartUpload{
+		ID:              uploadID,
+		UserID:          userID,
+		RecordID:        recordID,
+		RecordVersion:   2,
+		FileID:          fileID,
+		ObjectKey:       "object-key",
+		StorageUploadID: "storage-upload-id",
+		Status:          MultipartUploadStatusUploading,
+	}
+	recordRepo.record = model.Record{
+		ID:      recordID,
+		UserID:  userID,
+		Version: 3,
+		File:    &model.RecordFile{ID: fileID},
+	}
+
+	// Act
+	out, err := uc.AbortBinaryMultipartUpload(context.Background(), AbortBinaryMultipartUploadInput{
+		UserID:   userID,
+		UploadID: uploadID,
+	})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, uploadID, out.UploadID)
+	assert.Equal(t, model.UploadStatusFailed, out.UploadStatus)
+	assert.Equal(t, 1, storage.abortMultipartCallCnt)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []MultipartUploadStatus{MultipartUploadStatusAborted}, multipartRepo.statuses)
+	assert.True(t, multipartRepo.updatedInTx[0])
+	assert.Empty(t, recordFileRepo.updates)
 }
 
 // TestRecordUseCase_AbortBinaryMultipartUpload_Completed проверяет запрет отмены уже завершенной multipart-загрузки.

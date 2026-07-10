@@ -277,6 +277,94 @@ WHERE record_id = $1
 	assert.Equal(t, string(model.UploadStatusUploaded), storedFile.UploadStatus)
 }
 
+// TestRecordsService_CompleteBinaryMultipart_Integration_StaleUpload проверяет, что старая multipart-загрузка не может
+// завершить файл после старта новой замены той же бинарной записи.
+func TestRecordsService_CompleteBinaryMultipart_Integration_StaleUpload(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	user := createIntegrationUser(t, ctx, db, "record-stale-binary-upload-user")
+	fileStorage := newFakeFileStorage()
+	recordsService := newIntegrationRecordsServiceWithFileStorage(t, db, fileStorage)
+	requestCtx := authcontext.WithUserID(ctx, user.ID)
+	initialFile := []byte("initial-encrypted-file")
+	firstReplacementFile := []byte("first-replacement-encrypted-file")
+	secondReplacementFile := []byte("second-replacement-encrypted-file")
+
+	created := createBinaryRecordMultipart(t, recordsService, requestCtx, "binary title", initialFile)
+	recordID, err := uuid.Parse(created.GetRecordId())
+	require.NoError(t, err)
+	firstSize := int64(len(firstReplacementFile))
+	firstReplace, err := recordsService.StartBinaryMultipartUpload(
+		requestCtx,
+		pb.StartBinaryMultipartUploadRequest_builder{
+			RecordId:         new(created.GetRecordId()),
+			ExpectedVersion:  new(created.GetVersion()),
+			Title:            new("first replacement"),
+			Description:      new("description"),
+			EncryptedDek:     []byte("first-encrypted-dek"),
+			EncryptedPayload: []byte("first-encrypted-payload"),
+			EncryptedSize:    &firstSize,
+			PartSize:         &firstSize,
+		}.Build(),
+	)
+	require.NoError(t, err)
+	secondSize := int64(len(secondReplacementFile))
+	_, err = recordsService.StartBinaryMultipartUpload(
+		requestCtx,
+		pb.StartBinaryMultipartUploadRequest_builder{
+			RecordId:         new(created.GetRecordId()),
+			ExpectedVersion:  new(firstReplace.GetVersion()),
+			Title:            new("second replacement"),
+			Description:      new("description"),
+			EncryptedDek:     []byte("second-encrypted-dek"),
+			EncryptedPayload: []byte("second-encrypted-payload"),
+			EncryptedSize:    &secondSize,
+			PartSize:         &secondSize,
+		}.Build(),
+	)
+	require.NoError(t, err)
+
+	stream := newUploadBinaryMultipartPartIntegrationStream(
+		requestCtx,
+		firstReplace.GetUploadId(),
+		1,
+		firstReplacementFile,
+	)
+	require.NoError(t, recordsService.UploadBinaryMultipartPart(stream))
+	firstSHA256 := testEncryptedFileSHA256(firstReplacementFile)
+
+	// Act
+	_, err = recordsService.CompleteBinaryMultipartUpload(
+		requestCtx,
+		pb.CompleteBinaryMultipartUploadRequest_builder{
+			UploadId:        new(firstReplace.GetUploadId()),
+			EncryptedSha256: &firstSHA256,
+		}.Build(),
+	)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, codes.Aborted, status.Code(err))
+
+	var storedFile dto.RecordFile
+	err = db.GetContext(ctx, &storedFile, `
+SELECT id, record_id, object_key, encrypted_size, encrypted_sha256, upload_status, created_at, updated_at
+FROM record_file
+WHERE record_id = $1
+	`, recordID)
+	require.NoError(t, err)
+	assert.Equal(t, string(model.UploadStatusUploading), storedFile.UploadStatus)
+	require.NotNil(t, storedFile.EncryptedSize)
+	assert.Equal(t, secondSize, *storedFile.EncryptedSize)
+	assert.Nil(t, storedFile.EncryptedSHA256)
+
+	fileStorage.mu.Lock()
+	storedObject := append([]byte(nil), fileStorage.objects[storedFile.ObjectKey]...)
+	fileStorage.mu.Unlock()
+	assert.Equal(t, initialFile, storedObject)
+}
+
 // TestRecordsService_UploadBinaryMultipartPart_Integration_SizeMismatch проверяет ошибку при несовпадении размера
 // части.
 func TestRecordsService_UploadBinaryMultipartPart_Integration_SizeMismatch(t *testing.T) {

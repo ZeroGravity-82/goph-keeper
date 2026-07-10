@@ -563,40 +563,53 @@ func (uc *RecordUseCase) CompleteBinaryMultipartUpload(
 	ctx context.Context,
 	in CompleteBinaryMultipartUploadInput,
 ) (CompleteBinaryMultipartUploadOutput, error) {
-	upload, parts, err := uc.multipartUploadWithParts(ctx, in.UploadID, in.UserID)
-	if err != nil {
-		return CompleteBinaryMultipartUploadOutput{}, err
-	}
-	if upload.Status != MultipartUploadStatusUploading {
-		return CompleteBinaryMultipartUploadOutput{}, ErrMultipartUploadNotActive
-	}
-	// Перед закрытием multipart-загрузки проверяем, что сервер уже получил непрерывный набор частей полного размера.
-	if err = validateCompleteMultipartParts(upload, parts); err != nil {
-		return CompleteBinaryMultipartUploadOutput{}, err
-	}
+	var upload MultipartUpload
 
-	if err = uc.fileStorage.CompleteMultipartUpload(ctx, upload.ObjectKey, upload.StorageUploadID, parts); err != nil {
-		return CompleteBinaryMultipartUploadOutput{}, fmt.Errorf(
-			"failed to complete multipart upload in file storage: %w",
-			err,
-		)
-	}
-	actualSHA256, err := uc.encryptedFileSHA256(ctx, upload.ObjectKey)
-	if err != nil {
-		return CompleteBinaryMultipartUploadOutput{}, err
-	}
-	if actualSHA256 != in.EncryptedSHA256 {
-		if markErr := uc.markMultipartUploadFailed(ctx, upload); markErr != nil {
-			return CompleteBinaryMultipartUploadOutput{}, fmt.Errorf(
-				"failed to mark multipart upload as failed after checksum mismatch: %w",
-				markErr,
+	if err := uc.mutationGuard.WithUserRecordsLock(ctx, in.UserID, func(ctx context.Context) error {
+		var parts []MultipartUploadPart
+		var err error
+		upload, parts, err = uc.multipartUploadWithParts(ctx, in.UploadID, in.UserID)
+		if err != nil {
+			return err
+		}
+		if upload.Status != MultipartUploadStatusUploading {
+			return ErrMultipartUploadNotActive
+		}
+		// Перед закрытием multipart-загрузки проверяем, что сервер уже получил непрерывный набор частей полного
+		// размера.
+		if err = validateCompleteMultipartParts(upload, parts); err != nil {
+			return err
+		}
+		if err = uc.ensureMultipartUploadMatchesCurrentRecord(ctx, upload); err != nil {
+			return err
+		}
+
+		if err = uc.fileStorage.CompleteMultipartUpload(
+			ctx,
+			upload.ObjectKey,
+			upload.StorageUploadID,
+			parts,
+		); err != nil {
+			return fmt.Errorf(
+				"failed to complete multipart upload in file storage: %w",
+				err,
 			)
 		}
-		return CompleteBinaryMultipartUploadOutput{}, ErrMultipartUploadChecksumMismatch
-	}
+		actualSHA256, err := uc.encryptedFileSHA256(ctx, upload.ObjectKey)
+		if err != nil {
+			return err
+		}
+		if actualSHA256 != in.EncryptedSHA256 {
+			if markErr := uc.markMultipartUploadFailed(ctx, upload); markErr != nil {
+				return fmt.Errorf(
+					"failed to mark multipart upload as failed after checksum mismatch: %w",
+					markErr,
+				)
+			}
+			return ErrMultipartUploadChecksumMismatch
+		}
 
-	now := time.Now().UTC()
-	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		now := time.Now().UTC()
 		if err = uc.multipartRepo.UpdateStatus(
 			ctx,
 			upload.ID,
@@ -612,7 +625,7 @@ func (uc *RecordUseCase) CompleteBinaryMultipartUpload(
 		return nil
 	}); err != nil {
 		return CompleteBinaryMultipartUploadOutput{}, fmt.Errorf(
-			"failed to mark multipart upload as completed: %w",
+			"failed to complete binary multipart upload: %w",
 			err,
 		)
 	}
@@ -650,8 +663,14 @@ func (uc *RecordUseCase) AbortBinaryMultipartUpload(
 	}
 
 	now := time.Now().UTC()
-	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+	if err = uc.mutationGuard.WithUserRecordsLock(ctx, in.UserID, func(ctx context.Context) error {
 		if err = uc.multipartRepo.UpdateStatus(ctx, upload.ID, MultipartUploadStatusAborted, now, nil); err != nil {
+			return err
+		}
+		if err = uc.ensureMultipartUploadMatchesCurrentRecord(ctx, upload); err != nil {
+			if errors.Is(err, ErrRecordVersionConflict) || errors.Is(err, ErrRecordNotFound) {
+				return nil
+			}
 			return err
 		}
 		if err = uc.recordFileRepo.UpdateUploadStatus(ctx, upload.FileID, model.UploadStatusFailed, now); err != nil {
@@ -794,18 +813,34 @@ func (uc *RecordUseCase) encryptedFileSHA256(ctx context.Context, objectKey stri
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
+// ensureMultipartUploadMatchesCurrentRecord проверяет, что multipart-загрузка относится к текущей версии записи.
+func (uc *RecordUseCase) ensureMultipartUploadMatchesCurrentRecord(ctx context.Context, upload MultipartUpload) error {
+	record, err := uc.recordRepo.GetByIDAndUserID(ctx, upload.RecordID, upload.UserID)
+	if err != nil {
+		if errors.Is(err, ErrRecordNotFound) {
+			return ErrRecordNotFound
+		}
+		return fmt.Errorf("failed to get record for multipart upload version check: %w", err)
+	}
+	if record.Version != upload.RecordVersion {
+		return ErrRecordVersionConflict
+	}
+	if record.File == nil || record.File.ID != upload.FileID {
+		return ErrRecordVersionConflict
+	}
+	return nil
+}
+
 // markMultipartUploadFailed переводит запись файла в failed, когда объект собран, но не прошел проверку целостности.
 func (uc *RecordUseCase) markMultipartUploadFailed(ctx context.Context, upload MultipartUpload) error {
 	now := time.Now().UTC()
-	return uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		if err := uc.multipartRepo.UpdateStatus(ctx, upload.ID, MultipartUploadStatusAborted, now, nil); err != nil {
-			return err
-		}
-		if err := uc.recordFileRepo.UpdateUploadStatus(ctx, upload.FileID, model.UploadStatusFailed, now); err != nil {
-			return err
-		}
-		return nil
-	})
+	if err := uc.multipartRepo.UpdateStatus(ctx, upload.ID, MultipartUploadStatusAborted, now, nil); err != nil {
+		return err
+	}
+	if err := uc.recordFileRepo.UpdateUploadStatus(ctx, upload.FileID, model.UploadStatusFailed, now); err != nil {
+		return err
+	}
+	return nil
 }
 
 // expectedMultipartPartSize вычисляет ожидаемый размер части с учетом того, что последняя часть может быть короче.
