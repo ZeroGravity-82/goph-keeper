@@ -23,11 +23,12 @@ CREATE TABLE IF NOT EXISTS refresh_token
 );
 CREATE INDEX idx_refresh_token_app_user_id ON refresh_token(app_user_id);
 
+CREATE TYPE record_type AS ENUM ('credential', 'text', 'card', 'binary');
 CREATE TABLE IF NOT EXISTS record
 (
     id                UUID PRIMARY KEY,
     app_user_id       UUID          NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
-    type              VARCHAR(16)   NOT NULL CHECK (type IN ('credential', 'text', 'card', 'binary')),
+    type              record_type   NOT NULL,
     title             VARCHAR(128)  NOT NULL,
     description       VARCHAR(1024) NOT NULL,
     encrypted_dek     BYTEA         NOT NULL,
@@ -39,32 +40,34 @@ CREATE TABLE IF NOT EXISTS record
 );
 CREATE INDEX idx_record_app_user_id_deleted_at ON record(app_user_id, deleted_at);
 
+CREATE TYPE upload_status AS ENUM ('uploading', 'uploaded', 'failed');
 CREATE TABLE IF NOT EXISTS record_file (
     id               UUID PRIMARY KEY,
-    record_id        UUID         NOT NULL UNIQUE REFERENCES record(id) ON DELETE RESTRICT,
-    object_key       VARCHAR(255) NOT NULL,
-    encrypted_size   BIGINT       NULL,
-    encrypted_sha256 VARCHAR(64)  NULL,
-    upload_status    VARCHAR(16)  NOT NULL CHECK (upload_status IN ('uploading', 'uploaded', 'failed')),
-    created_at       TIMESTAMPTZ  NOT NULL,
-    updated_at       TIMESTAMPTZ  NOT NULL
+    record_id        UUID          NOT NULL UNIQUE REFERENCES record(id) ON DELETE RESTRICT,
+    object_key       VARCHAR(255)  NOT NULL,
+    encrypted_size   BIGINT        NULL,
+    encrypted_sha256 VARCHAR(64)   NULL,
+    upload_status    upload_status NOT NULL,
+    created_at       TIMESTAMPTZ   NOT NULL,
+    updated_at       TIMESTAMPTZ   NOT NULL
 );
 
+CREATE TYPE multipart_upload_status AS ENUM ('uploading', 'completed', 'aborted');
 CREATE TABLE IF NOT EXISTS record_file_multipart_upload
 (
     id                UUID PRIMARY KEY,
-    app_user_id       UUID         NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
-    record_id         UUID         NOT NULL REFERENCES record(id) ON DELETE RESTRICT,
-    record_version    BIGINT       NOT NULL,
-    file_id           UUID         NOT NULL REFERENCES record_file(id) ON DELETE RESTRICT,
-    object_key        VARCHAR(255) NOT NULL,
-    storage_upload_id VARCHAR(255) NOT NULL,
-    encrypted_size    BIGINT       NOT NULL,
-    part_size         BIGINT       NOT NULL,
-    status            VARCHAR(16)  NOT NULL CHECK (status IN ('uploading', 'completed', 'aborted')),
-    created_at        TIMESTAMPTZ  NOT NULL,
-    updated_at        TIMESTAMPTZ  NOT NULL,
-    completed_at      TIMESTAMPTZ  NULL
+    app_user_id       UUID                    NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
+    record_id         UUID                    NOT NULL REFERENCES record(id) ON DELETE RESTRICT,
+    record_version    BIGINT                  NOT NULL,
+    file_id           UUID                    NOT NULL REFERENCES record_file(id) ON DELETE RESTRICT,
+    object_key        VARCHAR(255)            NOT NULL,
+    storage_upload_id VARCHAR(255)            NOT NULL,
+    encrypted_size    BIGINT                  NOT NULL,
+    part_size         BIGINT                  NOT NULL,
+    status            multipart_upload_status NOT NULL,
+    created_at        TIMESTAMPTZ             NOT NULL,
+    updated_at        TIMESTAMPTZ             NOT NULL,
+    completed_at      TIMESTAMPTZ             NULL
 );
 CREATE INDEX idx_record_file_multipart_upload_app_user_status
     ON record_file_multipart_upload(app_user_id, status);
@@ -86,3 +89,6 @@ DROP TABLE IF EXISTS record_file;
 DROP TABLE IF EXISTS record;
 DROP TABLE IF EXISTS refresh_token;
 DROP TABLE IF EXISTS app_user;
+DROP TYPE IF EXISTS multipart_upload_status;
+DROP TYPE IF EXISTS upload_status;
+DROP TYPE IF EXISTS record_type;
