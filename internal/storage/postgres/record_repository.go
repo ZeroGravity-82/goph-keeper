@@ -371,19 +371,17 @@ func (r *RecordFileRepository) Replace(ctx context.Context, file model.RecordFil
 	const q = `
 UPDATE record_file
 SET
-    id = $1,
-    object_key = $2,
-    encrypted_size = $3,
-    encrypted_sha256 = $4,
-    upload_status = $5,
-    updated_at = $6
-WHERE record_id = $7
+    object_key = $1,
+    encrypted_size = $2,
+    encrypted_sha256 = $3,
+    upload_status = $4,
+    updated_at = $5
+WHERE record_id = $6
 `
 	exec := executorFromContext(ctx, r.db)
 	result, err := exec.ExecContext(
 		ctx,
 		q,
-		file.ID,
 		file.ObjectKey,
 		file.EncryptedSize,
 		file.EncryptedSHA256,

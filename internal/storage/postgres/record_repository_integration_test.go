@@ -560,6 +560,76 @@ func TestRecordFileRepository_UpdateUploadStatus_NotFound(t *testing.T) {
 	assert.True(t, errors.Is(err, usecase.ErrRecordNotFound))
 }
 
+// TestRecordFileRepository_ReplaceKeepsFileID проверяет, что замена файла не меняет идентификатор строки record_file и
+// не ломает существующие ссылки multipart-загрузок на этот файл.
+func TestRecordFileRepository_ReplaceKeepsFileID(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	fileRepo, err := NewRecordFileRepository(db)
+	require.NoError(t, err)
+	multipartRepo, err := NewMultipartUploadRepository(db)
+	require.NoError(t, err)
+
+	user := newTestUser(t, "record-file-replace-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeBinary, "replace binary", fixedTestTime())
+	file := newTestRecordFile(t, record.ID, fixedTestTime())
+	upload := usecase.MultipartUpload{
+		ID:              uuid.MustParse("018f6b7c-0000-7000-8000-200000000010"),
+		UserID:          user.ID,
+		RecordID:        record.ID,
+		RecordVersion:   record.Version,
+		FileID:          file.ID,
+		ObjectKey:       file.ObjectKey,
+		StorageUploadID: "storage-upload-id",
+		EncryptedSize:   1024,
+		PartSize:        512,
+		Status:          usecase.MultipartUploadStatusCompleted,
+		CreatedAt:       fixedTestTime(),
+		UpdatedAt:       fixedTestTime(),
+	}
+	replacementID, err := uuid.NewV7()
+	require.NoError(t, err)
+	replacementSize := int64(2048)
+	replacementSHA256 := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	replacement := model.RecordFile{
+		ID:              replacementID,
+		RecordID:        record.ID,
+		ObjectKey:       "users/user-id/records/record-id/files/file-id/replaced-payload",
+		EncryptedSize:   &replacementSize,
+		EncryptedSHA256: &replacementSHA256,
+		UploadStatus:    model.UploadStatusUploading,
+		CreatedAt:       fixedTestTime().Add(time.Minute),
+		UpdatedAt:       fixedTestTime().Add(time.Minute),
+	}
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, recordRepo.Create(ctx, record))
+	require.NoError(t, fileRepo.Create(ctx, file))
+	require.NoError(t, multipartRepo.Create(ctx, upload))
+
+	// Act
+	err = fileRepo.Replace(ctx, replacement)
+
+	// Assert
+	require.NoError(t, err)
+	got, err := recordRepo.GetByIDAndUserID(ctx, record.ID, user.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.File)
+	assert.Equal(t, file.ID, got.File.ID)
+	assert.NotEqual(t, replacementID, got.File.ID)
+	assert.Equal(t, replacement.ObjectKey, got.File.ObjectKey)
+	require.NotNil(t, got.File.EncryptedSize)
+	assert.Equal(t, replacementSize, *got.File.EncryptedSize)
+	require.NotNil(t, got.File.EncryptedSHA256)
+	assert.Equal(t, replacementSHA256, *got.File.EncryptedSHA256)
+	assert.Equal(t, model.UploadStatusUploading, got.File.UploadStatus)
+}
+
 // TestMultipartUploadRepository_CreateGetPartsAndUpdateStatus проверяет жизненный цикл состояния multipart-загрузки.
 func TestMultipartUploadRepository_CreateGetPartsAndUpdateStatus(t *testing.T) {
 	// Arrange

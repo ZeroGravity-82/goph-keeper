@@ -226,12 +226,14 @@ type fileStorageStub struct {
 	abortMultipartCallCnt int
 	abortMultipartKey     string
 	abortStorageUploadID  string
+	objectKeyFileID       uuid.UUID
 	getErr                error
 	getObjectKey          string
 	getReader             io.ReadCloser
 }
 
-func (s *fileStorageStub) ObjectKey(uuid.UUID, uuid.UUID, uuid.UUID) string {
+func (s *fileStorageStub) ObjectKey(_, _, fileID uuid.UUID) string {
+	s.objectKeyFileID = fileID
 	if s.objectKey == "" {
 		return "object-key"
 	}

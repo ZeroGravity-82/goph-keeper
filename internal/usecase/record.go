@@ -362,22 +362,23 @@ func (uc *RecordUseCase) StartBinaryMultipartUpload(
 	ctx context.Context,
 	in StartBinaryMultipartUploadInput,
 ) (StartBinaryMultipartUploadOutput, error) {
-	fileID, err := uuid.NewV7()
-	if err != nil {
-		return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to generate ID for record file: %w", err)
-	}
 	uploadID, err := uuid.NewV7()
 	if err != nil {
 		return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to generate ID for multipart upload: %w", err)
 	}
 
 	recordID := in.RecordID
+	var fileID uuid.UUID
 	recordVersion := initialRecordVersion
 	// Пустой RecordID означает создание новой бинарной записи; непустой RecordID открывает загрузку замены файла.
 	if recordID == uuid.Nil {
 		recordID, err = uuid.NewV7()
 		if err != nil {
 			return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to generate ID for record: %w", err)
+		}
+		fileID, err = uuid.NewV7()
+		if err != nil {
+			return StartBinaryMultipartUploadOutput{}, fmt.Errorf("failed to generate ID for record file: %w", err)
 		}
 	} else {
 		currentRecord, getErr := uc.recordRepo.GetByIDAndUserID(ctx, in.RecordID, in.UserID)
@@ -393,6 +394,7 @@ func (uc *RecordUseCase) StartBinaryMultipartUpload(
 		if currentRecord.File == nil {
 			return StartBinaryMultipartUploadOutput{}, ErrRecordFileIsNotUploaded
 		}
+		fileID = currentRecord.File.ID
 	}
 
 	objectKey := uc.fileStorage.ObjectKey(in.UserID, recordID, fileID)
