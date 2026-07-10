@@ -37,8 +37,10 @@ type recordRepositoryStub struct {
 	created     []model.Record
 	createdInTx []bool
 	updated     []model.Record
+	updatedInTx []bool
 	deleted     []uuid.UUID
 	deletedAt   time.Time
+	deletedInTx []bool
 }
 
 func (r *recordRepositoryStub) Create(ctx context.Context, record model.Record) error {
@@ -64,20 +66,22 @@ func (r *recordRepositoryStub) ListByUserID(context.Context, uuid.UUID) ([]model
 	return r.items, nil
 }
 
-func (r *recordRepositoryStub) Update(_ context.Context, record model.Record, _ int64) (int64, error) {
+func (r *recordRepositoryStub) Update(ctx context.Context, record model.Record, _ int64) (int64, error) {
 	if r.updateErr != nil {
 		return 0, r.updateErr
 	}
 	r.updated = append(r.updated, record)
+	r.updatedInTx = append(r.updatedInTx, ctx.Value(txContextKey{}) == true)
 	return r.version, nil
 }
 
-func (r *recordRepositoryStub) Delete(_ context.Context, recordID uuid.UUID, _ uuid.UUID, deletedAt time.Time) error {
+func (r *recordRepositoryStub) Delete(ctx context.Context, recordID uuid.UUID, _ uuid.UUID, deletedAt time.Time) error {
 	if r.deleteErr != nil {
 		return r.deleteErr
 	}
 	r.deleted = append(r.deleted, recordID)
 	r.deletedAt = deletedAt
+	r.deletedInTx = append(r.deletedInTx, ctx.Value(txContextKey{}) == true)
 	return nil
 }
 
@@ -305,6 +309,7 @@ func newTestRecordUseCase(t *testing.T) (
 	*multipartUploadRepositoryStub,
 	*fileStorageStub,
 	*transactorStub,
+	*recordMutationGuardStub,
 ) {
 	t.Helper()
 
@@ -313,7 +318,8 @@ func newTestRecordUseCase(t *testing.T) (
 	multipartRepo := &multipartUploadRepositoryStub{}
 	storage := &fileStorageStub{}
 	tx := &transactorStub{}
-	uc, err := NewRecordUseCase(recordRepo, recordFileRepo, multipartRepo, storage, tx)
+	guard := &recordMutationGuardStub{}
+	uc, err := NewRecordUseCase(recordRepo, recordFileRepo, multipartRepo, storage, tx, guard)
 	require.NoError(t, err)
-	return uc, recordRepo, recordFileRepo, multipartRepo, storage, tx
+	return uc, recordRepo, recordFileRepo, multipartRepo, storage, tx, guard
 }

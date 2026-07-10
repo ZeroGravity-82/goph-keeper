@@ -114,7 +114,16 @@ func newIntegrationRecordsServiceWithFileStorage(
 	require.NoError(t, err)
 	transactor, err := postgres.NewTransactor(db)
 	require.NoError(t, err)
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, multipartUploadRepo, fileStorage, transactor)
+	recordMutationGuard, err := postgres.NewRecordMutationGuard(db)
+	require.NoError(t, err)
+	recordUC, err := usecase.NewRecordUseCase(
+		recordRepo,
+		recordFileRepo,
+		multipartUploadRepo,
+		fileStorage,
+		transactor,
+		recordMutationGuard,
+	)
 	require.NoError(t, err)
 	recordsService, err := NewRecordsService(recordUC, logging.NopLogger())
 	require.NoError(t, err)

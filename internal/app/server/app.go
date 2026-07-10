@@ -138,11 +138,16 @@ func buildAuthUseCase(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transactor: %w", err)
 	}
+	recordMutationGuard, err := postgres.NewRecordMutationGuard(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create record mutation guard for auth use case: %w", err)
+	}
 	authUC, err := usecase.NewAuthUseCase(
 		userRepo,
 		recordRepo,
 		refreshTokenRepo,
 		transactor,
+		recordMutationGuard,
 		tokenManager,
 		crypto.ValidateMasterKeySalt,
 		refreshTokenTTL,
@@ -187,9 +192,20 @@ func buildRecordUseCase(db *sqlx.DB, fileStorageCfg config.FileStorage) (*usecas
 	}
 	transactor, err := postgres.NewTransactor(db)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create transactor: %w", err)
+		return nil, fmt.Errorf("failed to create transactor for records use case: %w", err)
 	}
-	recordUC, err := usecase.NewRecordUseCase(recordRepo, recordFileRepo, multipartUploadRepo, fileStorage, transactor)
+	recordMutationGuard, err := postgres.NewRecordMutationGuard(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create record mutation guard for records use case: %w", err)
+	}
+	recordUC, err := usecase.NewRecordUseCase(
+		recordRepo,
+		recordFileRepo,
+		multipartUploadRepo,
+		fileStorage,
+		transactor,
+		recordMutationGuard,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create record use case: %w", err)
 	}

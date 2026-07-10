@@ -31,6 +31,28 @@ func (t *transactorStub) WithinTransaction(ctx context.Context, fn func(ctx cont
 	return fn(context.WithValue(ctx, txContextKey{}, true))
 }
 
+type recordMutationGuardStub struct {
+	calls         int
+	err           error
+	lockedUserIDs []uuid.UUID
+	lockedInTx    []bool
+}
+
+func (g *recordMutationGuardStub) WithUserRecordsLock(
+	ctx context.Context,
+	userID uuid.UUID,
+	fn func(ctx context.Context) error,
+) error {
+	g.calls++
+	if g.err != nil {
+		return g.err
+	}
+	g.lockedUserIDs = append(g.lockedUserIDs, userID)
+	txCtx := context.WithValue(ctx, txContextKey{}, true)
+	g.lockedInTx = append(g.lockedInTx, txCtx.Value(txContextKey{}) == true)
+	return fn(txCtx)
+}
+
 type sessionTokenIssuerStub struct {
 	accessToken         string
 	refreshToken        string
@@ -223,6 +245,7 @@ func newTestAuthUseCase(t *testing.T) (
 	recordRepo := &masterKeyRecordRepositoryStub{}
 	refreshRepo := &refreshTokenRepositoryStub{}
 	tx := &transactorStub{}
+	guard := &recordMutationGuardStub{}
 	issuer := &sessionTokenIssuerStub{accessToken: "access-token", refreshToken: "refresh-token"}
 	validateMasterKeySalt := func(salt []byte) error {
 		if len(salt) != 16 {
@@ -230,7 +253,7 @@ func newTestAuthUseCase(t *testing.T) (
 		}
 		return nil
 	}
-	uc, err := NewAuthUseCase(userRepo, recordRepo, refreshRepo, tx, issuer, validateMasterKeySalt, time.Hour)
+	uc, err := NewAuthUseCase(userRepo, recordRepo, refreshRepo, tx, guard, issuer, validateMasterKeySalt, time.Hour)
 	require.NoError(t, err)
 	return uc, userRepo, recordRepo, refreshRepo, tx, issuer
 }
@@ -669,7 +692,8 @@ func TestAuthUseCase_Logout_FailWithRevokeError(t *testing.T) {
 	require.ErrorIs(t, err, errTest)
 }
 
-// TestAuthUseCase_ChangeMasterKey проверяет атомарное обновление данных мастер-ключа и DEK приватных записей.
+// TestAuthUseCase_ChangeMasterKey проверяет смену мастер-ключа и переупаковку DEK под guard-блокировкой записей
+// пользователя.
 func TestAuthUseCase_ChangeMasterKey(t *testing.T) {
 	// Arrange
 	uc, userRepo, recordRepo, refreshRepo, tx, issuer := newTestAuthUseCase(t)
@@ -690,11 +714,14 @@ func TestAuthUseCase_ChangeMasterKey(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
+	guard := uc.recordMutationGuard.(*recordMutationGuardStub)
 	assert.Equal(t, "access-token", out.AuthTokens.AccessToken)
 	assert.Equal(t, "refresh-token", out.AuthTokens.RefreshToken)
-	assert.Equal(t, 1, tx.calls)
+	assert.Zero(t, tx.calls)
+	assert.Equal(t, 1, guard.calls)
 	require.Len(t, recordRepo.reencrypted, 1)
 	assert.Equal(t, recordID, recordRepo.reencrypted[0].RecordID)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
 	require.Len(t, userRepo.updatedKeys, 1)
 	assert.Equal(t, userID, userRepo.updatedKeys[0].ID)
 	assert.Equal(t, []byte("abcdef1234567890"), userRepo.updatedKeys[0].MasterKeySalt)
@@ -706,6 +733,7 @@ func TestAuthUseCase_ChangeMasterKey(t *testing.T) {
 	assert.Equal(t, userID, refreshRepo.created[0].UserID)
 	assert.Equal(t, int64(6), refreshRepo.created[0].SecurityVersion)
 	assert.Equal(t, int64(6), issuer.lastSecurityVersion)
+	assert.True(t, guard.lockedInTx[0])
 	assert.True(t, recordRepo.reencryptedTx[0])
 	assert.True(t, userRepo.updatedInTx[0])
 	assert.True(t, refreshRepo.revokedUserIDsInTx[0])

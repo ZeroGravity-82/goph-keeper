@@ -371,6 +371,61 @@ func TestRecordRepository_ReencryptDEKs_VersionConflict(t *testing.T) {
 	assertRecordEqual(t, record, got)
 }
 
+// TestRecordMutationGuard_BlocksSameUser проверяет, что Advisory Lock сериализует операции одного пользователя и не
+// блокирует операции другого пользователя.
+func TestRecordMutationGuard_BlocksSameUser(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	guard, err := NewRecordMutationGuard(db)
+	require.NoError(t, err)
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000051")
+	otherUserID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000052")
+	lockHeld := make(chan struct{})
+	releaseLock := make(chan struct{})
+	firstTxDone := make(chan error, 1)
+
+	go func() {
+		firstTxDone <- guard.WithUserRecordsLock(ctx, userID, func(context.Context) error {
+			close(lockHeld)
+			<-releaseLock
+			return nil
+		})
+	}()
+
+	select {
+	case <-lockHeld:
+	case err := <-firstTxDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.FailNow(t, "lock was not acquired in time")
+	}
+	defer func() {
+		close(releaseLock)
+		assert.NoError(t, <-firstTxDone)
+	}()
+
+	// Act: другой пользователь не блокируется.
+	otherUserCtx, cancelOtherUser := context.WithTimeout(ctx, time.Second)
+	err = guard.WithUserRecordsLock(otherUserCtx, otherUserID, func(context.Context) error {
+		return nil
+	})
+	cancelOtherUser()
+
+	// Assert
+	require.NoError(t, err)
+
+	// Act: тот же пользователь блокируется до освобождения первой транзакции.
+	sameUserCtx, cancelSameUser := context.WithTimeout(ctx, 200*time.Millisecond)
+	err = guard.WithUserRecordsLock(sameUserCtx, userID, func(context.Context) error {
+		return nil
+	})
+	cancelSameUser()
+
+	// Assert
+	require.Error(t, err)
+}
+
 // TestRecordRepository_Delete проверяет мягкое удаление приватной записи.
 func TestRecordRepository_Delete(t *testing.T) {
 	// Arrange

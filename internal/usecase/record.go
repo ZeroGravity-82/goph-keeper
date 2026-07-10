@@ -277,6 +277,7 @@ type RecordUseCase struct {
 	multipartRepo  multipartUploadRepository
 	fileStorage    fileStorage
 	transactor     transactor
+	mutationGuard  recordMutationGuard
 }
 
 // NewRecordUseCase создает RecordUseCase.
@@ -286,6 +287,7 @@ func NewRecordUseCase(
 	multipartRepo multipartUploadRepository,
 	fileStorage fileStorage,
 	transactor transactor,
+	mutationGuard recordMutationGuard,
 ) (*RecordUseCase, error) {
 	if recordRepo == nil {
 		return nil, errors.New("record repository is not provided")
@@ -302,6 +304,9 @@ func NewRecordUseCase(
 	if transactor == nil {
 		return nil, errors.New("transactor is not provided")
 	}
+	if mutationGuard == nil {
+		return nil, errors.New("record mutation guard is not provided")
+	}
 
 	return &RecordUseCase{
 		recordRepo:     recordRepo,
@@ -309,6 +314,7 @@ func NewRecordUseCase(
 		multipartRepo:  multipartRepo,
 		fileStorage:    fileStorage,
 		transactor:     transactor,
+		mutationGuard:  mutationGuard,
 	}, nil
 }
 
@@ -338,8 +344,14 @@ func (uc *RecordUseCase) CreateRecord(ctx context.Context, in CreateRecordInput)
 		UpdatedAt:        now,
 		DeletedAt:        nil,
 	}
-	if err = uc.recordRepo.Create(ctx, record); err != nil {
-		return CreateRecordOutput{}, fmt.Errorf("failed to create record: %w", err)
+
+	if err = uc.mutationGuard.WithUserRecordsLock(ctx, in.UserID, func(ctx context.Context) error {
+		if err = uc.recordRepo.Create(ctx, record); err != nil {
+			return fmt.Errorf("failed to create record: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return CreateRecordOutput{}, err
 	}
 	return CreateRecordOutput{RecordID: record.ID, Version: record.Version}, nil
 }
@@ -429,7 +441,7 @@ func (uc *RecordUseCase) StartBinaryMultipartUpload(
 		UpdatedAt:       now,
 	}
 
-	if err = uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+	if err = uc.mutationGuard.WithUserRecordsLock(ctx, in.UserID, func(ctx context.Context) error {
 		if in.RecordID == uuid.Nil {
 			if err = uc.recordRepo.Create(ctx, record); err != nil {
 				return fmt.Errorf("failed to persist record: %w", err)
@@ -687,7 +699,15 @@ func (uc *RecordUseCase) UpdateRecord(ctx context.Context, in UpdateRecordInput)
 		EncryptedPayload: model.EncryptedBlob{Data: in.EncryptedPayload},
 		UpdatedAt:        now,
 	}
-	version, err := uc.recordRepo.Update(ctx, record, in.ExpectedVersion)
+	var version int64
+	err := uc.mutationGuard.WithUserRecordsLock(ctx, in.UserID, func(ctx context.Context) error {
+		var updateErr error
+		version, updateErr = uc.recordRepo.Update(ctx, record, in.ExpectedVersion)
+		if updateErr != nil {
+			return updateErr
+		}
+		return nil
+	})
 	if err != nil {
 		if errors.Is(err, ErrRecordNotFound) || errors.Is(err, ErrRecordVersionConflict) {
 			return UpdateRecordOutput{}, err
@@ -700,7 +720,10 @@ func (uc *RecordUseCase) UpdateRecord(ctx context.Context, in UpdateRecordInput)
 // DeleteRecord удаляет приватную запись.
 func (uc *RecordUseCase) DeleteRecord(ctx context.Context, in DeleteRecordInput) (DeleteRecordOutput, error) {
 	now := time.Now().UTC()
-	if err := uc.recordRepo.Delete(ctx, in.RecordID, in.UserID, now); err != nil {
+	err := uc.mutationGuard.WithUserRecordsLock(ctx, in.UserID, func(ctx context.Context) error {
+		return uc.recordRepo.Delete(ctx, in.RecordID, in.UserID, now)
+	})
+	if err != nil {
 		if errors.Is(err, ErrRecordNotFound) {
 			return DeleteRecordOutput{}, ErrRecordNotFound
 		}

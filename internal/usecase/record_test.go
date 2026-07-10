@@ -22,10 +22,10 @@ func testEncryptedSHA256(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// TestRecordUseCase_CreateRecord проверяет успешное создание обычной приватной записи.
+// TestRecordUseCase_CreateRecord проверяет создание обычной приватной записи под guard-блокировкой пользователя.
 func TestRecordUseCase_CreateRecord(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, guard := newTestRecordUseCase(t)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000001")
 
 	// Act
@@ -53,12 +53,16 @@ func TestRecordUseCase_CreateRecord(t *testing.T) {
 	assert.Equal(t, []byte("encrypted-payload"), created.EncryptedPayload.Data)
 	assert.Equal(t, int64(1), created.Version)
 	assert.Nil(t, created.DeletedAt)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
+	assert.True(t, recordRepo.createdInTx[0])
 }
 
 // TestRecordUseCase_CreateRecord_FailWithBinaryType проверяет запрет создания бинарной записи обычным сценарием.
 func TestRecordUseCase_CreateRecord_FailWithBinaryType(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 
 	// Act
 	_, err := uc.CreateRecord(context.Background(), CreateRecordInput{Type: model.RecordTypeBinary})
@@ -71,7 +75,7 @@ func TestRecordUseCase_CreateRecord_FailWithBinaryType(t *testing.T) {
 // TestRecordUseCase_CreateRecord_FailWithRepositoryError проверяет ошибку сохранения приватной записи.
 func TestRecordUseCase_CreateRecord_FailWithRepositoryError(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	recordRepo.createErr = errTest
 
 	// Act
@@ -81,10 +85,11 @@ func TestRecordUseCase_CreateRecord_FailWithRepositoryError(t *testing.T) {
 	require.ErrorIs(t, err, errTest)
 }
 
-// TestRecordUseCase_StartBinaryMultipartUpload проверяет создание записи, файла и серверной сессии multipart-загрузки.
+// TestRecordUseCase_StartBinaryMultipartUpload проверяет создание записи, файла и серверной сессии multipart-загрузки
+// под guard-блокировкой пользователя.
 func TestRecordUseCase_StartBinaryMultipartUpload(t *testing.T) {
 	// Arrange
-	uc, recordRepo, recordFileRepo, multipartRepo, storage, tx := newTestRecordUseCase(t)
+	uc, recordRepo, recordFileRepo, multipartRepo, storage, _, guard := newTestRecordUseCase(t)
 	storage.objectKey = "users/user/records/record/files/file/payload"
 	storage.storageUploadID = "storage-upload-id-1"
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000021")
@@ -107,7 +112,9 @@ func TestRecordUseCase_StartBinaryMultipartUpload(t *testing.T) {
 	assert.Equal(t, int64(1), out.Version)
 	assert.Equal(t, int64(5*1024*1024), out.PartSize)
 	assert.Equal(t, model.UploadStatusUploading, out.UploadStatus)
-	assert.Equal(t, 1, tx.calls)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
 	assert.Equal(t, "users/user/records/record/files/file/payload", storage.createMultipartKey)
 	require.Len(t, recordRepo.created, 1)
 	require.Len(t, recordFileRepo.created, 1)
@@ -123,7 +130,7 @@ func TestRecordUseCase_StartBinaryMultipartUpload(t *testing.T) {
 // сессии multipart-загрузки в объектном хранилище, если состояние не удалось сохранить в БД.
 func TestRecordUseCase_StartBinaryMultipartUpload_FailWithRepositoryErrorAbortsStorageUpload(t *testing.T) {
 	// Arrange
-	uc, _, _, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uc, _, _, multipartRepo, storage, _, _ := newTestRecordUseCase(t)
 	multipartRepo.createErr = errTest
 	storage.objectKey = "object-key"
 	storage.storageUploadID = "storage-upload-id-2"
@@ -144,7 +151,7 @@ func TestRecordUseCase_StartBinaryMultipartUpload_FailWithRepositoryErrorAbortsS
 // TestRecordUseCase_GetBinaryMultipartUploadStatus проверяет восстановление состояния уже загруженных частей.
 func TestRecordUseCase_GetBinaryMultipartUploadStatus(t *testing.T) {
 	// Arrange
-	uc, _, _, multipartRepo, _, _ := newTestRecordUseCase(t)
+	uc, _, _, multipartRepo, _, _, _ := newTestRecordUseCase(t)
 	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000022")
 	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000023")
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000024")
@@ -182,7 +189,7 @@ func TestRecordUseCase_GetBinaryMultipartUploadStatus(t *testing.T) {
 // TestRecordUseCase_UploadBinaryMultipartPart проверяет загрузку одной части активной multipart-загрузки.
 func TestRecordUseCase_UploadBinaryMultipartPart(t *testing.T) {
 	// Arrange
-	uc, _, _, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uc, _, _, multipartRepo, storage, _, _ := newTestRecordUseCase(t)
 	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000038")
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000039")
 	multipartRepo.upload = MultipartUpload{
@@ -241,7 +248,7 @@ func TestRecordUseCase_UploadBinaryMultipartPart_FailWithInvalidInput(t *testing
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			uc, _, _, multipartRepo, storage, _ := newTestRecordUseCase(t)
+			uc, _, _, multipartRepo, storage, _, _ := newTestRecordUseCase(t)
 			multipartRepo.upload = MultipartUpload{
 				EncryptedSize: 10,
 				PartSize:      5,
@@ -263,7 +270,7 @@ func TestRecordUseCase_UploadBinaryMultipartPart_FailWithInvalidInput(t *testing
 // multipart-загрузку.
 func TestRecordUseCase_UploadBinaryMultipartPart_FailWithInactiveUpload(t *testing.T) {
 	// Arrange
-	uc, _, _, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uc, _, _, multipartRepo, storage, _, _ := newTestRecordUseCase(t)
 	multipartRepo.upload = MultipartUpload{Status: MultipartUploadStatusCompleted}
 
 	// Act
@@ -282,7 +289,7 @@ func TestRecordUseCase_UploadBinaryMultipartPart_FailWithInactiveUpload(t *testi
 // хранилище.
 func TestRecordUseCase_UploadBinaryMultipartPart_FailWithStorageError(t *testing.T) {
 	// Arrange
-	uc, _, _, multipartRepo, _, _ := newTestRecordUseCase(t)
+	uc, _, _, multipartRepo, _, _, _ := newTestRecordUseCase(t)
 	multipartRepo.upload = MultipartUpload{
 		EncryptedSize: 5,
 		PartSize:      5,
@@ -303,10 +310,11 @@ func TestRecordUseCase_UploadBinaryMultipartPart_FailWithStorageError(t *testing
 	assert.Empty(t, multipartRepo.upserted)
 }
 
-// TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinary проверяет подготовку multipart-замены файла.
+// TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinary проверяет подготовку multipart-замены файла под
+// guard-блокировкой пользователя.
 func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinary(t *testing.T) {
 	// Arrange
-	uc, recordRepo, recordFileRepo, multipartRepo, storage, tx := newTestRecordUseCase(t)
+	uc, recordRepo, recordFileRepo, multipartRepo, storage, _, guard := newTestRecordUseCase(t)
 	storage.objectKey = "users/user/records/record/files/new-file/payload"
 	storage.storageUploadID = "storage-upload-id-3"
 	recordRepo.version = 3
@@ -344,7 +352,9 @@ func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinary(t *testi
 	assert.Equal(t, recordID, out.RecordID)
 	assert.Equal(t, int64(3), out.Version)
 	assert.Equal(t, model.UploadStatusUploading, out.UploadStatus)
-	assert.Equal(t, 1, tx.calls)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
 	require.Len(t, recordRepo.updated, 1)
 	assert.Equal(t, recordID, recordRepo.updated[0].ID)
 	assert.Equal(t, userID, recordRepo.updated[0].UserID)
@@ -362,8 +372,8 @@ func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinary(t *testi
 	assert.Equal(t, "storage-upload-id-3", multipartRepo.created[0].StorageUploadID)
 }
 
-// TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinaryFailWithInvalidRecordState проверяет ошибки
-// состояния заменяемой бинарной приватной записи.
+// TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinaryFailWithInvalidRecordState проверяет, что ошибки
+// состояния заменяемой бинарной записи возвращаются до открытия guard-блокировки.
 func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinaryFailWithInvalidRecordState(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -377,7 +387,7 @@ func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinaryFailWithI
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			uc, recordRepo, recordFileRepo, _, _, tx := newTestRecordUseCase(t)
+			uc, recordRepo, recordFileRepo, _, _, _, guard := newTestRecordUseCase(t)
 			recordRepo.record = tt.record
 
 			// Act
@@ -389,7 +399,7 @@ func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinaryFailWithI
 
 			// Assert
 			require.ErrorIs(t, err, tt.err)
-			assert.Zero(t, tx.calls)
+			assert.Zero(t, guard.calls)
 			assert.Empty(t, recordFileRepo.replaced)
 		})
 	}
@@ -398,7 +408,7 @@ func TestRecordUseCase_StartBinaryMultipartUpload_ReplaceExistingBinaryFailWithI
 // TestRecordUseCase_ListRecords проверяет успешное получение списка приватных записей.
 func TestRecordUseCase_ListRecords(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	items := []model.RecordListItem{{ID: uuid.MustParse("018f6b7c-0000-7000-8000-100000000003"), Title: "title"}}
 	recordRepo.items = items
 
@@ -413,7 +423,7 @@ func TestRecordUseCase_ListRecords(t *testing.T) {
 // TestRecordUseCase_ListRecords_FailWithRepositoryError проверяет ошибку получения списка приватных записей.
 func TestRecordUseCase_ListRecords_FailWithRepositoryError(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	recordRepo.listErr = errTest
 
 	// Act
@@ -426,7 +436,7 @@ func TestRecordUseCase_ListRecords_FailWithRepositoryError(t *testing.T) {
 // TestRecordUseCase_GetRecord проверяет успешное получение приватной записи.
 func TestRecordUseCase_GetRecord(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	record := model.Record{ID: uuid.MustParse("018f6b7c-0000-7000-8000-100000000004"), Title: "title"}
 	recordRepo.record = record
 
@@ -441,7 +451,7 @@ func TestRecordUseCase_GetRecord(t *testing.T) {
 // TestRecordUseCase_GetRecord_FailWithNotFound проверяет ошибку отсутствующей приватной записи.
 func TestRecordUseCase_GetRecord_FailWithNotFound(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	recordRepo.getErr = ErrRecordNotFound
 
 	// Act
@@ -454,7 +464,7 @@ func TestRecordUseCase_GetRecord_FailWithNotFound(t *testing.T) {
 // TestRecordUseCase_GetRecord_FailWithRepositoryError проверяет ошибку чтения приватной записи.
 func TestRecordUseCase_GetRecord_FailWithRepositoryError(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	recordRepo.getErr = errTest
 
 	// Act
@@ -464,10 +474,10 @@ func TestRecordUseCase_GetRecord_FailWithRepositoryError(t *testing.T) {
 	require.ErrorIs(t, err, errTest)
 }
 
-// TestRecordUseCase_UpdateRecord проверяет успешное обновление приватной записи.
+// TestRecordUseCase_UpdateRecord проверяет обновление приватной записи под guard-блокировкой пользователя.
 func TestRecordUseCase_UpdateRecord(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, guard := newTestRecordUseCase(t)
 	recordRepo.version = 2
 	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000005")
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000006")
@@ -487,6 +497,10 @@ func TestRecordUseCase_UpdateRecord(t *testing.T) {
 	assert.Equal(t, userID, recordRepo.updated[0].UserID)
 	assert.Equal(t, []byte("dek"), recordRepo.updated[0].EncryptedDEK.Data)
 	assert.Equal(t, []byte("payload"), recordRepo.updated[0].EncryptedPayload.Data)
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
+	assert.True(t, recordRepo.updatedInTx[0])
 }
 
 // TestRecordUseCase_UpdateRecord_FailWithKnownErrors проверяет ошибку отсутствующей приватной записи и ошибку
@@ -496,7 +510,7 @@ func TestRecordUseCase_UpdateRecord_FailWithKnownErrors(t *testing.T) {
 	for _, wantErr := range tests {
 		t.Run(wantErr.Error(), func(t *testing.T) {
 			// Arrange
-			uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+			uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 			recordRepo.updateErr = wantErr
 
 			// Act
@@ -511,7 +525,7 @@ func TestRecordUseCase_UpdateRecord_FailWithKnownErrors(t *testing.T) {
 // TestRecordUseCase_UpdateRecord_FailWithRepositoryError проверяет неизвестную ошибку обновления приватной записи.
 func TestRecordUseCase_UpdateRecord_FailWithRepositoryError(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	recordRepo.updateErr = errTest
 
 	// Act
@@ -525,7 +539,7 @@ func TestRecordUseCase_UpdateRecord_FailWithRepositoryError(t *testing.T) {
 // суммы зашифрованного файла.
 func TestRecordUseCase_CompleteBinaryMultipartUpload(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uc, _, recordFileRepo, multipartRepo, storage, tx, _ := newTestRecordUseCase(t)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000031")
 	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000032")
 	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000033")
@@ -569,13 +583,15 @@ func TestRecordUseCase_CompleteBinaryMultipartUpload(t *testing.T) {
 	require.Len(t, recordFileRepo.completed, 1)
 	assert.Equal(t, fileID, recordFileRepo.completed[0].fileID)
 	assert.Equal(t, encryptedSHA256, recordFileRepo.completed[0].encryptedSHA256)
+	assert.Equal(t, 1, tx.calls)
+	assert.True(t, multipartRepo.updatedInTx[0])
 }
 
 // TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch проверяет, что собранный файл с другой
 // контрольной суммой переводится в неуспешный статус.
 func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uc, _, recordFileRepo, multipartRepo, storage, tx, _ := newTestRecordUseCase(t)
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000035")
 	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000036")
 	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000037")
@@ -608,12 +624,14 @@ func TestRecordUseCase_CompleteBinaryMultipartUpload_FailWithChecksumMismatch(t 
 	require.Len(t, recordFileRepo.updates, 1)
 	assert.Equal(t, fileID, recordFileRepo.updates[0].fileID)
 	assert.Equal(t, model.UploadStatusFailed, recordFileRepo.updates[0].status)
+	assert.Equal(t, 1, tx.calls)
+	assert.True(t, multipartRepo.updatedInTx[0])
 }
 
 // TestRecordUseCase_AbortBinaryMultipartUpload проверяет отмену активной multipart-загрузки в файловом хранилище и БД.
 func TestRecordUseCase_AbortBinaryMultipartUpload(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, tx := newTestRecordUseCase(t)
+	uc, _, recordFileRepo, multipartRepo, storage, tx, _ := newTestRecordUseCase(t)
 	uploadID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000040")
 	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000041")
 	fileID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000042")
@@ -640,6 +658,7 @@ func TestRecordUseCase_AbortBinaryMultipartUpload(t *testing.T) {
 	assert.Equal(t, "object-key", storage.abortMultipartKey)
 	assert.Equal(t, "storage-upload-id", storage.abortStorageUploadID)
 	assert.Equal(t, 1, tx.calls)
+	assert.True(t, multipartRepo.updatedInTx[0])
 	assert.Equal(t, []MultipartUploadStatus{MultipartUploadStatusAborted}, multipartRepo.statuses)
 	require.Len(t, recordFileRepo.updates, 1)
 	assert.Equal(t, fileID, recordFileRepo.updates[0].fileID)
@@ -649,7 +668,7 @@ func TestRecordUseCase_AbortBinaryMultipartUpload(t *testing.T) {
 // TestRecordUseCase_AbortBinaryMultipartUpload_Completed проверяет запрет отмены уже завершенной multipart-загрузки.
 func TestRecordUseCase_AbortBinaryMultipartUpload_Completed(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uc, _, recordFileRepo, multipartRepo, storage, _, _ := newTestRecordUseCase(t)
 	multipartRepo.upload = MultipartUpload{Status: MultipartUploadStatusCompleted}
 
 	// Act
@@ -666,7 +685,7 @@ func TestRecordUseCase_AbortBinaryMultipartUpload_Completed(t *testing.T) {
 // файловом хранилище.
 func TestRecordUseCase_AbortBinaryMultipartUpload_FailWithStorageError(t *testing.T) {
 	// Arrange
-	uc, _, recordFileRepo, multipartRepo, storage, _ := newTestRecordUseCase(t)
+	uc, _, recordFileRepo, multipartRepo, storage, _, _ := newTestRecordUseCase(t)
 	storage.abortMultipartErr = errTest
 	multipartRepo.upload = MultipartUpload{
 		ObjectKey:       "object-key",
@@ -684,26 +703,31 @@ func TestRecordUseCase_AbortBinaryMultipartUpload_FailWithStorageError(t *testin
 	assert.Empty(t, recordFileRepo.updates)
 }
 
-// TestRecordUseCase_DeleteRecord проверяет мягкое удаление приватной записи.
+// TestRecordUseCase_DeleteRecord проверяет мягкое удаление приватной записи под guard-блокировкой пользователя.
 func TestRecordUseCase_DeleteRecord(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, guard := newTestRecordUseCase(t)
 	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000007")
+	userID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000008")
 
 	// Act
-	out, err := uc.DeleteRecord(context.Background(), DeleteRecordInput{RecordID: recordID, UserID: uuid.New()})
+	out, err := uc.DeleteRecord(context.Background(), DeleteRecordInput{RecordID: recordID, UserID: userID})
 
 	// Assert
 	require.NoError(t, err)
 	assert.Equal(t, recordID, out.RecordID)
 	assert.Equal(t, []uuid.UUID{recordID}, recordRepo.deleted)
 	assert.False(t, recordRepo.deletedAt.IsZero())
+	assert.Equal(t, 1, guard.calls)
+	assert.Equal(t, []uuid.UUID{userID}, guard.lockedUserIDs)
+	assert.True(t, guard.lockedInTx[0])
+	assert.True(t, recordRepo.deletedInTx[0])
 }
 
 // TestRecordUseCase_DeleteRecord_FailWithNotFound проверяет ошибку удаления отсутствующей приватной записи.
 func TestRecordUseCase_DeleteRecord_FailWithNotFound(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	recordRepo.deleteErr = ErrRecordNotFound
 
 	// Act
@@ -716,7 +740,7 @@ func TestRecordUseCase_DeleteRecord_FailWithNotFound(t *testing.T) {
 // TestRecordUseCase_DeleteRecord_FailWithRepositoryError проверяет неизвестную ошибку удаления приватной записи.
 func TestRecordUseCase_DeleteRecord_FailWithRepositoryError(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 	recordRepo.deleteErr = errTest
 
 	// Act
@@ -729,7 +753,7 @@ func TestRecordUseCase_DeleteRecord_FailWithRepositoryError(t *testing.T) {
 // TestRecordUseCase_DownloadFile проверяет успешное скачивание файла приватной записи.
 func TestRecordUseCase_DownloadFile(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, storage, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, storage, _, _ := newTestRecordUseCase(t)
 	fileData := []byte("encrypted-file")
 	recordID := uuid.MustParse("018f6b7c-0000-7000-8000-100000000008")
 	recordRepo.record = model.Record{
@@ -766,7 +790,7 @@ func TestRecordUseCase_DownloadFile_FailWithGetRecordError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			uc, recordRepo, _, _, _, _ := newTestRecordUseCase(t)
+			uc, recordRepo, _, _, _, _, _ := newTestRecordUseCase(t)
 			recordRepo.getErr = tt.err
 
 			// Act
@@ -800,7 +824,7 @@ func TestRecordUseCase_DownloadFile_FailWithInvalidRecordState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			uc, recordRepo, _, _, storage, _ := newTestRecordUseCase(t)
+			uc, recordRepo, _, _, storage, _, _ := newTestRecordUseCase(t)
 			recordRepo.record = tt.record
 
 			// Act
@@ -816,7 +840,7 @@ func TestRecordUseCase_DownloadFile_FailWithInvalidRecordState(t *testing.T) {
 // TestRecordUseCase_DownloadFile_FailWithStorageError проверяет ошибку файлового хранилища.
 func TestRecordUseCase_DownloadFile_FailWithStorageError(t *testing.T) {
 	// Arrange
-	uc, recordRepo, _, _, storage, _ := newTestRecordUseCase(t)
+	uc, recordRepo, _, _, storage, _, _ := newTestRecordUseCase(t)
 	recordRepo.record = model.Record{
 		Type: model.RecordTypeBinary,
 		File: &model.RecordFile{ObjectKey: "object-key", UploadStatus: model.UploadStatusUploaded},

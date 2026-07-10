@@ -333,6 +333,8 @@ func newIntegrationAuthService(
 	require.NoError(t, err)
 	transactor, err := postgres.NewTransactor(db)
 	require.NoError(t, err)
+	recordMutationGuard, err := postgres.NewRecordMutationGuard(db)
+	require.NoError(t, err)
 	tokenManager, err := auth.NewTokenManager("integration-test-secret", 15*time.Minute)
 	require.NoError(t, err)
 	authUC, err := usecase.NewAuthUseCase(
@@ -340,6 +342,7 @@ func newIntegrationAuthService(
 		recordRepo,
 		refreshTokenRepo,
 		transactor,
+		recordMutationGuard,
 		tokenManager,
 		crypto.ValidateMasterKeySalt,
 		30*24*time.Hour,

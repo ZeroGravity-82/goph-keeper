@@ -130,6 +130,7 @@ type AuthUseCase struct {
 	recordRepo            masterKeyRecordRepository
 	refreshTokenRepo      refreshTokenRepository
 	transactor            transactor
+	recordMutationGuard   recordMutationGuard
 	tokenIssuer           sessionTokenIssuer
 	validateMasterKeySalt masterKeySaltValidator
 	refreshTokenTTL       time.Duration
@@ -141,6 +142,7 @@ func NewAuthUseCase(
 	recordRepo masterKeyRecordRepository,
 	refreshTokenRepo refreshTokenRepository,
 	transactor transactor,
+	recordMutationGuard recordMutationGuard,
 	tokenIssuer sessionTokenIssuer,
 	validateMasterKeySalt masterKeySaltValidator,
 	refreshTokenTTL time.Duration,
@@ -157,6 +159,9 @@ func NewAuthUseCase(
 	if transactor == nil {
 		return nil, errors.New("transactor is not provided")
 	}
+	if recordMutationGuard == nil {
+		return nil, errors.New("record mutation guard is not provided")
+	}
 	if tokenIssuer == nil {
 		return nil, errors.New("session token issuer is not provided")
 	}
@@ -172,6 +177,7 @@ func NewAuthUseCase(
 		recordRepo:            recordRepo,
 		refreshTokenRepo:      refreshTokenRepo,
 		transactor:            transactor,
+		recordMutationGuard:   recordMutationGuard,
 		tokenIssuer:           tokenIssuer,
 		validateMasterKeySalt: validateMasterKeySalt,
 		refreshTokenTTL:       refreshTokenTTL,
@@ -378,7 +384,7 @@ func (uc *AuthUseCase) ChangeMasterKey(ctx context.Context, in ChangeMasterKeyIn
 
 	now := time.Now().UTC()
 	var tokens AuthTokens
-	if err := uc.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+	if err := uc.recordMutationGuard.WithUserRecordsLock(ctx, in.UserID, func(ctx context.Context) error {
 		// DEK переупаковываются в той же транзакции, что и смена security_version.
 		// Иначе старые сессии могли бы остаться валидными при уже измененных данных ключей.
 		if err := uc.recordRepo.ReencryptDEKs(ctx, in.UserID, in.Records, now); err != nil {
