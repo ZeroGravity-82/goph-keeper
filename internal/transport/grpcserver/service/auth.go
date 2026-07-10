@@ -288,12 +288,12 @@ func changeMasterKeyInputFromRequest(
 	if req == nil {
 		return usecase.ChangeMasterKeyInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.ChangeMasterKeyInput{}, status.Error(codes.Unauthenticated, "authentication is required")
 	}
-	securityVersion, ok := authcontext.SecurityVersionFromContext(ctx)
-	if !ok {
+	securityVersion, err := authcontext.SecurityVersionFromContext(ctx)
+	if err != nil {
 		return usecase.ChangeMasterKeyInput{}, status.Error(codes.Unauthenticated, "security version is required")
 	}
 	if len(req.GetMasterKeySalt()) == 0 {

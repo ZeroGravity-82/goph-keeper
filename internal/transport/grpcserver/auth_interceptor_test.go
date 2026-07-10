@@ -207,8 +207,8 @@ func TestAuthenticateUnary_AddsUserIDToContext(t *testing.T) {
 
 	// Act
 	resp, err := srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
-		actualUserID, ok := authcontext.UserIDFromContext(ctx)
-		require.True(t, ok)
+		actualUserID, err := authcontext.UserIDFromContext(ctx)
+		require.NoError(t, err)
 		assert.Equal(t, userID, actualUserID)
 		return "ok", nil
 	})
@@ -236,8 +236,8 @@ func TestAuthenticateUnary_ProtectsChangeMasterKey(t *testing.T) {
 
 	// Act
 	resp, err := srv.authenticateUnaryInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
-		actualUserID, ok := authcontext.UserIDFromContext(ctx)
-		require.True(t, ok)
+		actualUserID, err := authcontext.UserIDFromContext(ctx)
+		require.NoError(t, err)
 		assert.Equal(t, userID, actualUserID)
 		return "ok", nil
 	})
@@ -266,8 +266,8 @@ func TestAuthenticateStream_AddsUserIDToContext(t *testing.T) {
 
 	// Act
 	err = srv.authenticateStreamInterceptor(nil, stream, info, func(_ any, stream grpc.ServerStream) error {
-		actualUserID, ok := authcontext.UserIDFromContext(stream.Context())
-		require.True(t, ok)
+		actualUserID, err := authcontext.UserIDFromContext(stream.Context())
+		require.NoError(t, err)
 		assert.Equal(t, userID, actualUserID)
 		return nil
 	})

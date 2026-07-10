@@ -117,8 +117,8 @@ func createRecordInputFromRequest(ctx context.Context, req *pb.CreateRecordReque
 	if req == nil {
 		return usecase.CreateRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.CreateRecordInput{}, status.Error(codes.Unauthenticated, "authentication is required")
 	}
 	recordType, ok := recordTypeFromProto(req.GetType())
@@ -255,8 +255,8 @@ func startBinaryMultipartUploadInputFromRequest(
 	if req == nil {
 		return usecase.StartBinaryMultipartUploadInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.StartBinaryMultipartUploadInput{}, status.Error(
 			codes.Unauthenticated,
 			"authentication is required",
@@ -399,9 +399,12 @@ type uploadBinaryMultipartPartStreamInput struct {
 func uploadBinaryMultipartPartInputFromStream(
 	stream pb.Records_UploadBinaryMultipartPartServer,
 ) (uploadBinaryMultipartPartStreamInput, error) {
-	userID, ok := authcontext.UserIDFromContext(stream.Context())
-	if !ok {
-		return uploadBinaryMultipartPartStreamInput{}, status.Error(codes.Unauthenticated, "authentication is required")
+	userID, err := authcontext.UserIDFromContext(stream.Context())
+	if err != nil {
+		return uploadBinaryMultipartPartStreamInput{}, status.Error(
+			codes.Unauthenticated,
+			"authentication is required",
+		)
 	}
 
 	first, err := stream.Recv()
@@ -574,8 +577,8 @@ func (s *RecordsService) AbortBinaryMultipartUpload(
 
 // multipartUploadIDFromRequest извлекает пользователя из контекста и валидирует ID multipart-загрузки.
 func multipartUploadIDFromRequest(ctx context.Context, uploadIDValue string) (uuid.UUID, uuid.UUID, error) {
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return uuid.Nil, uuid.Nil, status.Error(codes.Unauthenticated, "authentication is required")
 	}
 	uploadID, err := uuid.Parse(uploadIDValue)
@@ -658,8 +661,8 @@ func listRecordsInputFromRequest(ctx context.Context, req *pb.ListRecordsRequest
 	if req == nil {
 		return usecase.ListRecordsInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.ListRecordsInput{}, status.Error(codes.Unauthenticated, "authentication is required")
 	}
 	return usecase.ListRecordsInput{UserID: userID}, nil
@@ -747,8 +750,8 @@ func getRecordInputFromRequest(ctx context.Context, req *pb.GetRecordRequest) (u
 	if req == nil {
 		return usecase.GetRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.GetRecordInput{}, status.Error(codes.Unauthenticated, "authentication is required")
 	}
 	recordID, err := uuid.Parse(req.GetRecordId())
@@ -831,8 +834,8 @@ func updateRecordInputFromRequest(ctx context.Context, req *pb.UpdateRecordReque
 	if req == nil {
 		return usecase.UpdateRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.UpdateRecordInput{}, status.Error(codes.Unauthenticated, "authentication is required")
 	}
 	recordID, err := uuid.Parse(req.GetRecordId())
@@ -899,8 +902,8 @@ func deleteRecordInputFromRequest(ctx context.Context, req *pb.DeleteRecordReque
 	if req == nil {
 		return usecase.DeleteRecordInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.DeleteRecordInput{}, status.Error(codes.Unauthenticated, "authentication is required")
 	}
 	recordID, err := uuid.Parse(req.GetRecordId())
@@ -967,8 +970,8 @@ func downloadFileInputFromRequest(ctx context.Context, req *pb.DownloadFileReque
 	if req == nil {
 		return usecase.DownloadFileInput{}, status.Error(codes.InvalidArgument, "request is required")
 	}
-	userID, ok := authcontext.UserIDFromContext(ctx)
-	if !ok {
+	userID, err := authcontext.UserIDFromContext(ctx)
+	if err != nil {
 		return usecase.DownloadFileInput{}, status.Error(codes.Unauthenticated, "authentication is required")
 	}
 	recordID, err := uuid.Parse(req.GetRecordId())
