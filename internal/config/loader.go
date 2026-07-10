@@ -33,7 +33,8 @@ type loadOptions[T any] struct {
 	Validate   func(T) error
 }
 
-// loadConfig собирает конфигурацию из дефолтов, YAML-файла, CLI-флагов и переменных окружения.
+// loadConfig собирает конфигурацию из дефолтных значений, конфигурационного YAML-файла, переменных окружения и флагов
+// командной строки.
 //
 // Каждый следующий источник переопределяет значения предыдущего, после чего результат преобразуется в целевую
 // структуру и проходит опциональную валидацию.
@@ -49,11 +50,11 @@ func loadConfig[T any](opts loadOptions[T]) (T, error) {
 			return cfg, fmt.Errorf("failed to load config file %q: %w", opts.ConfigPath, err)
 		}
 	}
-	if err := k.Load(posflag.ProviderWithFlag(opts.Flags, keyDelim, k, mapFlag(opts.Flags)), nil); err != nil {
-		return cfg, fmt.Errorf("failed to load CLI flags: %w", err)
-	}
 	if err := k.Load(env.Provider(envPrefix, keyDelim, mapEnvKey), nil); err != nil {
 		return cfg, fmt.Errorf("failed to load environment variables: %w", err)
+	}
+	if err := k.Load(posflag.ProviderWithFlag(opts.Flags, keyDelim, k, mapFlag(opts.Flags)), nil); err != nil {
+		return cfg, fmt.Errorf("failed to load CLI flags: %w", err)
 	}
 
 	if err := k.Unmarshal("", &cfg); err != nil {

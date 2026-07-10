@@ -12,8 +12,8 @@ import (
 // TestLoadClient_RequiresGRPCServerAddr проверяет обязательность адреса gRPC-сервера.
 func TestLoadClient_RequiresGRPCServerAddr(t *testing.T) {
 	// Arrange
-	setArgs(t, "client")
 	unsetConfigEnv(t)
+	setArgs(t, "client")
 
 	// Act
 	_, err := LoadClient()
@@ -26,8 +26,8 @@ func TestLoadClient_RequiresGRPCServerAddr(t *testing.T) {
 // TestLoadClient_ReturnsErrHelp проверяет штатную обработку запроса справки.
 func TestLoadClient_ReturnsErrHelp(t *testing.T) {
 	// Arrange
-	setArgs(t, "client", "--help")
 	unsetConfigEnv(t)
+	setArgs(t, "client", "--help")
 
 	// Act
 	_, err := LoadClient()
@@ -72,9 +72,9 @@ func Test_loadClient_LoadsConfigFlags(t *testing.T) {
 // Test_loadClientFromFlags_RequiresGRPCServerAddr проверяет обязательность адреса gRPC-сервера.
 func Test_loadClientFromFlags_RequiresGRPCServerAddr(t *testing.T) {
 	// Arrange
+	unsetConfigEnv(t)
 	flags := newTestClientFlagSet(t)
 	parseTestFlags(t, flags)
-	unsetConfigEnv(t)
 
 	// Act
 	_, err := loadClientFromFlags(flags)
@@ -87,16 +87,16 @@ func Test_loadClientFromFlags_RequiresGRPCServerAddr(t *testing.T) {
 // Test_loadClientFromFlags_RejectsInvalidGRPCServerAddr проверяет запрет адреса gRPC-сервера с некорректным форматом.
 func Test_loadClientFromFlags_RejectsInvalidGRPCServerAddr(t *testing.T) {
 	// Arrange
+	unsetConfigEnv(t)
 	flags := newTestClientFlagSet(t)
 	parseTestFlags(t, flags, "--grpc-address", "http://localhost:3202", "--ca-cert", "certs/ca.crt")
-	unsetConfigEnv(t)
 
 	// Act
 	_, err := loadClientFromFlags(flags)
 
 	// Assert
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "server address must be in the format host:port")
+	assert.Equal(t, err.Error(), "server address must be in the format host:port (without specifying a scheme)")
 }
 
 func parseTestFlags(t *testing.T, flags *pflag.FlagSet, args ...string) {
@@ -114,9 +114,9 @@ func newTestClientFlagSet(t *testing.T) *pflag.FlagSet {
 // Test_loadClientFromFlags_RequiresCACertPath проверяет обязательность CA-сертификата клиента.
 func Test_loadClientFromFlags_RequiresCACertPath(t *testing.T) {
 	// Arrange
+	unsetConfigEnv(t)
 	flags := newTestClientFlagSet(t)
 	parseTestFlags(t, flags, "--grpc-address", "127.0.0.1:3203")
-	unsetConfigEnv(t)
 
 	// Act
 	_, err := loadClientFromFlags(flags)
@@ -133,21 +133,22 @@ func Test_loadClientFromFlags_Priority(t *testing.T) {
 grpc_address: localhost:3202
 ca_cert: certs/file-ca.crt
 `)
+	unsetConfigEnv(t)
+	t.Setenv("GOPHKEEPER_GRPC_ADDRESS", "127.0.0.1:3204")
+	t.Setenv("GOPHKEEPER_CA_CERT", "certs/env-ca.crt")
 	flags := newTestClientFlagSet(t)
 	parseTestFlags(t, flags,
 		"--config", configPath,
 		"--grpc-address", "127.0.0.1:3203",
 		"--ca-cert", "certs/flag-ca.crt",
 	)
-	unsetConfigEnv(t)
-	t.Setenv("GOPHKEEPER_GRPC_ADDRESS", "127.0.0.1:3204")
 
 	// Act
 	cfg, err := loadClientFromFlags(flags)
 
 	// Assert
 	require.NoError(t, err)
-	assert.Equal(t, "127.0.0.1:3204", cfg.GRPCServerAddr)
+	assert.Equal(t, "127.0.0.1:3203", cfg.GRPCServerAddr)
 	assert.Equal(t, "certs/flag-ca.crt", cfg.CACertPath)
 }
 
@@ -155,10 +156,17 @@ ca_cert: certs/file-ca.crt
 // окружения не откатывается к нижестоящему источнику.
 func Test_loadClientFromFlags_EmptyEnvironmentValueOverridesLowerPrioritySources(t *testing.T) {
 	// Arrange
-	flags := newTestClientFlagSet(t)
-	parseTestFlags(t, flags, "--grpc-address", "127.0.0.1:3203", "--ca-cert", "certs/flag-ca.crt")
+	configPath := writeTempConfig(t, `
+grpc_address: localhost:3202
+ca_cert: certs/file-ca.crt
+`)
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_CA_CERT", "")
+	flags := newTestClientFlagSet(t)
+	parseTestFlags(
+		t, flags,
+		"--config", configPath,
+	)
 
 	// Act
 	_, err := loadClientFromFlags(flags)

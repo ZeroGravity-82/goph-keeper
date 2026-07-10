@@ -14,8 +14,8 @@ import (
 // TestLoadServer_HelpReturnsErrHelp проверяет, что запрос справки возвращает специальную ошибку.
 func TestLoadServer_HelpReturnsErrHelp(t *testing.T) {
 	// Arrange
-	setArgs(t, "server", "-h")
 	unsetConfigEnv(t)
+	setArgs(t, "server", "-h")
 
 	// Act
 	_, err := LoadServer()
@@ -28,13 +28,13 @@ func TestLoadServer_HelpReturnsErrHelp(t *testing.T) {
 // TestLoadServer_RequiresDatabaseURI проверяет обязательность строки подключения к БД.
 func TestLoadServer_RequiresDatabaseURI(t *testing.T) {
 	// Arrange
-	setArgs(t, "server")
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+	setArgs(t, "server")
 
 	// Act
 	_, err := LoadServer()
@@ -47,13 +47,13 @@ func TestLoadServer_RequiresDatabaseURI(t *testing.T) {
 // TestLoadServer_RequiresJWTSecret проверяет обязательность JWT-секрета.
 func TestLoadServer_RequiresJWTSecret(t *testing.T) {
 	// Arrange
-	setArgs(t, "server")
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9000")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+	setArgs(t, "server")
 
 	// Act
 	_, err := LoadServer()
@@ -95,7 +95,6 @@ func TestLoadServer_RequiresFileStorageFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			setArgs(t, "server")
 			unsetConfigEnv(t)
 			t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
 			t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
@@ -104,6 +103,7 @@ func TestLoadServer_RequiresFileStorageFields(t *testing.T) {
 			t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
 			t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
 			t.Setenv(tt.unsetKey, "")
+			setArgs(t, "server")
 
 			// Act
 			_, err := LoadServer()
@@ -118,7 +118,6 @@ func TestLoadServer_RequiresFileStorageFields(t *testing.T) {
 // TestLoadServer_RejectsInvalidGRPCServerAddr проверяет ошибку при некорректном формате адреса gRPC-сервера.
 func TestLoadServer_RejectsInvalidGRPCServerAddr(t *testing.T) {
 	// Arrange
-	setArgs(t, "server", "--grpc-address", "http://localhost:3201")
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
@@ -126,6 +125,7 @@ func TestLoadServer_RejectsInvalidGRPCServerAddr(t *testing.T) {
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+	setArgs(t, "server", "--grpc-address", "http://localhost:3201")
 
 	// Act
 	_, err := LoadServer()
@@ -138,7 +138,6 @@ func TestLoadServer_RejectsInvalidGRPCServerAddr(t *testing.T) {
 // TestLoadServer_LoadsDefaults проверяет значения по умолчанию.
 func TestLoadServer_LoadsDefaults(t *testing.T) {
 	// Arrange
-	setArgs(t, "server")
 	unsetConfigEnv(t)
 	t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
 	t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
@@ -146,6 +145,7 @@ func TestLoadServer_LoadsDefaults(t *testing.T) {
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
 	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+	setArgs(t, "server")
 
 	// Act
 	cfg, err := LoadServer()
@@ -191,7 +191,11 @@ func Test_validateServerAddr(t *testing.T) {
 			// Assert
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.Equal(t, "server address must be in the format host:port (without specifying a scheme)", err.Error())
+				assert.Equal(
+					t,
+					"server address must be in the format host:port (without specifying a scheme)",
+					err.Error(),
+				)
 				return
 			}
 			require.NoError(t, err)
@@ -199,8 +203,8 @@ func Test_validateServerAddr(t *testing.T) {
 	}
 }
 
-// TestLoadServer_Priority проверяет приоритет "дефолтное значение < значение из конфигурационного файла < флаг командной
-// строки < переменная окружения".
+// TestLoadServer_Priority проверяет приоритет "дефолтное значение < значение из конфигурационного файла < переменная
+// окружения < флаг командной строки".
 func TestLoadServer_Priority(t *testing.T) {
 	// Arrange
 	configPath := writeTempConfig(t, `
@@ -222,6 +226,14 @@ logging:
   level: warn
   add_source: false
 `)
+	unsetConfigEnv(t)
+	t.Setenv("GOPHKEEPER_JWT_SECRET", "env-secret")
+	t.Setenv("GOPHKEEPER_GRPC_ADDRESS", "127.0.0.1:3204")
+	t.Setenv("GOPHKEEPER_TLS_CERT", "certs/env-server.crt")
+	t.Setenv("GOPHKEEPER_ACCESS_TOKEN_TTL", "45m")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9002")
+	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "env-bucket")
+	t.Setenv("GOPHKEEPER_LOGGING_LEVEL", "error")
 	setArgs(t,
 		"server",
 		"--config", configPath,
@@ -240,14 +252,6 @@ logging:
 		"--logging.level", "debug",
 		"--logging.add-source",
 	)
-	unsetConfigEnv(t)
-	t.Setenv("GOPHKEEPER_JWT_SECRET", "env-secret")
-	t.Setenv("GOPHKEEPER_GRPC_ADDRESS", "127.0.0.1:3204")
-	t.Setenv("GOPHKEEPER_TLS_CERT", "certs/env-server.crt")
-	t.Setenv("GOPHKEEPER_ACCESS_TOKEN_TTL", "45m")
-	t.Setenv("GOPHKEEPER_FILE_STORAGE_ENDPOINT", "localhost:9002")
-	t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "env-bucket")
-	t.Setenv("GOPHKEEPER_LOGGING_LEVEL", "error")
 
 	// Act
 	cfg, err := LoadServer()
@@ -255,19 +259,19 @@ logging:
 	// Assert
 	require.NoError(t, err)
 	assert.Equal(t, "postgres://flag-db", cfg.DatabaseURI)
-	assert.Equal(t, "env-secret", cfg.JWTSecret)
-	assert.Equal(t, "127.0.0.1:3204", cfg.GRPCServerAddr)
-	assert.Equal(t, "certs/env-server.crt", cfg.TLSCertPath)
+	assert.Equal(t, "flag-secret", cfg.JWTSecret)
+	assert.Equal(t, "127.0.0.1:3203", cfg.GRPCServerAddr)
+	assert.Equal(t, "certs/flag-server.crt", cfg.TLSCertPath)
 	assert.Equal(t, "certs/flag-server.key", cfg.TLSKeyPath)
-	assert.Equal(t, 45*time.Minute, cfg.AccessTokenTTL)
+	assert.Equal(t, 30*time.Minute, cfg.AccessTokenTTL)
 	assert.Equal(t, 840*time.Hour, cfg.RefreshTokenTTL)
-	assert.Equal(t, "localhost:9002", cfg.FileStorage.Endpoint)
+	assert.Equal(t, "localhost:9001", cfg.FileStorage.Endpoint)
 	assert.Equal(t, "flag-access", cfg.FileStorage.AccessKey)
 	assert.Equal(t, "flag-object-secret", cfg.FileStorage.SecretKey)
-	assert.Equal(t, "env-bucket", cfg.FileStorage.Bucket)
+	assert.Equal(t, "flag-bucket", cfg.FileStorage.Bucket)
 	assert.Equal(t, false, cfg.FileStorage.UseSSL)
 	assert.Equal(t, "json", cfg.Logging.Format)
-	assert.Equal(t, "error", cfg.Logging.Level)
+	assert.Equal(t, "debug", cfg.Logging.Level)
 	assert.True(t, cfg.Logging.AddSource)
 }
 
@@ -303,8 +307,6 @@ func TestLoadServer_RejectsInvalidTokenTTL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			args := append([]string{"server"}, tt.args...)
-			setArgs(t, args...)
 			unsetConfigEnv(t)
 			t.Setenv("GOPHKEEPER_DATABASE_URI", "postgres://user:pass@localhost/db")
 			t.Setenv("GOPHKEEPER_JWT_SECRET", "secret")
@@ -312,6 +314,8 @@ func TestLoadServer_RejectsInvalidTokenTTL(t *testing.T) {
 			t.Setenv("GOPHKEEPER_FILE_STORAGE_ACCESS_KEY", "access")
 			t.Setenv("GOPHKEEPER_FILE_STORAGE_SECRET_KEY", "secret")
 			t.Setenv("GOPHKEEPER_FILE_STORAGE_BUCKET", "gophkeeper")
+			args := append([]string{"server"}, tt.args...)
+			setArgs(t, args...)
 
 			// Act
 			_, err := LoadServer()
@@ -336,13 +340,12 @@ file_storage:
   secret_key: object-secret
   bucket: gophkeeper
 `)
+	unsetConfigEnv(t)
+	t.Setenv("GOPHKEEPER_JWT_SECRET", "")
 	setArgs(t,
 		"server",
 		"--config", configPath,
-		"--jwt-secret", "flag-secret",
 	)
-	unsetConfigEnv(t)
-	t.Setenv("GOPHKEEPER_JWT_SECRET", "")
 
 	// Act
 	_, err := LoadServer()

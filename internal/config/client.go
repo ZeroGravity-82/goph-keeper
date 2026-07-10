@@ -27,7 +27,8 @@ func NewClientFlagSet(name string) *pflag.FlagSet {
 	return flags
 }
 
-// LoadClient читает конфигурацию CLI-клиента из дефолтов, файла, флагов и переменных окружения.
+// LoadClient читает конфигурацию CLI-клиента из дефолтных значений, конфигурационного файла, переменных окружения и
+// флагов командной строки.
 func LoadClient() (ClientConfig, error) {
 	return loadClient(os.Args[1:])
 }

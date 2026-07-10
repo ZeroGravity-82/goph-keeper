@@ -85,7 +85,7 @@ type ServerConfig struct {
 }
 
 // LoadServer читает конфигурацию сервера с учетом приоритета "дефолтное значение < значение из конфигурационного
-// файла < флаг командной строки < переменная окружения".
+// файла < переменная окружения < флаг командной строки".
 func LoadServer() (ServerConfig, error) {
 	flags, configPath, err := parseFlags(os.Args[1:])
 	if err != nil {
@@ -103,8 +103,7 @@ func LoadServer() (ServerConfig, error) {
 func parseFlags(args []string) (*pflag.FlagSet, string, error) {
 	flags := pflag.NewFlagSet("gophkeeper-server", pflag.ContinueOnError)
 	flags.StringP("config", "c", "", "path to config file")
-	var grpcServerAddrFlag string
-	flags.Func("grpc-address", grpcServerAddrUsage(), grpcServerAddrFlagParser(&grpcServerAddrFlag))
+	flags.String("grpc-address", "", `gRPC server address (default "`+defaultGRPCServerAddr+`")`)
 	flags.String("tls-cert", "", "TLS certificate path for gRPC server")
 	flags.String("tls-key", "", "TLS private key path for gRPC server")
 	flags.String("database-uri", "", "database connection URI")
@@ -130,24 +129,6 @@ func parseFlags(args []string) (*pflag.FlagSet, string, error) {
 	return flags, configPath, nil
 }
 
-func grpcServerAddrUsage() string {
-	return fmt.Sprintf(`gRPC server address (default "%s")`, defaultGRPCServerAddr)
-}
-
-func grpcServerAddrFlagParser(grpcServerAddr *string) func(string) error {
-	return func(flagValue string) error {
-		if flagValue == "" {
-			*grpcServerAddr = flagValue
-			return nil
-		}
-		if err := validateServerAddr(flagValue); err != nil {
-			return err
-		}
-		*grpcServerAddr = flagValue
-		return nil
-	}
-}
-
 func serverDefaults() map[string]any {
 	return map[string]any{
 		configKey("logging", "format"):       defaultLoggingFormat,
@@ -168,6 +149,9 @@ func validateServerConfig(cfg ServerConfig) error {
 	}
 	if cfg.JWTSecret == "" {
 		return errors.New("JWT secret is required")
+	}
+	if err := validateServerAddr(cfg.GRPCServerAddr); err != nil {
+		return err
 	}
 	if cfg.AccessTokenTTL <= 0 {
 		return errors.New("access token TTL must be positive")
