@@ -9,3 +9,7 @@ vendor/
 
 # Output of the go coverage tool
 *.out
+
+# Sensitive data
+config/client.local.yaml
+config/server.local.yaml

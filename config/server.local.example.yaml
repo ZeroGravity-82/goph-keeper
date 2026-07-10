@@ -1,0 +1,17 @@
+grpc_address: localhost:3202
+tls_cert: certs/server.crt
+tls_key: certs/server.key
+database_uri: postgres://change-me-db-user:change-me-db-password@localhost:5432/change-me-db-name?sslmode=disable
+jwt_secret: change-me-jwt-secret
+access_token_ttl: 15m
+refresh_token_ttl: 720h
+file_storage:
+  endpoint: localhost:9000
+  access_key: change-me-access-key
+  secret_key: change-me-secret-key
+  bucket: gophkeeper
+  use_ssl: false
+logging:
+  format: text
+  level: debug
+  add_source: true
