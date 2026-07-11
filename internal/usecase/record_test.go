@@ -5,6 +5,7 @@ import (
 	"context"
 	stdsha256 "crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -146,6 +147,27 @@ func TestRecordUseCase_StartBinaryMultipartUpload_FailWithRepositoryErrorAbortsS
 	assert.Equal(t, 1, storage.abortMultipartCallCnt)
 	assert.Equal(t, "object-key", storage.abortMultipartKey)
 	assert.Equal(t, "storage-upload-id-2", storage.abortStorageUploadID)
+}
+
+// TestRecordUseCase_StartBinaryMultipartUpload_FailWithRepositoryAndStorageAbortErrors проверяет, что при ошибке БД и
+// ошибке отката multipart-загрузки итоговая ошибка сохраняет обе причины.
+func TestRecordUseCase_StartBinaryMultipartUpload_FailWithRepositoryAndStorageAbortErrors(t *testing.T) {
+	// Arrange
+	uc, _, _, multipartRepo, storage, _, _ := newTestRecordUseCase(t)
+	abortErr := errors.New("abort failed")
+	multipartRepo.createErr = ErrRecordVersionConflict
+	storage.abortMultipartErr = abortErr
+
+	// Act
+	_, err := uc.StartBinaryMultipartUpload(context.Background(), StartBinaryMultipartUploadInput{
+		EncryptedSize: 10,
+		PartSize:      5,
+	})
+
+	// Assert
+	require.ErrorIs(t, err, ErrRecordVersionConflict)
+	require.ErrorIs(t, err, abortErr)
+	assert.Equal(t, 1, storage.abortMultipartCallCnt)
 }
 
 // TestRecordUseCase_GetBinaryMultipartUploadStatus проверяет восстановление состояния уже загруженных частей.

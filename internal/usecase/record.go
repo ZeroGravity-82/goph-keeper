@@ -470,8 +470,8 @@ func (uc *RecordUseCase) StartBinaryMultipartUpload(
 		abortErr := uc.fileStorage.AbortMultipartUpload(ctx, objectKey, storageUploadID)
 		if abortErr != nil {
 			return StartBinaryMultipartUploadOutput{}, fmt.Errorf(
-				"failed to rollback multipart upload after database error %q: %w",
-				err.Error(),
+				"failed to rollback multipart upload after database error: %w; rollback error: %w",
+				err,
 				abortErr,
 			)
 		}
