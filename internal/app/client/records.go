@@ -65,6 +65,15 @@ var binaryRecordMutationErrorMessages = map[codes.Code]string{
 	codes.PermissionDenied:   "доступ запрещен",
 }
 
+// binaryFileDownloadErrorMessages содержит пользовательские сообщения для скачивания бинарного файла.
+var binaryFileDownloadErrorMessages = map[codes.Code]string{
+	codes.Unauthenticated:    "сессия недействительна, войдите снова",
+	codes.InvalidArgument:    "некорректный идентификатор приватной записи",
+	codes.NotFound:           "приватная запись не найдена",
+	codes.FailedPrecondition: "файл еще не загружен",
+	codes.Canceled:           "скачивание файла отменено",
+}
+
 // rawRecord содержит минимальный набор полей приватной записи, нужный для переупаковки DEK при смене мастер-ключа.
 type rawRecord struct {
 	RecordID     string

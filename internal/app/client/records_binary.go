@@ -773,12 +773,7 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string, dst io.Wr
 		return BinaryFileInfo{}, rpcError(
 			err,
 			"не удалось скачать файл",
-			map[codes.Code]string{
-				codes.Unauthenticated:    "сессия недействительна, войдите снова",
-				codes.InvalidArgument:    "некорректный идентификатор приватной записи",
-				codes.NotFound:           "приватная запись не найдена",
-				codes.FailedPrecondition: "файл еще не загружен",
-			},
+			binaryFileDownloadErrorMessages,
 		)
 	}
 	for {
@@ -790,12 +785,7 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string, dst io.Wr
 			return BinaryFileInfo{}, rpcError(
 				recvErr,
 				"не удалось скачать файл",
-				map[codes.Code]string{
-					codes.Unauthenticated:    "сессия недействительна, войдите снова",
-					codes.InvalidArgument:    "некорректный идентификатор приватной записи",
-					codes.NotFound:           "приватная запись не найдена",
-					codes.FailedPrecondition: "файл еще не загружен",
-				},
+				binaryFileDownloadErrorMessages,
 			)
 		}
 		if err = encryptedFile.Write(chunk.GetChunk()); err != nil {

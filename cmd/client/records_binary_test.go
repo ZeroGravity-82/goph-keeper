@@ -3,16 +3,38 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 )
+
+// Test_binaryTransferContext_CancelOnInterrupt проверяет отмену файловой передачи по Ctrl+C.
+func Test_binaryTransferContext_CancelOnInterrupt(t *testing.T) {
+	// Arrange
+	ctx, stop := binaryTransferContext(context.Background())
+	defer stop()
+	process, err := os.FindProcess(os.Getpid())
+	require.NoError(t, err)
+
+	// Act
+	require.NoError(t, process.Signal(os.Interrupt))
+
+	// Assert
+	select {
+	case <-ctx.Done():
+		require.ErrorIs(t, ctx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("контекст файловой передачи не отменился после Ctrl+C")
+	}
+}
 
 // Test_ensureDirectory_AcceptsDirectory проверяет успешную проверку директории.
 func Test_ensureDirectory_AcceptsDirectory(t *testing.T) {

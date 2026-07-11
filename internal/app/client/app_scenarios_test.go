@@ -602,6 +602,33 @@ func TestApp_BinaryRecordLifecycle_StreamsLargeFile(t *testing.T) {
 	assert.Equal(t, file, downloadedFile.Bytes())
 }
 
+// TestApp_DownloadBinaryFile_Canceled проверяет пользовательскую ошибку при отмене скачивания файла.
+func TestApp_DownloadBinaryFile_Canceled(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	app := newStartedTestApp(t)
+	recordsClient := app.records.(*recordsClientFake)
+	created, err := app.CreateBinary(ctx, CreateBinaryInput{
+		Title:       "Архив",
+		Description: "Большой файл",
+		Filename:    "archive.bin",
+		ContentType: "application/octet-stream",
+		File:        bytes.NewReader([]byte("file")),
+		FileSize:    int64(len("file")),
+	})
+	require.NoError(t, err)
+	recordsClient.downloadErr = status.Error(codes.Canceled, "context canceled")
+
+	// Act
+	var downloadedFile bytes.Buffer
+	_, err = app.DownloadBinaryFile(ctx, created.RecordID, &downloadedFile)
+
+	// Assert
+	require.Error(t, err)
+	assert.Equal(t, "скачивание файла отменено", err.Error())
+	assert.Empty(t, downloadedFile.Bytes())
+}
+
 // TestApp_CreateBinary_RetriesAbortAfterPartError проверяет, что клиент повторяет отмену неуспешной загрузки файла и
 // переводит бинарную запись в статус failed.
 func TestApp_CreateBinary_RetriesAbortAfterPartError(t *testing.T) {

@@ -9,12 +9,18 @@ import (
 	"math"
 	"mime"
 	"os"
+	"os/signal"
 	"path/filepath"
 
 	clientApp "zerogravity-82/goph-keeper/internal/app/client"
 )
 
 const minBinaryUploadProgressSizeBytes int64 = 1024 * 1024
+
+// binaryTransferContext создает контекст, который отменяется по Ctrl+C во время передачи файла.
+func binaryTransferContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(ctx, os.Interrupt)
+}
 
 // downloadSelectedBinaryFile скачивает файл выбранной бинарной записи в указанную директорию.
 func downloadSelectedBinaryFile(
@@ -50,7 +56,9 @@ func downloadSelectedBinaryFile(
 		}
 	}()
 
-	file, err := app.DownloadBinaryFile(ctx, item.RecordID, tempFile)
+	transferCtx, stopTransfer := binaryTransferContext(ctx)
+	file, err := app.DownloadBinaryFile(transferCtx, item.RecordID, tempFile)
+	stopTransfer()
 	closeErr := tempFile.Close()
 	if err != nil {
 		return err
@@ -156,7 +164,8 @@ func replaceSelectedBinaryFile(
 
 	progress := newBinaryUploadProgressPrinter(out)
 	defer progress.finish()
-	updated, err := app.UpdateBinary(ctx, clientApp.UpdateBinaryInput{
+	transferCtx, stopTransfer := binaryTransferContext(ctx)
+	updated, err := app.UpdateBinary(transferCtx, clientApp.UpdateBinaryInput{
 		RecordID:        record.RecordID,
 		ExpectedVersion: record.Version,
 		Title:           title,
@@ -167,6 +176,7 @@ func replaceSelectedBinaryFile(
 		FileSize:        fileSize,
 		OnProgress:      progress.update,
 	})
+	stopTransfer()
 	if err != nil {
 		refreshRecordsAfterBinaryFailure(ctx, app, state)
 		return err
@@ -231,7 +241,8 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 
 	progress := newBinaryUploadProgressPrinter(out)
 	defer progress.finish()
-	_, err = app.CreateBinary(ctx, clientApp.CreateBinaryInput{
+	transferCtx, stopTransfer := binaryTransferContext(ctx)
+	_, err = app.CreateBinary(transferCtx, clientApp.CreateBinaryInput{
 		Title:       title,
 		Description: description,
 		Filename:    filename,
@@ -240,6 +251,7 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 		FileSize:    fileSize,
 		OnProgress:  progress.update,
 	})
+	stopTransfer()
 	if err != nil {
 		return err
 	}

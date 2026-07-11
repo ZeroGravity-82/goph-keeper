@@ -120,6 +120,7 @@ type recordsClientFake struct {
 	listCalls        int
 	listUnauthOnce   bool
 	uploadPartErr    error
+	downloadErr      error
 	abortErr         error
 	abortCalls       int
 }
@@ -503,6 +504,9 @@ func (f *recordsClientFake) DownloadFile(
 	req *pb.DownloadFileRequest,
 	_ ...grpc.CallOption,
 ) (grpc.ServerStreamingClient[pb.DownloadFileResponse], error) {
+	if f.downloadErr != nil {
+		return nil, f.downloadErr
+	}
 	encryptedFile, ok := f.encryptedFiles[req.GetRecordId()]
 	if !ok {
 		return nil, status.Error(codes.NotFound, "file not found")
