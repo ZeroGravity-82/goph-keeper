@@ -38,9 +38,7 @@ func downloadSelectedBinaryFile(
 		return err
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
-	file, err := app.DownloadBinaryFile(callCtx, item.RecordID)
+	file, err := app.DownloadBinaryFile(ctx, item.RecordID)
 	if err != nil {
 		return err
 	}
@@ -131,11 +129,9 @@ func replaceSelectedBinaryFile(
 		contentType = "application/octet-stream"
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
 	progress := newBinaryUploadProgressPrinter(out)
 	defer progress.finish()
-	updated, err := app.UpdateBinary(callCtx, clientApp.UpdateBinaryInput{
+	updated, err := app.UpdateBinary(ctx, clientApp.UpdateBinaryInput{
 		RecordID:        record.RecordID,
 		ExpectedVersion: record.Version,
 		Title:           title,
@@ -208,11 +204,9 @@ func createBinary(ctx context.Context, app *clientApp.App, reader *bufio.Reader,
 		contentType = "application/octet-stream"
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
 	progress := newBinaryUploadProgressPrinter(out)
 	defer progress.finish()
-	_, err = app.CreateBinary(callCtx, clientApp.CreateBinaryInput{
+	_, err = app.CreateBinary(ctx, clientApp.CreateBinaryInput{
 		Title:       title,
 		Description: description,
 		Filename:    filename,
