@@ -505,7 +505,8 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	assert.Equal(t, UploadStatusUploaded, binaryRecord.UploadStatus)
 
 	// Act
-	downloaded, err := app.DownloadBinaryFile(ctx, created.RecordID)
+	var downloadedFile bytes.Buffer
+	downloaded, err := app.DownloadBinaryFile(ctx, created.RecordID, &downloadedFile)
 
 	// Assert
 	require.NoError(t, err)
@@ -513,7 +514,7 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	assert.Equal(t, "passport.pdf", downloaded.Filename)
 	assert.Equal(t, "application/pdf", downloaded.ContentType)
 	assert.Equal(t, int64(len("original file")), downloaded.DeclaredSize)
-	assert.Equal(t, []byte("original file"), downloaded.Data)
+	assert.Equal(t, []byte("original file"), downloadedFile.Bytes())
 
 	// Act
 	updatedMetadata, err := app.UpdateBinaryMetadata(ctx, UpdateBinaryMetadataInput{
@@ -527,11 +528,12 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, created.RecordID, updatedMetadata.RecordID)
 	assert.Equal(t, int64(2), updatedMetadata.Version)
-	downloaded, err = app.DownloadBinaryFile(ctx, created.RecordID)
+	downloadedFile.Reset()
+	downloaded, err = app.DownloadBinaryFile(ctx, created.RecordID, &downloadedFile)
 	require.NoError(t, err)
 	assert.Equal(t, "passport.pdf", downloaded.Filename)
 	assert.Equal(t, "application/pdf", downloaded.ContentType)
-	assert.Equal(t, []byte("original file"), downloaded.Data)
+	assert.Equal(t, []byte("original file"), downloadedFile.Bytes())
 
 	// Act
 	newFile := []byte("new file")
@@ -550,12 +552,13 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, created.RecordID, updatedFile.RecordID)
 	assert.Equal(t, int64(3), updatedFile.Version)
-	downloaded, err = app.DownloadBinaryFile(ctx, created.RecordID)
+	downloadedFile.Reset()
+	downloaded, err = app.DownloadBinaryFile(ctx, created.RecordID, &downloadedFile)
 	require.NoError(t, err)
 	assert.Equal(t, "passport.png", downloaded.Filename)
 	assert.Equal(t, "image/png", downloaded.ContentType)
 	assert.Equal(t, int64(len("new file")), downloaded.DeclaredSize)
-	assert.Equal(t, []byte("new file"), downloaded.Data)
+	assert.Equal(t, []byte("new file"), downloadedFile.Bytes())
 }
 
 // TestApp_BinaryRecordLifecycle_StreamsLargeFile проверяет загрузку и скачивание файла, который шифруется несколькими
@@ -590,12 +593,13 @@ func TestApp_BinaryRecordLifecycle_StreamsLargeFile(t *testing.T) {
 	}, progress[len(progress)-1])
 
 	// Act
-	downloaded, err := app.DownloadBinaryFile(ctx, created.RecordID)
+	var downloadedFile bytes.Buffer
+	downloaded, err := app.DownloadBinaryFile(ctx, created.RecordID, &downloadedFile)
 
 	// Assert
 	require.NoError(t, err)
 	assert.Equal(t, int64(len(file)), downloaded.DeclaredSize)
-	assert.Equal(t, file, downloaded.Data)
+	assert.Equal(t, file, downloadedFile.Bytes())
 }
 
 // TestApp_CreateBinary_RetriesAbortAfterPartError проверяет, что клиент повторяет отмену неуспешной загрузки файла и

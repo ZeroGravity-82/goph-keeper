@@ -38,22 +38,47 @@ func downloadSelectedBinaryFile(
 		return err
 	}
 
-	file, err := app.DownloadBinaryFile(ctx, item.RecordID)
+	tempFile, err := os.CreateTemp(outputDir, ".gophkeeper-download-*")
+	if err != nil {
+		return fmt.Errorf("не удалось создать временный файл: %w", err)
+	}
+	tempPath := tempFile.Name()
+	removeTemp := true
+	defer func() {
+		if removeTemp {
+			_ = os.Remove(tempPath)
+		}
+	}()
+
+	file, err := app.DownloadBinaryFile(ctx, item.RecordID, tempFile)
+	closeErr := tempFile.Close()
 	if err != nil {
 		return err
+	}
+	if closeErr != nil {
+		return fmt.Errorf("не удалось закрыть временный файл: %w", closeErr)
 	}
 	outputPath := filepath.Join(outputDir, file.Filename)
 	if err = confirmOutputFileOverwrite(reader, out, outputPath); err != nil {
 		return err
 	}
-	if err = os.WriteFile(outputPath, file.Data, 0o600); err != nil {
+	if err = replaceDownloadedFile(tempPath, outputPath); err != nil {
 		return fmt.Errorf("не удалось сохранить файл: %w", err)
 	}
+	removeTemp = false
 	_, _ = fmt.Fprintf(out, "файл сохранен: %s\n", outputPath)
 	_, _ = fmt.Fprintf(out, "исходное имя: %s\n", file.Filename)
 	_, _ = fmt.Fprintf(out, "MIME-тип: %s\n", file.ContentType)
 	_, _ = fmt.Fprintf(out, "размер: %d байт\n", file.DeclaredSize)
 	return nil
+}
+
+// replaceDownloadedFile переносит полностью скачанный и проверенный временный файл в целевой путь.
+func replaceDownloadedFile(tempPath string, outputPath string) error {
+	if err := os.Remove(outputPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.Rename(tempPath, outputPath)
 }
 
 // confirmOutputFileOverwrite запрашивает подтверждение, если файл для сохранения уже существует.

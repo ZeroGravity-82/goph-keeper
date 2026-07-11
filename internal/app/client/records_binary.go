@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	stdsha256 "crypto/sha256"
 	"encoding/hex"
@@ -88,13 +87,12 @@ type BinaryRecord struct {
 	EncryptedSHA256 string
 }
 
-// BinaryFile содержит расшифрованный файл бинарной приватной записи.
-type BinaryFile struct {
+// BinaryFileInfo содержит метаданные скачанного бинарного файла без его содержимого.
+type BinaryFileInfo struct {
 	RecordID     string
 	Filename     string
 	ContentType  string
 	DeclaredSize int64
-	Data         []byte
 }
 
 // CreateBinary валидирует метаданные и размер исходного файла, шифрует описание файла на клиенте и загружает
@@ -704,11 +702,14 @@ func uploadStatusFromProto(status pb.UploadStatus) model.UploadStatus {
 	}
 }
 
-// DownloadBinaryFile получает метаданные записи, скачивает зашифрованный файл, расшифровывает его на клиенте и
-// проверяет размер исходного файла.
-func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFile, error) {
+// DownloadBinaryFile получает метаданные записи, потоково скачивает зашифрованный файл, расшифровывает его и пишет
+// исходное содержимое в переданный получатель.
+func (a *App) DownloadBinaryFile(ctx context.Context, recordID string, dst io.Writer) (BinaryFileInfo, error) {
 	if err := a.requireSession(); err != nil {
-		return BinaryFile{}, err
+		return BinaryFileInfo{}, err
+	}
+	if dst == nil {
+		return BinaryFileInfo{}, errors.New("получатель файла не задан")
 	}
 
 	var resp *pb.GetRecordResponse
@@ -718,7 +719,7 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 		return err
 	})
 	if err != nil {
-		return BinaryFile{}, rpcError(
+		return BinaryFileInfo{}, rpcError(
 			err,
 			"не удалось получить метаданные файла",
 			map[codes.Code]string{
@@ -730,10 +731,13 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 	}
 	record := resp.GetRecord()
 	if record == nil {
-		return BinaryFile{}, errors.New("сервер вернул пустую приватную запись")
+		return BinaryFileInfo{}, errors.New("сервер вернул пустую приватную запись")
 	}
 	if record.GetType() != pb.RecordType_RECORD_TYPE_BINARY {
-		return BinaryFile{}, fmt.Errorf("приватная запись %s не содержит файл", recordID)
+		return BinaryFileInfo{}, fmt.Errorf("приватная запись %s не содержит файл", recordID)
+	}
+	if record.GetFile() == nil {
+		return BinaryFileInfo{}, errors.New("сервер вернул бинарную приватную запись без данных файла")
 	}
 
 	payload, err := crypto.DecryptRecordData[model.BinaryPayload](
@@ -745,31 +749,28 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 		},
 	)
 	if err != nil {
-		return BinaryFile{}, fmt.Errorf("не удалось расшифровать описание файла: %w", err)
+		return BinaryFileInfo{}, fmt.Errorf("не удалось расшифровать описание файла: %w", err)
+	}
+	decryption, err := crypto.NewBinaryRecordFileDecryption(
+		a.masterKey,
+		a.session.MasterKeySalt,
+		model.EncryptedBlob{Data: record.GetEncryptedDek()},
+	)
+	if err != nil {
+		return BinaryFileInfo{}, fmt.Errorf("не удалось подготовить расшифровку файла: %w", err)
 	}
 
-	var encryptedFile bytes.Buffer
-	err = a.withAccessTokenRefresh(ctx, func(ctx context.Context) error {
-		encryptedFile.Reset()
-		stream, err := a.records.DownloadFile(ctx, pb.DownloadFileRequest_builder{RecordId: &recordID}.Build())
-		if err != nil {
-			return err
-		}
-		for {
-			chunk, recvErr := stream.Recv()
-			if errors.Is(recvErr, io.EOF) {
-				return nil
-			}
-			if recvErr != nil {
-				return recvErr
-			}
-			if _, err = encryptedFile.Write(chunk.GetChunk()); err != nil {
-				return fmt.Errorf("не удалось собрать скачанный файл: %w", err)
-			}
-		}
-	})
+	encryptedFile := binaryFileStreamDecryption{
+		decryption:       decryption,
+		expectedSHA256:   record.GetFile().GetEncryptedSha256(),
+		plainSize:        payload.Size,
+		plainPartSize:    binaryPlainFilePartSizeBytes,
+		decryptedFileDst: dst,
+	}
+	encryptedFile.Reset()
+	stream, err := a.records.DownloadFile(ctx, pb.DownloadFileRequest_builder{RecordId: &recordID}.Build())
 	if err != nil {
-		return BinaryFile{}, rpcError(
+		return BinaryFileInfo{}, rpcError(
 			err,
 			"не удалось скачать файл",
 			map[codes.Code]string{
@@ -780,33 +781,133 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string) (BinaryFi
 			},
 		)
 	}
-	if expectedSHA256 := record.GetFile().GetEncryptedSha256(); expectedSHA256 != "" {
-		actualSHA256 := encryptedFileSHA256Bytes(encryptedFile.Bytes())
-		if actualSHA256 != expectedSHA256 {
-			return BinaryFile{}, errors.New("контрольная сумма зашифрованного файла не совпала")
+	for {
+		chunk, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return BinaryFileInfo{}, rpcError(
+				recvErr,
+				"не удалось скачать файл",
+				map[codes.Code]string{
+					codes.Unauthenticated:    "сессия недействительна, войдите снова",
+					codes.InvalidArgument:    "некорректный идентификатор приватной записи",
+					codes.NotFound:           "приватная запись не найдена",
+					codes.FailedPrecondition: "файл еще не загружен",
+				},
+			)
+		}
+		if err = encryptedFile.Write(chunk.GetChunk()); err != nil {
+			return BinaryFileInfo{}, err
 		}
 	}
-
-	file, err := crypto.DecryptBinaryRecordFileChunks(
-		a.masterKey,
-		a.session.MasterKeySalt,
-		model.EncryptedBlob{Data: record.GetEncryptedDek()},
-		model.EncryptedBlob{Data: encryptedFile.Bytes()},
-		payload.Size,
-		binaryPlainFilePartSizeBytes,
-	)
-	if err != nil {
-		return BinaryFile{}, fmt.Errorf("не удалось расшифровать файл: %w", err)
-	}
-	if int64(len(file)) != payload.Size {
-		return BinaryFile{}, errors.New("размер расшифрованного файла не совпадает с метаданными")
+	if err = encryptedFile.Finish(); err != nil {
+		return BinaryFileInfo{}, err
 	}
 
-	return BinaryFile{
+	return BinaryFileInfo{
 		RecordID:     record.GetRecordId(),
 		Filename:     payload.Filename,
 		ContentType:  payload.ContentType,
 		DeclaredSize: payload.Size,
-		Data:         file,
 	}, nil
+}
+
+// binaryFileStreamDecryption расшифровывает скачанный поток зашифрованных данных по тем же частям, которыми файл был
+// зашифрован при загрузке.
+type binaryFileStreamDecryption struct {
+	decryption       crypto.BinaryRecordFileDecryption
+	expectedSHA256   string
+	plainSize        int64
+	plainPartSize    int64
+	decryptedFileDst io.Writer
+	checksum         hash.Hash
+	pending          []byte
+	partNumber       int32
+	remainingPlain   int64
+	encryptedSize    int64
+	decryptedSize    int64
+}
+
+// Reset готовит состояние потоковой расшифровки перед началом скачивания.
+func (d *binaryFileStreamDecryption) Reset() {
+	d.checksum = stdsha256.New()
+	d.pending = d.pending[:0]
+	d.partNumber = 1
+	d.remainingPlain = d.plainSize
+	d.encryptedSize = 0
+	d.decryptedSize = 0
+}
+
+// Write принимает очередной фрагмент зашифрованного файла, накапливает полную зашифрованную часть, расшифровывает ее и
+// пишет исходные байты в получатель.
+func (d *binaryFileStreamDecryption) Write(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	if d.checksum == nil {
+		d.Reset()
+	}
+	if _, err := d.checksum.Write(data); err != nil {
+		return fmt.Errorf("не удалось рассчитать контрольную сумму зашифрованного файла: %w", err)
+	}
+	d.encryptedSize += int64(len(data))
+	d.pending = append(d.pending, data...)
+	for d.remainingPlain > 0 {
+		plainPartSize := min(d.plainPartSize, d.remainingPlain)
+		encryptedPartSize := plainPartSize + crypto.EncryptedBlobOverhead()
+		if int64(len(d.pending)) < encryptedPartSize {
+			return nil
+		}
+
+		encryptedPart := d.pending[:encryptedPartSize]
+		plainPart, err := d.decryption.DecryptFileChunk(
+			d.partNumber,
+			model.EncryptedBlob{Data: encryptedPart},
+		)
+		if err != nil {
+			return fmt.Errorf("не удалось расшифровать часть файла: %w", err)
+		}
+		if int64(len(plainPart)) != plainPartSize {
+			return errors.New("размер расшифрованной части файла не совпадает с метаданными")
+		}
+		if _, err = d.decryptedFileDst.Write(plainPart); err != nil {
+			return fmt.Errorf("не удалось записать расшифрованную часть файла: %w", err)
+		}
+
+		d.decryptedSize += int64(len(plainPart))
+		d.remainingPlain -= plainPartSize
+		d.partNumber++
+		d.pending = append(d.pending[:0], d.pending[encryptedPartSize:]...)
+	}
+	if len(d.pending) > 0 {
+		return errors.New("размер зашифрованного файла не совпадает с метаданными")
+	}
+	return nil
+}
+
+// Finish проверяет, что поток зашифрованных данных завершился на границе части, а контрольная сумма и размер совпали с
+// метаданными.
+func (d *binaryFileStreamDecryption) Finish() error {
+	if d.checksum == nil {
+		d.Reset()
+	}
+	if d.remainingPlain != 0 || len(d.pending) != 0 {
+		return errors.New("зашифрованный файл получен не полностью")
+	}
+	expectedEncryptedSize, err := crypto.EncryptedChunkedBlobSize(d.plainSize, d.plainPartSize)
+	if err != nil {
+		return err
+	}
+	if d.encryptedSize != expectedEncryptedSize {
+		return errors.New("размер зашифрованного файла не совпадает с метаданными")
+	}
+	if d.decryptedSize != d.plainSize {
+		return errors.New("размер расшифрованного файла не совпадает с метаданными")
+	}
+	if d.expectedSHA256 != "" && encryptedFileSHA256Hex(d.checksum) != d.expectedSHA256 {
+		return errors.New("контрольная сумма зашифрованного файла не совпала")
+	}
+	return nil
 }
