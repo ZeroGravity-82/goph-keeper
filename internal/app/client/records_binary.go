@@ -16,6 +16,7 @@ import (
 	"zerogravity-82/goph-keeper/internal/crypto"
 	"zerogravity-82/goph-keeper/internal/domain/model"
 	"zerogravity-82/goph-keeper/internal/pb"
+	"zerogravity-82/goph-keeper/internal/transport/grpcclient"
 )
 
 const (
@@ -768,7 +769,8 @@ func (a *App) DownloadBinaryFile(ctx context.Context, recordID string, dst io.Wr
 		decryptedFileDst: dst,
 	}
 	encryptedFile.Reset()
-	stream, err := a.records.DownloadFile(ctx, pb.DownloadFileRequest_builder{RecordId: &recordID}.Build())
+	streamCtx := grpcclient.WithAccessToken(ctx, a.session.AccessToken)
+	stream, err := a.records.DownloadFile(streamCtx, pb.DownloadFileRequest_builder{RecordId: &recordID}.Build())
 	if err != nil {
 		return BinaryFileInfo{}, rpcError(
 			err,

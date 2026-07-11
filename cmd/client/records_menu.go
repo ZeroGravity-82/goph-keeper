@@ -39,6 +39,7 @@ func runRecordsMenu(
 			return err
 		}
 
+		leaveRecordsMenu := false
 		switch choice {
 		case "1":
 			if err := operateSelectedRecord(ctx, app, state, reader, out); err != nil {
@@ -47,6 +48,7 @@ func runRecordsMenu(
 				}
 				handleConnectionError(state, out, err)
 				printActionError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 			}
 		case "2":
 			if err := state.ensureWritable(); err != nil {
@@ -56,10 +58,12 @@ func runRecordsMenu(
 			if err := createCredential(ctx, app, reader, out); err != nil {
 				handleConnectionError(state, out, err)
 				printActionError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 				break
 			}
 			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 			}
 		case "3":
 			if err := state.ensureWritable(); err != nil {
@@ -69,10 +73,12 @@ func runRecordsMenu(
 			if err := createText(ctx, app, reader, out); err != nil {
 				handleConnectionError(state, out, err)
 				printActionError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 				break
 			}
 			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 			}
 		case "4":
 			if err := state.ensureWritable(); err != nil {
@@ -82,10 +88,12 @@ func runRecordsMenu(
 			if err := createCard(ctx, app, reader, out); err != nil {
 				handleConnectionError(state, out, err)
 				printActionError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 				break
 			}
 			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 			}
 		case "5":
 			if err := state.ensureWritable(); err != nil {
@@ -96,15 +104,18 @@ func runRecordsMenu(
 				handleConnectionError(state, out, err)
 				printActionError(out, err)
 				refreshRecordsAfterBinaryFailure(ctx, app, state)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 				break
 			}
 			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 			}
 		case "6":
 			wasReadonly := state.readonly
 			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 				break
 			}
 			if wasReadonly {
@@ -119,11 +130,13 @@ func runRecordsMenu(
 			if err := changeMasterKey(ctx, app, reader, in, out); err != nil {
 				handleConnectionError(state, out, err)
 				printActionError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 				break
 			}
 			state = newRecordsMenuState()
 			if err := refreshRecordsMenu(ctx, app, state, out); err != nil {
 				printError(out, err)
+				leaveRecordsMenu = clientApp.IsSessionError(err)
 			}
 		case "8":
 			confirmed, err := confirm(reader, out, "Выйти из аккаунта?")
@@ -156,6 +169,9 @@ func runRecordsMenu(
 			return err
 		}
 		pauseBeforeClearScreen(out)
+		if leaveRecordsMenu {
+			return nil
+		}
 	}
 }
 

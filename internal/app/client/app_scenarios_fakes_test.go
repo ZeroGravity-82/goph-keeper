@@ -121,6 +121,7 @@ type recordsClientFake struct {
 	listUnauthOnce   bool
 	uploadPartErr    error
 	downloadErr      error
+	downloadCtx      context.Context
 	abortErr         error
 	abortCalls       int
 }
@@ -504,6 +505,7 @@ func (f *recordsClientFake) DownloadFile(
 	req *pb.DownloadFileRequest,
 	_ ...grpc.CallOption,
 ) (grpc.ServerStreamingClient[pb.DownloadFileResponse], error) {
+	f.downloadCtx = ctx
 	if f.downloadErr != nil {
 		return nil, f.downloadErr
 	}

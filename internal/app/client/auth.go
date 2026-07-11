@@ -292,7 +292,7 @@ func (a *App) refreshSession(ctx context.Context) error {
 	if err != nil {
 		if status.Code(err) == codes.Unauthenticated {
 			a.clearSession()
-			return errors.New("сессия истекла, войдите в аккаунт снова")
+			return sessionInvalidError("сессия истекла, войдите в аккаунт снова")
 		}
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"zerogravity-82/goph-keeper/internal/crypto"
@@ -472,6 +473,7 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	app := newStartedTestApp(t)
+	recordsClient := app.records.(*recordsClientFake)
 
 	// Act
 	originalFile := []byte("original file")
@@ -515,6 +517,9 @@ func TestApp_BinaryRecordLifecycle(t *testing.T) {
 	assert.Equal(t, "application/pdf", downloaded.ContentType)
 	assert.Equal(t, int64(len("original file")), downloaded.DeclaredSize)
 	assert.Equal(t, []byte("original file"), downloadedFile.Bytes())
+	downloadMetadata, ok := metadata.FromOutgoingContext(recordsClient.downloadCtx)
+	require.True(t, ok)
+	assert.Equal(t, []string{"Bearer access-token"}, downloadMetadata.Get("authorization"))
 
 	// Act
 	updatedMetadata, err := app.UpdateBinaryMetadata(ctx, UpdateBinaryMetadataInput{
