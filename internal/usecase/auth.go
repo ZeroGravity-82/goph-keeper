@@ -186,16 +186,6 @@ func NewAuthUseCase(
 
 // Register регистрирует пользователя и возвращает пару токенов (access/refresh) и соль для мастер-ключа.
 func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (RegisterOutput, error) {
-	// Убеждаемся, что логин уникален
-	_, err := uc.userRepo.GetByLogin(ctx, in.Login)
-	if err == nil {
-		return RegisterOutput{}, ErrLoginAlreadyTaken
-	}
-	if !errors.Is(err, ErrUserNotFound) {
-		err = fmt.Errorf("failed to verify login uniqueness: %w", err)
-		return RegisterOutput{}, err
-	}
-
 	h, err := auth.HashPassword(in.Password)
 	if err != nil {
 		return RegisterOutput{}, fmt.Errorf("failed to hash password for new user: %w", err)
@@ -237,6 +227,9 @@ func (uc *AuthUseCase) Register(ctx context.Context, in RegisterInput) (Register
 		}
 		return nil
 	}); err != nil {
+		if errors.Is(err, ErrLoginAlreadyTaken) {
+			return RegisterOutput{}, ErrLoginAlreadyTaken
+		}
 		return RegisterOutput{}, fmt.Errorf("failed to register user: %w", err)
 	}
 

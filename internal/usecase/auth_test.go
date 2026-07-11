@@ -300,7 +300,7 @@ func TestAuthUseCase_Register(t *testing.T) {
 func TestAuthUseCase_Register_FailWithTakenLogin(t *testing.T) {
 	// Arrange
 	uc, userRepo, _, refreshRepo, tx, _ := newTestAuthUseCase(t)
-	userRepo.usersByLogin = map[string]model.User{"user": {ID: uuid.MustParse("018f6b7c-0000-7000-8000-000000000001")}}
+	userRepo.createErr = ErrLoginAlreadyTaken
 
 	// Act
 	out, err := uc.Register(context.Background(), testRegisterInput())
@@ -308,22 +308,9 @@ func TestAuthUseCase_Register_FailWithTakenLogin(t *testing.T) {
 	// Assert
 	require.ErrorIs(t, err, ErrLoginAlreadyTaken)
 	assert.Empty(t, out)
-	assert.Zero(t, tx.calls)
+	assert.Equal(t, 1, tx.calls)
+	assert.Empty(t, userRepo.created)
 	assert.Empty(t, refreshRepo.created)
-}
-
-// TestAuthUseCase_Register_FailWithLoginLookupError проверяет ошибку проверки уникальности логина.
-func TestAuthUseCase_Register_FailWithLoginLookupError(t *testing.T) {
-	// Arrange
-	uc, userRepo, _, _, tx, _ := newTestAuthUseCase(t)
-	userRepo.getErr = errTest
-
-	// Act
-	_, err := uc.Register(context.Background(), testRegisterInput())
-
-	// Assert
-	require.ErrorIs(t, err, errTest)
-	assert.Zero(t, tx.calls)
 }
 
 // TestAuthUseCase_Register_FailWithEmptyPassword проверяет ошибку хеширования пустого пароля.
