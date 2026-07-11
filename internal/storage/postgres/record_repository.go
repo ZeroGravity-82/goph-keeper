@@ -176,62 +176,86 @@ RETURNING version
 	return 0, usecase.ErrRecordVersionConflict
 }
 
-// ReencryptDEKs обновляет зашифрованные DEK всех активных записей пользователя при смене мастер-ключа.
+// ReencryptDEKs одним batch-запросом обновляет зашифрованные DEK всех активных записей пользователя при смене
+// мастер-ключа.
 //
 // Метод проверяет, что клиент прислал все активные записи пользователя и что версии этих записей не изменились с
-// момента чтения. При несовпадении набора или версии возвращается usecase.ErrMasterKeyChangeConflict.
+// момента чтения. При несовпадении набора, версии или при дублировании record_id возвращается
+// usecase.ErrMasterKeyChangeConflict.
 func (r *RecordRepository) ReencryptDEKs(
 	ctx context.Context,
 	userID uuid.UUID,
 	records []usecase.ReencryptedRecordDEK,
 	updatedAt time.Time,
 ) error {
-	const countQuery = `
-SELECT COUNT(*)
-FROM record
-WHERE app_user_id = $1 AND deleted_at IS NULL
-`
-	exec := executorFromContext(ctx, r.db)
-	var activeCount int
-	if err := exec.GetContext(ctx, &activeCount, countQuery, userID); err != nil {
-		return fmt.Errorf("failed to count active records: %w", err)
-	}
-	if activeCount != len(records) {
-		return usecase.ErrMasterKeyChangeConflict
+	recordIDs, expectedVersions, encryptedDEKs, err := reencryptedRecordDEKBatches(records)
+	if err != nil {
+		return err
 	}
 
 	const updateQuery = `
-UPDATE record
-SET encrypted_dek = $1,
-    version = version + 1,
-    updated_at = $2
-WHERE id = $3
-  AND app_user_id = $4
-  AND deleted_at IS NULL
-  AND version = $5
+WITH input AS (
+    SELECT *
+    FROM unnest($2::uuid[], $3::bigint[], $4::bytea[]) AS i(id, expected_version, encrypted_dek)
+),
+active AS (
+    SELECT COUNT(*) AS active_count
+    FROM record
+    WHERE app_user_id = $1 AND deleted_at IS NULL
+),
+matched AS (
+    SELECT r.id, i.encrypted_dek
+    FROM record r
+    JOIN input i ON i.id = r.id
+    WHERE r.app_user_id = $1
+      AND r.deleted_at IS NULL
+      AND r.version = i.expected_version
+),
+updated AS (
+    UPDATE record r
+    SET encrypted_dek = m.encrypted_dek,
+        version = r.version + 1,
+        updated_at = $5
+    FROM matched m
+    WHERE r.id = m.id
+      AND (SELECT active_count FROM active) = (SELECT COUNT(*) FROM input)
+      AND (SELECT COUNT(*) FROM matched) = (SELECT COUNT(*) FROM input)
+    RETURNING r.id
+)
+SELECT
+    (SELECT active_count FROM active) AS active_count,
+    (SELECT COUNT(*) FROM updated) AS updated_count
 `
-	for _, record := range records {
-		result, err := exec.ExecContext(
-			ctx,
-			updateQuery,
-			record.EncryptedDEK,
-			updatedAt,
-			record.RecordID,
-			userID,
-			record.ExpectedVersion,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to update record encrypted DEK: %w", err)
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("failed to read affected rows count: %w", err)
-		}
-		if rowsAffected == 0 {
-			return usecase.ErrMasterKeyChangeConflict
-		}
+	exec := executorFromContext(ctx, r.db)
+	var result struct {
+		ActiveCount  int `db:"active_count"`
+		UpdatedCount int `db:"updated_count"`
+	}
+	if err = exec.GetContext(ctx, &result, updateQuery, userID, recordIDs, expectedVersions, encryptedDEKs, updatedAt); err != nil {
+		return fmt.Errorf("failed to update record encrypted DEKs: %w", err)
+	}
+	if result.ActiveCount != len(records) || result.UpdatedCount != len(records) {
+		return usecase.ErrMasterKeyChangeConflict
 	}
 	return nil
+}
+
+// reencryptedRecordDEKBatches раскладывает записи для пакетного UPDATE и отклоняет дубли record_id.
+func reencryptedRecordDEKBatches(records []usecase.ReencryptedRecordDEK) ([]string, []int64, [][]byte, error) {
+	seen := make(map[uuid.UUID]struct{}, len(records))
+	recordIDs := make([]string, 0, len(records))
+	expectedVersions := make([]int64, 0, len(records))
+	encryptedDEKs := make([][]byte, 0, len(records))
+	for _, record := range records {
+		if _, ok := seen[record.RecordID]; ok {
+			return nil, nil, nil, usecase.ErrMasterKeyChangeConflict
+		}
+		seen[record.RecordID] = struct{}{}
+		recordIDs = append(recordIDs, record.RecordID.String())
+		expectedVersions = append(expectedVersions, record.ExpectedVersion)
+		encryptedDEKs = append(encryptedDEKs, record.EncryptedDEK)
+	}
+	return recordIDs, expectedVersions, encryptedDEKs, nil
 }
 
 func (r *RecordRepository) exists(ctx context.Context, recordID uuid.UUID, userID uuid.UUID) (bool, error) {

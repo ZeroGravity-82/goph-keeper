@@ -371,6 +371,49 @@ func TestRecordRepository_ReencryptDEKs_VersionConflict(t *testing.T) {
 	assertRecordEqual(t, record, got)
 }
 
+// TestRecordRepository_ReencryptDEKs_DuplicateRecordID проверяет конфликт при повторе record_id во входном наборе.
+func TestRecordRepository_ReencryptDEKs_DuplicateRecordID(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	db := openTestDB(t, ctx)
+	userRepo, err := NewUserRepository(db)
+	require.NoError(t, err)
+	recordRepo, err := NewRecordRepository(db)
+	require.NoError(t, err)
+	user := newTestUser(t, "record-reencrypt-deks-duplicate-user")
+	record := newTestRecord(t, user.ID, model.RecordTypeText, "запись с дублем", fixedTestTime())
+
+	require.NoError(t, userRepo.Create(ctx, user))
+	require.NoError(t, recordRepo.Create(ctx, record))
+
+	// Act
+	err = recordRepo.ReencryptDEKs(
+		ctx,
+		user.ID,
+		[]usecase.ReencryptedRecordDEK{
+			{
+				RecordID:        record.ID,
+				ExpectedVersion: record.Version,
+				EncryptedDEK:    []byte("first-new-encrypted-dek"),
+			},
+			{
+				RecordID:        record.ID,
+				ExpectedVersion: record.Version,
+				EncryptedDEK:    []byte("second-new-encrypted-dek"),
+			},
+		},
+		fixedTestTime().Add(time.Minute),
+	)
+
+	// Assert
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, usecase.ErrMasterKeyChangeConflict))
+
+	got, err := recordRepo.GetByIDAndUserID(ctx, record.ID, user.ID)
+	require.NoError(t, err)
+	assertRecordEqual(t, record, got)
+}
+
 // TestRecordMutationGuard_BlocksSameUser проверяет, что Advisory Lock сериализует операции одного пользователя и не
 // блокирует операции другого пользователя.
 func TestRecordMutationGuard_BlocksSameUser(t *testing.T) {
